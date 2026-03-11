@@ -1,0 +1,57 @@
+---
+title: What is a tokenspace?
+description: A tokenspace is the environment that defines what an AI can read, run, and change.
+---
+
+A tokenspace is a workspace (we use this term interchangeably with tokenspace) that defines an environment for an AI to act on external systems.
+
+In practice, a tokenspace gives the model two operating surfaces:
+
+- A virtual filesystem and bash environment.
+- A typed TypeScript API defined by the workspace.
+
+## Virtual filesystem and bash
+
+Each session starts from the same compiled baseline. The AI can:
+
+- read docs, skills, and capability references
+- store notes, scratch files, and artifacts in the session filesystem
+- use bash against that sandboxed filesystem instead of the host machine
+
+This is deliberate. TokenSpace is not a memory system that silently changes behavior over time. If you want the AI to behave differently, you change the workspace, test it, and publish a new revision.
+
+## Typed TypeScript API
+
+The AI can execute TypeScript code, but only against APIs explicitly defined in the tokenspace.
+
+- Workspace authors define tools as capability actions.
+- The compiler exposes declarations to the AI instead of implementation source.
+- The runtime executes the compiled bundle in isolation.
+- Approval requirements live in workspace code, not in ad hoc prompt instructions.
+
+The result is a much tighter interface than "give the model network access and hope for the best."
+
+## Why teams use tokenspaces
+
+A tokenspace is meant to be shared between users. It lets the AI do more by giving it more tools, but only inside a constrained and reviewable environment.
+
+Key properties:
+
+- More capability comes from better tools and docs, not from broader ambient access.
+- Every session starts from the same baseline revision.
+- Changes can be managed in Git-style workflows and tested before they affect everyone.
+- You can split work across multiple tokenspaces when domains, permissions, or operating styles differ.
+
+## FAQ
+
+### Can I have multiple tokenspaces?
+
+Yes. Multiple tokenspaces are often the right design.
+
+Use separate tokenspaces when:
+
+- different teams own different systems
+- different approval or credential models are required
+- one environment needs stronger isolation than another
+
+Compartmentalization usually makes the AI more reliable, because each tokenspace can stay narrower and better documented.

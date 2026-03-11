@@ -1,0 +1,41 @@
+name: Check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - name: Install dependencies
+        run: bun install
+      - name: Check formatting and linter
+        run: bun run check:ci
+      - name: Check TypeScript
+        run: bun run typecheck
+      - name: Check publishable packages
+        run: bun run release:check
+      - name: Run unit tests
+        run: bun run test:unit
+      - name: Run code generation
+        run: bun codegen
+      - name: Check for uncommitted codegen changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Error: Uncommitted changes detected after running 'make codegen'"
+            echo "Please run 'make codegen' locally and commit the changes"
+            git diff --stat
+            git diff
+            git status
+            exit 1
+          fi
+      - name: Run integration tests
+        run: bun run test:integration

@@ -1,0 +1,103 @@
+---
+title: TokenSpace CLI
+description: Use the CLI to authenticate, link a local workspace, sync source files, compile locally, and push revisions.
+---
+
+The TokenSpace CLI allows you to create and build tokenspaces locally, link them to remote tokenspaces, sync source files, compile locally, and push revisions.
+
+## Installation
+
+```bash
+bun install tokenspace -g
+```
+
+or use adhoc
+
+```bash
+bunx tokenspace <command>
+```
+
+## Authentication
+
+The CLI uses WorkOS device authorization.
+
+```bash
+tokenspace login
+tokenspace login --url=http://localhost:31337
+tokenspace whoami
+tokenspace logout
+```
+
+Auth state is stored locally in `~/.tokenspace/auth.json`. The CLI remembers the selected web app URL, discovers the matching WorkOS client ID and Convex URL automatically, and reuses that target for future commands and generated links.
+
+## Standard workflow
+
+For a hosted tokenspace workflow:
+
+```bash
+tokenspace init
+cd ./your-workspace
+tokenspace login
+tokenspace link --create --name "Your Workspace" --slug your-workspace
+tokenspace push
+```
+
+After the first link, you can keep working from that directory with `tokenspace pull`, `tokenspace push`, and `tokenspace compile`.
+
+## Link a workspace locally
+
+Link the current directory to an existing tokenspace or create a new one:
+
+```bash
+tokenspace link
+tokenspace link my-workspace
+tokenspace link --create --name "Platform Ops" --slug platform-ops
+```
+
+The CLI stores the link in `.tokenspace/link.json` and adds `.tokenspace/` to `.gitignore` if needed.
+
+Workspace slugs cannot contain `:` or `@` because those delimiters are reserved for branch and revision URLs in the app.
+
+## Sync a workspace locally
+
+Pull downloads the current branch state, including your working changes:
+
+```bash
+tokenspace pull
+tokenspace pull --dry-run
+```
+
+Push uploads your local files into the linked tokenspace's default-branch working directory, builds local artifacts, and pushes a revision:
+
+```bash
+tokenspace push
+tokenspace push --dry-run
+tokenspace push --open
+```
+
+Successful pushes print a revision playground URL in the form `/workspace/<slug>@<revisionId>/playground`.
+
+The CLI skips hidden files and local-only directories such as `.tokenspace/`, `.git/`, `node_modules/`, and `build/`.
+
+## Compile locally
+
+Compile the current local tokenspace into revision artifacts:
+
+```bash
+tokenspace compile
+tokenspace compile --out-dir build/tokenspace
+```
+
+## When to use the CLI vs the UI
+
+Use the CLI when:
+
+- you want the workspace files in a local editor
+- you want a local-first workflow that still pushes revisions to the app
+- you want to compile the workspace locally from the CLI
+
+Use the UI when:
+
+- you want browser-based editing and review
+- you are managing credentials or approvals
+- you want to run and inspect chats directly in the product

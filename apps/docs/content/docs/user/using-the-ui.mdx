@@ -1,0 +1,75 @@
+---
+title: Using the UI
+description: How admins and operators work with branches, revisions, chats, files, and approvals.
+---
+
+The product has two main modes of use:
+
+- Admin workflows for authoring and publishing a tokenspace.
+- Operator workflows for running the published revision through chat.
+
+## Admin workflow
+
+Workspace admins primarily use the editor and settings surfaces.
+
+### 1. Edit the workspace on a branch
+
+The editor is the code-oriented workspace surface. It supports:
+
+- browsing and editing workspace files
+- branch selection and branch creation
+- diffs, merge flows, and commit creation
+- compiling a branch into a revision
+
+This is where you change `src/capabilities`, docs, credentials, and workspace prompts before making a new revision active.
+
+### 2. Configure credentials
+
+The credentials settings page shows the credential requirements discovered from the compiled revision.
+
+- Workspace-scoped secrets and OAuth credentials are configured there.
+- Runtime-scoped credentials are listed separately so authors can see what users will be asked for.
+- Environment credentials are documented, but their values must come from the self-hosted executor environment.
+
+### 3. Compile before rollout
+
+Compilation is the boundary between editable source and runnable revision artifacts. A branch can be compiled with or without uncommitted working state so authors can test changes before promoting them.
+
+## Operator workflow
+
+Operators interact with a compiled revision instead of raw source.
+
+### Chat and execution
+
+In chat, the agent can:
+
+- answer questions from workspace docs and capability docs
+- run TypeScript against declared capability actions
+- use bash in the session filesystem
+- create and read files that persist for the session
+
+### Session tools
+
+The chat UI exposes session-level debugging and inspection surfaces, including:
+
+- the conversation stream
+- session files
+- terminal output
+- tool calls
+- sub-agent activity
+- approvals and usage information
+
+That is important when you need to understand what the agent changed or why a run stalled.
+
+### Approval flow
+
+When capability code requires approval, the request appears in the UI and the agent can resume after approval is granted. This keeps high-risk actions explicit while leaving safe read flows autonomous.
+
+## Mental model
+
+Admins shape the environment. Operators use the environment.
+
+That separation is one of the main product boundaries:
+
+- admins modify the workspace filesystem
+- users run against compiled revisions

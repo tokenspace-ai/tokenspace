@@ -1,0 +1,38 @@
+---
+title: Local MCP
+description: Run a tokenspace locally as an MCP server for tools, files, approvals, and debugging.
+---
+
+`@tokenspace/local-mcp` lets you run a workspace locally and expose it to MCP-aware clients such as Claude Code or Claude Desktop.
+
+This is useful when you want the TokenSpace runtime model without going through the hosted web app.
+
+## What local MCP gives you
+
+Once connected, a client can discover:
+
+- tools such as `runCode`, `bash`, `readFile`, `writeFile`, and `requestApproval`
+- resources such as the session manifest and workspace metadata
+- a local control UI for approvals and credentials
+
+The MCP server is a stdio process backed by a real local workspace path.
+
+## Quick start
+
+Using the [TokenSpace CLI](/docs/tokenspace-cli):
+
+1) [Create a tokenspace](/docs/developer)
+  ```bash
+  tokenspace init
+  ```
+2) Compile the tokenspace
+  ```bash
+  tokenspace compile
+  ```
+
+3) Run the local MCP server from the workspace directory
+  ```bash
+  bunx @tokenspace/local-mcp .
+  ```
+
+Then add that stdio command to the MCP-aware client of your choice, such as Claude Code or Claude Desktop.

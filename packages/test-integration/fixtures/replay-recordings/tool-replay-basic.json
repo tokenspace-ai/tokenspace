@@ -1,0 +1,110 @@
+{
+  "recordingId": "tool-replay-basic",
+  "recording": {
+    "version": 2,
+    "metadata": {
+      "modelId": "anthropic/claude-sonnet-4.5",
+      "provider": "anthropic",
+      "timestamp": "2026-01-01T00:00:00.000Z"
+    },
+    "turns": [
+      {
+        "userMessageCount": 1,
+        "userMessageText": "Run a tool",
+        "streams": [
+          {
+            "chunks": [
+              {
+                "type": "tool-input-start",
+                "id": "call_1",
+                "toolName": "readFile"
+              },
+              {
+                "type": "tool-input-delta",
+                "id": "call_1",
+                "delta": "{\"path\":\"README.md\"}"
+              },
+              {
+                "type": "tool-input-end",
+                "id": "call_1"
+              },
+              {
+                "type": "tool-call",
+                "toolCallId": "call_1",
+                "toolName": "readFile",
+                "input": "{\"path\":\"README.md\"}"
+              },
+              {
+                "type": "finish",
+                "finishReason": {
+                  "unified": "tool-calls"
+                },
+                "usage": {
+                  "inputTokens": {
+                    "total": 10,
+                    "noCache": 10
+                  },
+                  "outputTokens": {
+                    "total": 20,
+                    "text": 20
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "chunks": [
+              {
+                "type": "text-start",
+                "id": "tool-replay-text-1"
+              },
+              {
+                "type": "text-delta",
+                "id": "tool-replay-text-1",
+                "delta": "Done"
+              },
+              {
+                "type": "text-delta",
+                "id": "tool-replay-text-1",
+                "delta": " after"
+              },
+              {
+                "type": "text-delta",
+                "id": "tool-replay-text-1",
+                "delta": " tool replay."
+              },
+              {
+                "type": "text-end",
+                "id": "tool-replay-text-1"
+              },
+              {
+                "type": "finish",
+                "finishReason": {
+                  "unified": "stop"
+                },
+                "usage": {
+                  "inputTokens": {
+                    "total": 10,
+                    "noCache": 10
+                  },
+                  "outputTokens": {
+                    "total": 20,
+                    "text": 20
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "toolOutcomes": [
+    {
+      "toolCallId": "call_1",
+      "toolName": "readFile",
+      "status": "result",
+      "result": "REPLAYED_README_CONTENT"
+    }
+  ]
+}

@@ -1,0 +1,233 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`Replay Fixture Snapshots replays multi-turn-tool and matches snapshot 1`] = `
+{
+  "assistantTranscript": [
+    {
+      "_creationTime": 0,
+      "_id": "<_id>",
+      "id": "<id>",
+      "parts": [
+        {
+          "text": "snapshot turn 1",
+          "type": "text",
+        },
+      ],
+      "role": "user",
+      "threadId": "<threadId>",
+    },
+    {
+      "_creationTime": 0,
+      "_id": "<_id>",
+      "committedSeq": 1,
+      "id": "<id>",
+      "parts": [
+        {
+          "type": "step-start",
+        },
+        {
+          "state": "done",
+          "text": "First replay response.",
+          "type": "text",
+        },
+      ],
+      "role": "assistant",
+      "threadId": "<threadId>",
+    },
+    {
+      "_creationTime": 0,
+      "_id": "<_id>",
+      "id": "<id>",
+      "parts": [
+        {
+          "text": "snapshot turn 2",
+          "type": "text",
+        },
+      ],
+      "role": "user",
+      "threadId": "<threadId>",
+    },
+    {
+      "_creationTime": 0,
+      "_id": "<_id>",
+      "committedSeq": 2,
+      "id": "<id>",
+      "parts": [
+        {
+          "type": "step-start",
+        },
+        {
+          "state": "done",
+          "text": "Second replay response.",
+          "type": "text",
+        },
+      ],
+      "role": "assistant",
+      "threadId": "<threadId>",
+    },
+  ],
+  "recordingId": "multi-turn-tool",
+  "turns": 2,
+}
+`;
+
+exports[`Replay Fixture Snapshots replays simple-product-usage-query and matches snapshot 1`] = `
+{
+  "assistantTranscript": [
+    {
+      "_creationTime": 0,
+      "_id": "<_id>",
+      "id": "<id>",
+      "parts": [
+        {
+          "text": "snapshot turn 1",
+          "type": "text",
+        },
+      ],
+      "role": "user",
+      "threadId": "<threadId>",
+    },
+    {
+      "_creationTime": 0,
+      "_id": "<_id>",
+      "committedSeq": 5,
+      "id": "<id>",
+      "parts": [
+        {
+          "type": "step-start",
+        },
+        {
+          "providerMetadata": {
+            "bedrock": {
+              "signature": "AxB2kT9pLmNcDfEgHiJkLmNoPqRsTuVwXyZ0123456789abcdefABCDEFghijklmnopqrstuvwxyz0123456789abcdefABCDEFghijklmnopqrstuvwxyz0123456789abcdefABCDEFghijklmnopqrstuvwxyz0123456789abcdefABCDEFghijklmnopqrstuvwxyz0123456789abcdefABCDEFghijklmnopqrstuvwxyz0123456789abcdefABCDEFghijklmnopqrstuvwxyz0123456789abcdefABCDEFghijklmnopqrstuvwxyz0123456789abcdefABCDEF",
+            },
+          },
+          "state": "done",
+          "text": 
+"The user wants a 7-day weather forecast for their area. Looking at the available connections, I see:
+- Weather: "Weather provides current conditions, hourly and multi-day forecasts for any location worldwide"
+
+This seems like the right connection for retrieving forecast data. I should read the Weather CONNECTION.md file to understand how to query it."
+,
+          "type": "reasoning",
+        },
+        {
+          "input": {
+            "path": "connections/weather/CONNECTION.md",
+          },
+          "output": "REPLAYED: readFile output",
+          "state": "output-available",
+          "toolCallId": "tooluse_MOWsubXloUpUTtz1Xzv2IK",
+          "type": "tool-readFile",
+        },
+        {
+          "type": "step-start",
+        },
+        {
+          "state": "done",
+          "text": "Now I'll fetch the weather forecast for the next 7 days:",
+          "type": "text",
+        },
+        {
+          "input": {
+            "code": 
+"
+const forecast = await getWeather("weatherprod", {
+  location: "San Francisco, CA",
+  type: "daily",
+  days: 7,
+});
+
+console.log("7-Day Weather Forecast");
+console.log("============================");
+console.log(JSON.stringify(forecast, null, 2));
+"
+,
+            "description": "Fetch the 7-day weather forecast for San Francisco",
+          },
+          "output": "REPLAYED: runCode output",
+          "state": "output-available",
+          "toolCallId": "tooluse_96PKasusWUcDvm4PiIX0ok",
+          "type": "tool-runCode",
+        },
+        {
+          "type": "step-start",
+        },
+        {
+          "state": "done",
+          "text": 
+"**7-Day Weather Forecast - San Francisco**
+
+- **Monday**: High 62°F / Low 48°F, Partly Cloudy
+- **Tuesday**: High 58°F / Low 45°F, Rain
+- **Wednesday**: High 55°F / Low 43°F, Showers
+- **Thursday**: High 60°F / Low 46°F, Mostly Cloudy
+- **Friday**: High 64°F / Low 50°F, Sunny
+- **Saturday**: High 66°F / Low 52°F, Sunny
+- **Sunday**: High 63°F / Low 49°F, Partly Cloudy
+
+Overall a mild week with rain early on and clearing skies by the weekend."
+,
+          "type": "text",
+        },
+      ],
+      "role": "assistant",
+      "threadId": "<threadId>",
+    },
+  ],
+  "recordingId": "simple-product-usage-query",
+  "turns": 1,
+}
+`;
+
+exports[`Replay Fixture Snapshots replays tool-replay-basic and matches snapshot 1`] = `
+{
+  "assistantTranscript": [
+    {
+      "_creationTime": 0,
+      "_id": "<_id>",
+      "id": "<id>",
+      "parts": [
+        {
+          "text": "snapshot turn 1",
+          "type": "text",
+        },
+      ],
+      "role": "user",
+      "threadId": "<threadId>",
+    },
+    {
+      "_creationTime": 0,
+      "_id": "<_id>",
+      "committedSeq": 3,
+      "id": "<id>",
+      "parts": [
+        {
+          "type": "step-start",
+        },
+        {
+          "input": {
+            "path": "README.md",
+          },
+          "output": "REPLAYED_README_CONTENT",
+          "state": "output-available",
+          "toolCallId": "call_1",
+          "type": "tool-readFile",
+        },
+        {
+          "type": "step-start",
+        },
+        {
+          "state": "done",
+          "text": "Done after tool replay.",
+          "type": "text",
+        },
+      ],
+      "role": "assistant",
+      "threadId": "<threadId>",
+    },
+  ],
+  "recordingId": "tool-replay-basic",
+  "turns": 1,
+}
+`;

@@ -1,0 +1,24 @@
+{
+  "name": "@tokenspace/scripts",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.9",
+    "@tokenspace/backend": "workspace:*",
+    "@tokenspace/convex-local-dev": "workspace:*",
+    "@tokenspace/sdk": "workspace:*",
+    "@tokenspace/types": "workspace:*",
+    "@tokenspace/config": "workspace:*",
+    "@tokenspace/executor": "workspace:*",
+    "@tokenspace/compiler": "workspace:*",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "convex": "^1.32.0",
+    "tokenlens": "^1.3.1"
+  }
+}

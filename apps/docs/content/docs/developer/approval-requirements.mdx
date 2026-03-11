@@ -1,0 +1,77 @@
+---
+title: Approval Requirements
+description: Model approvals as explicit, narrowly scoped runtime checks.
+---
+
+Approvals are the main human-in-the-loop mechanism in TokenSpace. Workspace code asks for approval by calling `requireApproval(...)`.
+
+If no matching approval exists for the current session, execution stops with an `APPROVAL_REQUIRED` error and the agent can request approval from the user.
+
+## Approval policy defaults
+
+The approval guidance in this repo is:
+
+| Action type | Default policy |
+| --- | --- |
+| In-domain reads | Autonomous |
+| In-domain reversible writes | Usually autonomous unless policy says otherwise |
+| In-domain destructive or high-impact writes | Approval required |
+| Out-of-domain operations | Reject |
+
+That keeps safe autonomy high without making approval the default for everything.
+
+## Require approval in capability code
+
+```typescript
+import { action, requireApproval } from "@tokenspace/sdk";
+import z from "zod";
+
+export const deleteSavedSearch = action(
+  z.object({
+    namespace: z.string(),
+    name: z.string(),
+  }),
+  async (args) => {
+    await requireApproval({
+      action: "splunk:deleteSavedSearch",
+      data: {
+        namespace: args.namespace,
+        name: args.name,
+      },
+      description: `Delete saved search ${args.namespace}/${args.name}`,
+    });
+
+    return { ok: true as const };
+  },
+);
+```
+
+## Scope approvals narrowly
+
+Use the `action` and `data` fields to make approval targets reviewable and matchable.
+
+- `action` should be namespaced, such as `github:deleteRepository`.
+- `data` should include the fields that identify the exact target.
+- `description` should tell a human what they are approving without requiring source inspection.
+
+Good approval definitions let you approve one specific operation without implicitly approving unrelated work.
+
+## Matching behavior
+
+Approvals are session-scoped and matched at runtime.
+
+- Exact action matches work as expected.
+- Wildcards such as `github:*` are supported.
+- Data matching is partial, so an approval can intentionally scope only the fields that matter.
+
+That flexibility is useful, but broad wildcard approvals should be used carefully because they expand agent autonomy inside the current session.
+
+## What should never be approval-gated
+
+Approval is not a substitute for domain boundaries.
+
+- Do not rely on approval to permit out-of-domain targets.
+- Do not use approval instead of input validation.
+- Do not make every action approval-only if the operation is safe to automate.
+
+If a request is outside the defined contract of the capability, reject it directly.

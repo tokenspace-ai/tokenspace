@@ -1,0 +1,9 @@
+{
+  "extends": "@tokenspace/config/tsconfig.base.json",
+  "compilerOptions": {
+    "isolatedDeclarations": false,
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["./src", "./test"],
+  "exclude": ["./dist"]
+}

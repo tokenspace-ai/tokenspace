@@ -1,0 +1,39 @@
+{
+  "name": "@tokenspace/backend",
+  "private": true,
+  "version": "1.0.0",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "convex dev",
+    "codegen": "bun run codegen.ts",
+    "test:unit": "bun test tests",
+    "fix": "cd ../.. && bun fix",
+    "typecheck": "cd convex && tsc --noEmit"
+  },
+  "author": "",
+  "description": "",
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "typescript": "^5.9.2",
+    "@tokenspace/config": "workspace:*",
+    "@tokenspace/convex-local-dev": "workspace:*"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.46",
+    "@ai-sdk/google": "^3.0.30",
+    "@ai-sdk/google-vertex": "^4.0.61",
+    "@ai-sdk/openai": "^3.0.30",
+    "@convex-dev/resend": "^0.2.3",
+    "@tokenspace/compiler": "workspace:*",
+    "@tokenspace/convex-durable-agents": "workspace:*",
+    "@tokenspace/system-content": "workspace:*",
+    "@tokenspace/types": "workspace:*",
+    "@workos-inc/node": "^8.7.0",
+    "ai": "^6.0.96",
+    "convex": "catalog:",
+    "esbuild-wasm": "0.27.3",
+    "just-bash": "^2.10.2",
+    "yaml": "^2.8.2",
+    "zod": "^4.3.5"
+  }
+}

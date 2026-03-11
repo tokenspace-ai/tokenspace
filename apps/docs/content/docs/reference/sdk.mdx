@@ -1,0 +1,69 @@
+---
+title: Integrations SDK
+description: Reference for the `@tokenspace/sdk` package.
+---
+
+`@tokenspace/sdk` provides the capability authoring APIs used by TokenSpace workspaces.
+
+## Main exports
+
+| Export | Purpose |
+| --- | --- |
+| `action` | Wrap an action with runtime input parsing and serializability checks. |
+| `requireApproval` | Block execution until a matching session approval exists. |
+| `hasApproval` | Check approval state without throwing. |
+| `getCredential` | Resolve a credential defined in `src/credentials.ts`. |
+| `credentials.secret` | Define a stored secret credential. |
+| `credentials.env` | Define an environment-backed credential. |
+| `credentials.oauth` | Define an OAuth credential. |
+| `credentials.ref` | Reference another credential definition, commonly for OAuth client secrets. |
+| `request` | Make authenticated HTTP requests with basic response checking. |
+| `parseResponseBody` | Parse JSON or text response bodies. |
+| `TokenspaceError` | Base error type for workspace-facing failures. |
+| `Logger` | Structured logger for capability code. |
+
+## `action`
+
+`action(schema, handler)` wraps a function so that:
+
+- input is parsed through the provided schema
+- parsed input must be JSON-serializable
+- handler output must also be JSON-serializable
+
+This is the preferred entrypoint for exported capability actions.
+
+## Credentials
+
+Credential definitions are code objects, not config strings. They are declared once in `src/credentials.ts` and resolved at runtime with `getCredential(...)`.
+
+```typescript
+import { credentials, getCredential } from "@tokenspace/sdk";
+
+export const apiKey = credentials.secret({
+  id: "example-api-key",
+  scope: "workspace",
+});
+
+const secret = await getCredential(apiKey);
+```
+
+## Approvals
+
+`requireApproval(...)` throws an `ApprovalRequiredError` when the session does not contain a matching approval.
+
+Approval objects are matched by:
+
+- action name, with wildcard support
+- optional data fields
+
+That lets capability authors define precise approval scopes without building a separate policy engine in every action.
+
+## HTTP helpers
+
+`request(...)` is a small fetch wrapper that:
+
+- supports bearer and basic auth helpers
+- throws a `FetchError` when HTTP status checks fail
+- works with `parseResponseBody(...)` for JSON-or-text responses
+
+For capability code that mostly proxies external APIs, this helper keeps the call pattern small and consistent.

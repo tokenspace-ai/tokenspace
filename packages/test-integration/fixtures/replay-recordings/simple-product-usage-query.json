@@ -1,0 +1,809 @@
+{
+  "recordingId": "simple-product-usage-query",
+  "playbackSettings": {
+    "initialDelayMs": 2000,
+    "chunkDelayMs": 120
+  },
+  "toolOutcomes": [
+    {
+      "toolCallId": "tooluse_MOWsubXloUpUTtz1Xzv2IK",
+      "toolName": "readFile",
+      "status": "result",
+      "result": "REPLAYED: readFile output"
+    },
+    {
+      "toolCallId": "tooluse_96PKasusWUcDvm4PiIX0ok",
+      "toolName": "runCode",
+      "status": "result",
+      "result": "REPLAYED: runCode output"
+    }
+  ],
+  "recording": {
+    "metadata": {
+      "createdAt": "2026-02-16T15:19:38.201Z",
+      "modelId": "anthropic/claude-haiku-4.5",
+      "provider": "gateway",
+      "recordingId": "jh747ckd1p7qwtah91wrhpvhh18196ft",
+      "timestamp": "2026-02-16T15:19:38.201Z",
+      "updatedAt": "2026-02-16T15:19:46.552Z"
+    },
+    "turns": [
+      {
+        "streams": [
+          {
+            "chunks": [
+              {
+                "type": "stream-start",
+                "warnings": []
+              },
+              {
+                "id": "0",
+                "type": "reasoning-start"
+              },
+              {
+                "delta": "The user wants a 7-day weather",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": " forecast for their area.",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": " Looking at the available connections",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": ", I see",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": ":",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": "\n-",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": " Wea",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": "ther:",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": " \"Weather provides",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": " current",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": " conditions",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": ",",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": " hourly",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": " and",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": " multi",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": "-day",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": " forecasts",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": " for",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": " any",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": " location",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": " worldwide",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": "\"",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": "\n\nThis",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": " seems like",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": " the right connection for",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": " retriev",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": "ing forecast data. I shoul",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": "d rea",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": "d the Weather CONNECTION",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": ".md file to understand how to query",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": " it",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": ".",
+                "id": "0",
+                "type": "reasoning-delta"
+              },
+              {
+                "delta": "",
+                "id": "0",
+                "providerMetadata": {
+                  "bedrock": {
+                    "signature": "AxB2kT9pLmNcDfEgHiJkLmNoPqRsTuVwXyZ0123456789abcdefABCDEFghijklmnopqrstuvwxyz0123456789abcdefABCDEFghijklmnopqrstuvwxyz0123456789abcdefABCDEFghijklmnopqrstuvwxyz0123456789abcdefABCDEFghijklmnopqrstuvwxyz0123456789abcdefABCDEFghijklmnopqrstuvwxyz0123456789abcdefABCDEFghijklmnopqrstuvwxyz0123456789abcdefABCDEFghijklmnopqrstuvwxyz0123456789abcdefABCDEF"
+                  }
+                },
+                "type": "reasoning-delta"
+              },
+              {
+                "id": "0",
+                "type": "reasoning-end"
+              },
+              {
+                "id": "tooluse_MOWsubXloUpUTtz1Xzv2IK",
+                "toolName": "readFile",
+                "type": "tool-input-start"
+              },
+              {
+                "delta": "",
+                "id": "tooluse_MOWsubXloUpUTtz1Xzv2IK",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "{\"path",
+                "id": "tooluse_MOWsubXloUpUTtz1Xzv2IK",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "\": ",
+                "id": "tooluse_MOWsubXloUpUTtz1Xzv2IK",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "\"conn",
+                "id": "tooluse_MOWsubXloUpUTtz1Xzv2IK",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "ec",
+                "id": "tooluse_MOWsubXloUpUTtz1Xzv2IK",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "tions/wea",
+                "id": "tooluse_MOWsubXloUpUTtz1Xzv2IK",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "ther/CON",
+                "id": "tooluse_MOWsubXloUpUTtz1Xzv2IK",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "NECTI",
+                "id": "tooluse_MOWsubXloUpUTtz1Xzv2IK",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "ON.md\"}",
+                "id": "tooluse_MOWsubXloUpUTtz1Xzv2IK",
+                "type": "tool-input-delta"
+              },
+              {
+                "id": "tooluse_MOWsubXloUpUTtz1Xzv2IK",
+                "type": "tool-input-end"
+              },
+              {
+                "input": "{\"path\": \"connections/weather/CONNECTION.md\"}",
+                "toolCallId": "tooluse_MOWsubXloUpUTtz1Xzv2IK",
+                "toolName": "readFile",
+                "type": "tool-call"
+              },
+              {
+                "finishReason": {
+                  "raw": "tool_use",
+                  "unified": "tool-calls"
+                },
+                "type": "finish",
+                "usage": {
+                  "inputTokens": {
+                    "noCache": 3833,
+                    "total": 3833
+                  },
+                  "outputTokens": {
+                    "text": 160,
+                    "total": 160
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "chunks": [
+              {
+                "type": "stream-start",
+                "warnings": []
+              },
+              {
+                "id": "0",
+                "type": "text-start"
+              },
+              {
+                "delta": "Now",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " I",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": "'ll",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " fetch",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " the weather",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " forecast",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " for",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " the next",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " 7",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " days:",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "id": "0",
+                "type": "text-end"
+              },
+              {
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "toolName": "runCode",
+                "type": "tool-input-start"
+              },
+              {
+                "delta": "",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "{\"code\":",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": " \"\\nco",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "nst fore",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "cast",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": " = await ",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "get",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "Wea",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "ther",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "(\\\"weather",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "prod",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "\\\", {\\",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "n  location: ",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "\\\"San Fran",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "cisco, CA",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "\\\",\\n  type",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": ": \\\"daily",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "\\\",\\n  da",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "ys: 7,\\n",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "});",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "\\n\\ncon",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "sole.",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "lo",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "g(\\\"7-Day",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": " Weather",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": " Forecast",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "\\\"",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": ");\\nconsole",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": ".lo",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "g(\\\"========",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "=========",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "===========",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "\\\");\\nconsol",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "e.log(JS",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "ON.stringif",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "y(fore",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "cast, nul",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "l, 2));\\n\"",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": ", \"des",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "cript",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "io",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "n\": ",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "\"Fetch",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": " the ",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "7-day weather",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": " forecast",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": " for San",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": " Franc",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "delta": "isco\"}",
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-delta"
+              },
+              {
+                "id": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "type": "tool-input-end"
+              },
+              {
+                "input": "{\"code\": \"\\nconst forecast = await getWeather(\\\"weatherprod\\\", {\\n  location: \\\"San Francisco, CA\\\",\\n  type: \\\"daily\\\",\\n  days: 7,\\n});\\n\\nconsole.log(\\\"7-Day Weather Forecast\\\");\\nconsole.log(\\\"============================\\\");\\nconsole.log(JSON.stringify(forecast, null, 2));\\n\", \"description\": \"Fetch the 7-day weather forecast for San Francisco\"}",
+                "toolCallId": "tooluse_96PKasusWUcDvm4PiIX0ok",
+                "toolName": "runCode",
+                "type": "tool-call"
+              },
+              {
+                "finishReason": {
+                  "raw": "tool_use",
+                  "unified": "tool-calls"
+                },
+                "type": "finish",
+                "usage": {
+                  "inputTokens": {
+                    "noCache": 6,
+                    "total": 5078
+                  },
+                  "outputTokens": {
+                    "text": 244,
+                    "total": 244
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "chunks": [
+              {
+                "type": "stream-start",
+                "warnings": []
+              },
+              {
+                "id": "0",
+                "type": "text-start"
+              },
+              {
+                "delta": "**",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": "7-Day Weather Forecast - San Francisco",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": "**\n\n-",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " **Monday**: High 62°F / Low 48°F, Partly Cloudy\n-",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " **Tuesday**: High 58°F",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " / Low 45°F, Rain",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": "\n- **Wednesday**: High 55°F / Low 43°F,",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " Showers",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": "\n- **Thursday**:",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " High 60°F / Low 46°F, Mostly Cloudy",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": "\n- **Friday**: High",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " 64°F / Low",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " 50°F, Sunny",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": "\n- **Saturday**: High 66°F",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " / Low 52°F, Sunny",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": "\n- **Sunday**:",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " High 63°F / Low 49°F,",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " Partly Cloudy",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": "\n\nOverall",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " a mild",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " week",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " with rain early",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " on",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " and clearing",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " skies",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "delta": " by the weekend.",
+                "id": "0",
+                "type": "text-delta"
+              },
+              {
+                "id": "0",
+                "type": "text-end"
+              },
+              {
+                "finishReason": {
+                  "raw": "end_turn",
+                  "unified": "stop"
+                },
+                "type": "finish",
+                "usage": {
+                  "inputTokens": {
+                    "noCache": 5,
+                    "total": 5715
+                  },
+                  "outputTokens": {
+                    "text": 136,
+                    "total": 136
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "userMessageCount": 1,
+        "userMessageText": "show me the weather forecast for the next 7 days"
+      }
+    ],
+    "version": 2
+  }
+}

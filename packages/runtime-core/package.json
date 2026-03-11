@@ -1,0 +1,50 @@
+{
+  "name": "@tokenspace/runtime-core",
+  "version": "0.2.0",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tokenspace-ai/tokenspace.git",
+    "directory": "packages/runtime-core"
+  },
+  "homepage": "https://github.com/tokenspace-ai/tokenspace/tree/main/packages/runtime-core#readme",
+  "bugs": {
+    "url": "https://github.com/tokenspace-ai/tokenspace/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "tsc -p tsconfig.build.json",
+    "build:types": "tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "prepack": "bun --cwd ../sdk build && bun run clean && bun run build",
+    "test:unit": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "bun": ">=1.3.9"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@tokenspace/sdk": "^0.2.0",
+    "just-bash": "^2.10.2"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.9",
+    "typescript": "^5.9.2"
+  }
+}

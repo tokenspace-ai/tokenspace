@@ -1,0 +1,7 @@
+{
+  "tokenspaceCompiler": "0.1.0",
+  "tokenspaceSdk": "0.1.0",
+  "typescript": "^5.9.3",
+  "typesBun": "^1.3.6",
+  "zod": "^4.3.5"
+}

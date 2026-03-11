@@ -1,0 +1,4 @@
+{
+  "title": "TokenSpace Docs",
+  "pages": ["index", "introduction", "developer", "user", "admin", "tokenspace-cli", "local-mcp", "reference"]
+}

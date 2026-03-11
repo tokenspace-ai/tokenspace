@@ -1,0 +1,131 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`compileDeclarations removes src/ prefix from output path 1`] = `
+{
+  "declarations": [
+    {
+      "content": 
+"declare function hello(): string;
+"
+,
+      "declarationFileName": "hello.d.ts",
+      "sourceFileName": "src/hello.ts",
+    },
+  ],
+  "diagnostics": [],
+  "success": true,
+}
+`;
+
+exports[`compileDeclarations handles capabilities path structure 1`] = `
+{
+  "declarations": [
+    {
+      "content": 
+"declare function connect(): void;
+"
+,
+      "declarationFileName": "capabilities/github/capability.d.ts",
+      "sourceFileName": "src/capabilities/github/capability.ts",
+    },
+  ],
+  "diagnostics": [],
+  "success": true,
+}
+`;
+
+exports[`compileDeclarations converts exports to globals 1`] = `
+{
+  "declarations": [
+    {
+      "content": 
+"type ConnectionType = "a" | "b";
+interface Config {
+    name: string;
+}
+declare function test(x: number): number;
+declare const MY_CONST = 42;
+"
+,
+      "declarationFileName": "test.d.ts",
+      "sourceFileName": "test.ts",
+    },
+  ],
+  "diagnostics": [],
+  "success": true,
+}
+`;
+
+exports[`compileDeclarations compiles multiple source files 1`] = `
+{
+  "declarations": [
+    {
+      "content": 
+"declare function foo(): void;
+"
+,
+      "declarationFileName": "capabilities/foo/capability.d.ts",
+      "sourceFileName": "src/capabilities/foo/capability.ts",
+    },
+    {
+      "content": 
+"declare function bar(): void;
+"
+,
+      "declarationFileName": "capabilities/bar/capability.d.ts",
+      "sourceFileName": "src/capabilities/bar/capability.ts",
+    },
+  ],
+  "diagnostics": [],
+  "success": true,
+}
+`;
+
+exports[`compileDeclarations handles empty input 1`] = `
+{
+  "declarations": [],
+  "diagnostics": [],
+  "success": true,
+}
+`;
+
+exports[`compileDeclarations generates output similar to existing capabilities/splunk/capability.d.ts 1`] = `
+{
+  "declarationFileName": "capabilities/splunk/capability.d.ts",
+  "diagnostics": [],
+  "generatedContent": 
+"type SearchSplunkResult = {
+    rows: Record<string, string | string[]>[];
+};
+type SplunkApiRequestResult = {
+    status: number;
+    headers: Record<string, string>;
+    body: string;
+};
+/**
+ * @param args.limit Maximum number of results to return
+ * @param args.query Query SPL
+ * @param args.timeRange.earliest Relative time specifier, such as '-24h', or '2025-01-01T00:00:00Z'
+ * @param args.timeRange.latest Relative time specifier or 'now'
+ */
+declare const searchSplunk: (args: {
+    query: string;
+    timeRange: {
+        earliest: string;
+        latest: string;
+    } & {};
+} & {
+    limit?: number;
+}) => Promise<SearchSplunkResult>;
+declare const splunkApiRequest: (args: {
+    method: "GET" | "POST" | "PUT" | "DELETE";
+    path: string;
+} & {
+    headers?: Record<string, string>;
+    body?: Record<string, string>;
+}) => Promise<SplunkApiRequestResult>;
+"
+,
+  "success": true,
+}
+`;

@@ -1,0 +1,10 @@
+{
+  "extends": "@tokenspace/config/tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "types": ["bun"],
+    "lib": ["ESNext", "DOM"]
+  },
+  "include": ["."],
+  "exclude": ["node_modules"]
+}

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Capability Authoring"
+  short_description: "Create safe, autonomy-first Tokenspace capabilities"
+  default_prompt: "Use $capability-authoring to design a new capability with strict domain gating, robust input validation, and policy-driven approvals."
+
+policy:
+  allow_implicit_invocation: true

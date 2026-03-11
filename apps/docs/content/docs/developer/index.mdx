@@ -1,0 +1,57 @@
+---
+title: Create a new tokenspace
+description: How to create a new tokenspace.
+---
+
+Use the [TokenSpace CLI](/docs/tokenspace-cli) to scaffold a new local tokenspace workspace.
+
+```bash
+tokenspace init
+```
+
+This creates a new local workspace directory with starter capability, credential, and config files. During setup, the CLI can also install dependencies and initialize git.
+
+## Filesystem structure
+
+- `src/capabilities/`: [Capability](./capabilities) implementations
+- `docs/`: Documentation for the tokenspace
+- `memory/`: Memory for the tokenspace
+- `skills/`: Skills for the tokenspace
+- `TOKENSPACE.md`: README file for the tokenspace
+- `package.json`: Package configuration for the tokenspace
+- `tsconfig.json`: TypeScript configuration for the tokenspace
+- `README.md`: README file for the tokenspace
+
+## Compiling a tokenspace
+
+To compile a tokenspace locally, run:
+
+```bash
+tokenspace compile
+```
+
+This will produce a set of files in the `build/tokenspace` directory and surface any problems with the tokenspace definition.
+
+## Pushing a tokenspace
+
+To work with a hosted tokenspace from that same local directory:
+
+```bash
+tokenspace login
+tokenspace link --create --name "My Workspace" --slug my-workspace
+tokenspace push
+```
+
+After the workspace is linked once, you can continue with:
+
+```bash
+tokenspace pull
+tokenspace push
+tokenspace compile
+```
+
+`tokenspace push` syncs local source files to the linked tokenspace, builds revision artifacts, and publishes a revision you can open in the app.
+
+## Local MCP
+
+You can also run a tokenspace locally as an MCP server for tools, files, approvals, and debugging. See [Local MCP](/docs/local-mcp) for more details.

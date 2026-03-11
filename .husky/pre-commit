@@ -1,0 +1,10 @@
+#!/bin/sh
+
+# Run lint-staged for formatting/linting on staged files
+bunx lint-staged
+
+# Run TypeScript type checking
+bun run typecheck
+
+# Run unit tests
+bun run test:unit
