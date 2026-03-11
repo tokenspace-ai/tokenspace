@@ -292,6 +292,52 @@ describe("local credential manager", () => {
     ]);
   });
 
+  it("falls back to the file secrets store when libsecret is unavailable", async () => {
+    const fallbackDir = await mkdtemp(path.join(tmpdir(), "tokenspace-local-mcp-secrets-"));
+    cleanupCallbacks.push(async () => {
+      await rm(fallbackDir, { recursive: true, force: true });
+    });
+
+    const failingSecretsStore: LocalSecretsStore = {
+      get: async () => {
+        throw new Error("libsecret not available");
+      },
+      set: async () => {
+        throw new Error("libsecret not available");
+      },
+      delete: async () => {
+        throw new Error("libsecret not available");
+      },
+    };
+
+    const manager = createLocalCredentialManager(
+      {
+        manifest: {
+          workspaceDir: `/tmp/tokenspace-local-mcp-${randomUUID()}`,
+        },
+        buildResult: {
+          metadata: {
+            credentialRequirements: [
+              {
+                path: "src/credentials.ts",
+                exportName: "workspaceSecret",
+                id: "workspace-secret",
+                kind: "secret",
+                scope: "workspace",
+              },
+            ],
+          },
+        },
+      } as LocalSession,
+      {
+        secretsStore: createFallbackLocalSecretsStore(failingSecretsStore, createLocalFileSecretsStore(fallbackDir)),
+      },
+    );
+
+    await manager.setSecret("workspace-secret", "libsecret-fallback-value");
+    expect((await manager.load("workspace-secret" as never)) as string | undefined).toBe("libsecret-fallback-value");
+  });
+
   it("wraps secret backend failures in typed backend errors", async () => {
     const failingSecretsStore: LocalSecretsStore = {
       get: async () => {

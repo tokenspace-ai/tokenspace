@@ -106,7 +106,7 @@ function shouldFallbackFromPrimarySecretsStore(error: unknown): boolean {
   }
 
   const message = error instanceof Error ? error.message : String(error);
-  return /dbus|d-bus|secret service|org\.freedesktop\.secrets|keyring|keychain|credential store|not supported/i.test(
+  return /dbus|d-bus|secret service|org\.freedesktop\.secrets|keyring|keychain|credential store|not supported|libsecret/i.test(
     message,
   );
 }
