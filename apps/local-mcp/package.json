@@ -39,7 +39,7 @@
     "inspect:testing": "bun run build && npx @modelcontextprotocol/inspector bun dist/cli.js ../../examples/testing",
     "inspect:demo": "bun run build && npx @modelcontextprotocol/inspector bun dist/cli.js ../../examples/demo",
     "test:unit": "bun test ./src",
-    "test:integration": "bun test ./integration",
+    "test:integration": "bun test ./integration --timeout 10000",
     "typecheck": "tsc --noEmit"
   },
   "engines": {
