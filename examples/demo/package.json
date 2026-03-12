@@ -1,0 +1,17 @@
+{
+  "name": "demo-tokenspace",
+  "private": true,
+  "scripts": {
+    "build": "tokenspace-compiler build --workspace . --out-dir build/tokenspace"
+  },
+  "dependencies": {
+    "@slack/web-api": "^7.14.1",
+    "@tokenspace/sdk": "workspace:*",
+    "@types/bun": "^1.3.6",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "@tokenspace/compiler": "workspace:*",
+    "typescript": "^5.9.3"
+  }
+}
