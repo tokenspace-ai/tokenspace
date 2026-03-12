@@ -6,13 +6,40 @@ import { InMemoryFs } from "just-bash";
 import { executeCode } from "./index";
 
 const workspaceBundle = `
-import { hasApproval } from "@tokenspace/sdk";
+import { action, getSessionFilesystem, hasApproval } from "@tokenspace/sdk";
 import { getCredential, secret } from "@tokenspace/sdk/credentials";
 
 const demoSecret = secret({
   id: "demo-secret",
   scope: "workspace",
 });
+
+const writeFileSchema = {
+  parse(input) {
+    return {
+      path: String(input?.path ?? ""),
+      content: String(input?.content ?? ""),
+    };
+  },
+};
+
+const readFileSchema = {
+  parse(input) {
+    return {
+      path: String(input?.path ?? ""),
+    };
+  },
+};
+
+export const sdkfs = {
+  writeFile: action(writeFileSchema, async ({ path, content }) => {
+    await getSessionFilesystem().write(path, content);
+    return { ok: true };
+  }),
+  readFile: action(readFileSchema, async ({ path }) => {
+    return await getSessionFilesystem().readText(path);
+  }),
+};
 
 export const __tokenspace = {
   commands: [
@@ -49,6 +76,15 @@ export const __tokenspace = {
           }
           const value = await getCredential(demoSecret);
           return { stdout: \`command:\${value}\`, stderr: "", exitCode: 0 };
+        },
+      }),
+    },
+    {
+      name: "read-scoped-file",
+      load: async () => ({
+        default: async () => {
+          const value = await getSessionFilesystem().readText("/scoped.txt");
+          return { stdout: value, stderr: "", exitCode: 0 };
         },
       }),
     },
@@ -185,6 +221,59 @@ describe("@tokenspace/runtime-core", () => {
       });
 
       expect(result.output).toBe("command:from-bash");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test("shares one filesystem facade between capability SDK access and builtin fs", async () => {
+    const { bundlePath, cleanup } = await createBundle(workspaceBundle);
+
+    try {
+      const result = await executeCode(
+        `
+await sdkfs.writeFile({ path: "/sandbox/from-sdk.txt", content: "hello from sdk" });
+console.log(await fs.readText("/sandbox/from-sdk.txt"));
+await fs.write("/sandbox/from-builtin.txt", "hello from builtin");
+console.log(await sdkfs.readFile({ path: "/sandbox/from-builtin.txt" }));
+`,
+        {
+          bundlePath,
+          fileSystem: new InMemoryFs(),
+          sessionId: "sdk-fs-shared",
+        },
+      );
+
+      expect(result.output).toBe("hello from sdk\nhello from builtin");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test("isolates scoped filesystem access across concurrent executions", async () => {
+    const { bundlePath, cleanup } = await createBundle(workspaceBundle);
+    const firstFs = new InMemoryFs();
+    const secondFs = new InMemoryFs();
+
+    await firstFs.writeFile("/scoped.txt", "alpha");
+    await secondFs.writeFile("/scoped.txt", "beta");
+
+    try {
+      const [first, second] = await Promise.all([
+        executeCode('console.log(await bash("read-scoped-file"));', {
+          bundlePath,
+          fileSystem: firstFs,
+          sessionId: "filesystem-a",
+        }),
+        executeCode('console.log(await bash("read-scoped-file"));', {
+          bundlePath,
+          fileSystem: secondFs,
+          sessionId: "filesystem-b",
+        }),
+      ]);
+
+      expect(first.output).toBe("alpha");
+      expect(second.output).toBe("beta");
     } finally {
       await cleanup();
     }

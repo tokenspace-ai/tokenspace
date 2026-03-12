@@ -124,7 +124,7 @@ description: Runtime credential resolution test capability
 
     await writeFile(
       path.join(workspaceDir, "src/capabilities/credentials/capability.ts"),
-      `import { action } from "@tokenspace/sdk";
+      `import { action, getSessionFilesystem } from "@tokenspace/sdk";
 import { getCredential } from "@tokenspace/sdk/credentials";
 import z from "zod";
 import {
@@ -175,6 +175,28 @@ export const readUserRequired = action(z.object({}), async () => {
 export const readUserOptional = action(z.object({}), async () => {
   return await getCredential(userOptional);
 });
+
+export const writeSessionFile = action(
+  z.object({
+    path: z.string(),
+    content: z.string(),
+  }),
+  async ({ path, content }) => {
+    const fs = getSessionFilesystem();
+    await fs.write(path, content);
+    return { ok: true };
+  },
+);
+
+export const readSessionFile = action(
+  z.object({
+    path: z.string(),
+  }),
+  async ({ path }) => {
+    const fs = getSessionFilesystem();
+    return await fs.readText(path);
+  },
+);
 `,
       "utf8",
     );
@@ -376,6 +398,39 @@ console.log("ENV_VALUE", value);
 
     expect(job.status).toBe("completed");
     expect(job.output).toContain(`ENV_VALUE ${TEST_ENV_CREDENTIAL_VALUE}`);
+  });
+
+  it("persists capability filesystem writes across jobs in the same session", async () => {
+    const sessionId = await createSession(workspace.revisionId);
+
+    const writeJob = await runSnippet(
+      workspace.revisionId,
+      `
+await credentials.writeSessionFile({
+  path: "/sandbox/capability-session.txt",
+  content: "session filesystem content",
+});
+console.log("WROTE_FILE");
+`,
+      sessionId,
+    );
+
+    expect(writeJob.status).toBe("completed");
+    expect(writeJob.output).toContain("WROTE_FILE");
+
+    const readJob = await runSnippet(
+      workspace.revisionId,
+      `
+const value = await credentials.readSessionFile({
+  path: "/sandbox/capability-session.txt",
+});
+console.log("SESSION_FILE", value);
+`,
+      sessionId,
+    );
+
+    expect(readJob.status).toBe("completed");
+    expect(readJob.output).toContain("SESSION_FILE session filesystem content");
   });
 
   it("resolves oauth credential via getCredential()", async () => {
