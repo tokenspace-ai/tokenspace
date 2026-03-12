@@ -1,5 +1,14 @@
 # @tokenspace/local-mcp
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [c1ccfed]
+  - @tokenspace/sdk@0.2.1
+  - @tokenspace/runtime-core@0.2.1
+  - @tokenspace/compiler@0.2.1
+
 ## 0.2.0
 
 ### Patch Changes

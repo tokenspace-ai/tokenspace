@@ -1,5 +1,16 @@
 # @tokenspace/compiler
 
+## 0.2.1
+
+### Patch Changes
+
+- c1ccfed: Add SDK access to the execution session filesystem with `getSessionFilesystem()`, and ensure runtime executions share the same filesystem facade between capability code and builtin `fs`.
+
+  Also harden the declaration compiler host to handle environments where `ts.sys` is unavailable.
+
+  - @tokenspace/types@0.2.1
+  - @tokenspace/system-content@0.2.1
+
 ## 0.2.0
 
 ### Patch Changes
