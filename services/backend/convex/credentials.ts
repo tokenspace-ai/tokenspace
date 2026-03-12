@@ -444,13 +444,14 @@ async function exchangeOAuthToken(args: {
 
 function buildOAuthAuthorizeUrl(args: {
   config: OAuthRequirementConfig;
+  clientId: string;
   state: string;
   codeChallenge?: string;
 }): string {
   const url = new URL(args.config.authorizeUrl);
   const responseType = args.config.grantType === "implicit" ? "token" : "code";
   url.searchParams.set("response_type", responseType);
-  url.searchParams.set("client_id", args.config.clientId);
+  url.searchParams.set("client_id", args.clientId);
   url.searchParams.set("redirect_uri", getOAuthCallbackUri());
   url.searchParams.set("state", args.state);
   if (args.config.scopes.length > 0) {
@@ -463,22 +464,23 @@ function buildOAuthAuthorizeUrl(args: {
   return url.toString();
 }
 
-async function resolveOAuthClientSecret(args: {
+async function resolveOAuthLinkedCredential(args: {
   ctx: {
     runQuery: <TArgs, TResult>(query: any, args: TArgs) => Promise<TResult>;
   };
   workspaceId: Id<"workspaces">;
   requirements: WorkspaceCredentialRequirementSummary[] | undefined;
-  oauthConfig: OAuthRequirementConfig;
+  credentialValue: string;
+  fieldName: string;
 }): Promise<string> {
-  const linkedCredential = getCredentialRequirementById(args.requirements, args.oauthConfig.clientSecret);
+  const linkedCredential = getCredentialRequirementById(args.requirements, args.credentialValue);
   if (!linkedCredential || linkedCredential.kind !== "secret") {
-    return args.oauthConfig.clientSecret;
+    return args.credentialValue;
   }
 
   const resolved = await args.ctx.runQuery(internal.credentials.resolveCredentialForExecution, {
     workspaceId: args.workspaceId,
-    credentialId: args.oauthConfig.clientSecret,
+    credentialId: args.credentialValue,
     scope: "workspace",
     subject: WORKSPACE_CREDENTIAL_SUBJECT,
     expectedKind: "secret",
@@ -486,9 +488,7 @@ async function resolveOAuthClientSecret(args: {
     credentialLabel: linkedCredential.label,
   });
   if (typeof resolved !== "string" || resolved.trim() === "") {
-    throw new Error(
-      `OAuth client secret credential ${args.oauthConfig.clientSecret} did not resolve to a secret value`,
-    );
+    throw new Error(`OAuth ${args.fieldName} credential ${args.credentialValue} did not resolve to a secret value`);
   }
   return resolved;
 }
@@ -499,7 +499,7 @@ export function redactCredentialRequirementForClient(
   if (requirement.kind !== "oauth" || !isRecord(requirement.config)) {
     return requirement;
   }
-  const { clientSecret: _clientSecret, ...rest } = requirement.config;
+  const { clientId: _clientId, clientSecret: _clientSecret, ...rest } = requirement.config;
   return {
     ...requirement,
     config: rest,
@@ -860,18 +860,27 @@ export const beginOAuthConnect = action({
     });
     const oauthConfig = parseOAuthRequirementConfig(requirement);
 
-    const clientSecret = await resolveOAuthClientSecret({
+    const clientSecret = await resolveOAuthLinkedCredential({
       ctx,
       workspaceId: args.workspaceId,
       requirements: revision.credentialRequirements,
-      oauthConfig,
+      credentialValue: oauthConfig.clientSecret,
+      fieldName: "clientSecret",
+    });
+
+    const clientId = await resolveOAuthLinkedCredential({
+      ctx,
+      workspaceId: args.workspaceId,
+      requirements: revision.credentialRequirements,
+      credentialValue: oauthConfig.clientId,
+      fieldName: "clientId",
     });
 
     if (oauthConfig.grantType === "client_credentials") {
       const tokenPayload = await exchangeOAuthToken({
         tokenUrl: oauthConfig.tokenUrl,
         grantType: oauthConfig.grantType,
-        clientId: oauthConfig.clientId,
+        clientId,
         clientSecret,
         scopes: oauthConfig.scopes,
       });
@@ -897,6 +906,7 @@ export const beginOAuthConnect = action({
     const codeChallenge = codeVerifier ? await createPkceCodeChallenge(codeVerifier) : undefined;
     const authorizeUrl = buildOAuthAuthorizeUrl({
       config: oauthConfig,
+      clientId,
       state,
       codeChallenge,
     });
@@ -1026,16 +1036,24 @@ export const completeOAuthConnect = action({
       let tokenPayload: OAuthCredentialPayload;
 
       if (authorization.grantType === "authorization_code") {
-        const clientSecret = await resolveOAuthClientSecret({
+        const clientSecret = await resolveOAuthLinkedCredential({
           ctx,
           workspaceId: authorization.workspaceId,
           requirements: revision.credentialRequirements,
-          oauthConfig,
+          credentialValue: oauthConfig.clientSecret,
+          fieldName: "clientSecret",
+        });
+        const clientId = await resolveOAuthLinkedCredential({
+          ctx,
+          workspaceId: authorization.workspaceId,
+          requirements: revision.credentialRequirements,
+          credentialValue: oauthConfig.clientId,
+          fieldName: "clientId",
         });
         tokenPayload = await exchangeOAuthToken({
           tokenUrl: oauthConfig.tokenUrl,
           grantType: "authorization_code",
-          clientId: oauthConfig.clientId,
+          clientId,
           clientSecret,
           scopes: oauthConfig.scopes,
           code: args.code,
@@ -1546,7 +1564,7 @@ function migrateCredentialRequirementSummary(requirement: unknown): WorkspaceCre
     const config = isRecord(requirement.config) ? requirement.config : {};
     migrated.config = {
       grantType: readRequiredString(config.grantType, `${idSource}.config.grantType`),
-      clientId: readRequiredString(config.clientId, `${idSource}.config.clientId`),
+      clientId: readRequiredString(migrateLinkedCredentialValue(config.clientId), `${idSource}.config.clientId`),
       clientSecret: readRequiredString(
         migrateLinkedCredentialValue(config.clientSecret),
         `${idSource}.config.clientSecret`,

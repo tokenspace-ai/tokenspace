@@ -5,15 +5,17 @@ import { loadPersistedKeys } from "@tokenspace/convex-local-dev";
 // Configuration constants
 export const EXAMPLES_DIR = path.join(import.meta.dir, "../../examples");
 export const SEED_WORKSPACES = [
-  // {
-  //   slug: "siftd",
-  //   name: "SiftD Product Ops",
-  //   dir: path.join(EXAMPLES_DIR, "siftd"),
-  //   credentials: [
-  //     { credentialId: "linear-client-secret", envVar: "LINEAR_CLIENT_SECRET" },
-  //     { credentialId: "splunk-password", envVar: "SPLUNKDOGFOOD_PASSWORD" },
-  //   ] satisfies SeedCredential[],
-  // },
+  {
+    slug: "demo",
+    name: "Demo",
+    dir: path.join(EXAMPLES_DIR, "demo"),
+    credentials: [
+      { credentialId: "datadog-api-key", envVar: "DEMO_DATADOG_API_KEY" },
+      { credentialId: "datadog-app-key", envVar: "DEMO_DATADOG_APP_KEY" },
+      { credentialId: "linear-client-id", envVar: "DEMO_LINEAR_CLIENT_ID" },
+      { credentialId: "linear-client-secret", envVar: "DEMO_LINEAR_CLIENT_SECRET" },
+    ] satisfies SeedCredential[],
+  },
   {
     slug: "testing",
     name: "Testing",

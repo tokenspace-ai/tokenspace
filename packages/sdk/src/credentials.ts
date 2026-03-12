@@ -103,7 +103,7 @@ export function oauth(def: {
   fallback?: CredentialId;
   config: {
     grantType: "authorization_code" | "client_credentials" | "implicit";
-    clientId: string;
+    clientId: CredentialId | string;
     clientSecret: CredentialId | string;
     authorizeUrl: string;
     tokenUrl: string;
