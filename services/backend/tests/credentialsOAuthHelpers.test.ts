@@ -24,11 +24,11 @@ describe("oauth credential helpers", () => {
     const redacted = redactCredentialRequirementForClient(requirement);
     expect(redacted.config).toEqual({
       grantType: "authorization_code",
-      clientId: "abc123",
       authorizeUrl: "https://github.com/login/oauth/authorize",
       tokenUrl: "https://github.com/login/oauth/access_token",
       scopes: ["repo"],
     });
+    expect((redacted.config as Record<string, unknown>).clientId).toBeUndefined();
     expect((redacted.config as Record<string, unknown>).clientSecret).toBeUndefined();
   });
 

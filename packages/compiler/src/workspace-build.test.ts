@@ -39,13 +39,14 @@ describe("workspace build", () => {
     expect(result.metadata.credentialRequirements).toEqual([]);
   });
 
-  // it("builds examples/siftd", async () => {
-  //   const result = await buildFixture("examples/siftd");
-  //   expect(result.revisionFs.files.some((file) => file.path.startsWith("capabilities/"))).toBe(true);
-  //   expect(result.revisionFs.system.length).toBe(0);
-  //   expect(result.metadata.capabilities.length).toBeGreaterThan(0);
-  //   expect(result.metadata.credentialRequirements.length).toBeGreaterThan(0);
-  // });
+  it("builds examples/demo", async () => {
+    const result = await buildFixture("examples/demo");
+    expect(result.revisionFs.declarations.length).toBeGreaterThan(0);
+    expect(result.revisionFs.system.length).toBe(0);
+    expect(result.metadata.capabilities.length).toBeGreaterThan(0);
+    expect(result.metadata.credentialRequirements.length).toBeGreaterThan(0);
+    expect(result.metadata.models.length).toBeGreaterThan(0);
+  });
 
   it("fails with formatted declaration diagnostics including file path", async () => {
     const workspaceDir = await mkdtemp(path.join(tmpdir(), "tokenspace-compiler-bad-workspace-"));

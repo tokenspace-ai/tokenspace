@@ -203,11 +203,11 @@ describe("Revision build push", () => {
         name: "Build Push Testing",
         dir: path.join(REPO_ROOT, "examples/testing"),
       },
-      // {
-      //   slug: "build-push-siftd",
-      //   name: "Build Push Siftd",
-      //   dir: path.join(REPO_ROOT, "examples/siftd"),
-      // },
+      {
+        slug: "build-push-demo",
+        name: "Build Push Demo",
+        dir: path.join(REPO_ROOT, "examples/demo"),
+      },
     ];
 
     for (const workspaceCase of workspaceCases) {
@@ -261,7 +261,7 @@ describe("Revision build push", () => {
         )) as string | null;
         expect(dynamicSystemPrompt).toContain(expectedTokenspaceMd);
 
-        if (workspaceCase.slug === "build-push-siftd") {
+        if (workspaceCase.slug === "build-push-demo") {
           expect(buildResult.metadata.credentialRequirements.length).toBeGreaterThan(0);
         } else {
           expect(buildResult.metadata.credentialRequirements).toEqual([]);

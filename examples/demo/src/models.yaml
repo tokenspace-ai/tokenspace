@@ -1,0 +1,5 @@
+models:
+  - modelId: anthropic/claude-sonnet-4.6
+    isDefault: true
+  - modelId: anthropic/claude-opus-4.6
+  - modelId: google/gemini-3.1-pro-preview
