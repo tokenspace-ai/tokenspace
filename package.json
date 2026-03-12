@@ -56,7 +56,7 @@
     "symlink:cli": "bash apps/cli/symlink.sh",
     "local-mcp:install": "bun run scripts/install-local-mcp.ts",
     "local-mcp:inspect:testing": "bun --cwd apps/local-mcp inspect:testing",
-    "local-mcp:inspect:siftd": "bun --cwd apps/local-mcp inspect:siftd",
+    "local-mcp:inspect:demo": "bun --cwd apps/local-mcp inspect:demo",
     "release:check": "bun run scripts/check-public-packages.ts && bun run scripts/release-pack-smoke.ts --dry-run",
     "release:version": "changeset version && bun install",
     "release:publish": "changeset publish",

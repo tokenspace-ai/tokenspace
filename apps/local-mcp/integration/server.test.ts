@@ -346,50 +346,6 @@ console.log(await fs.readText("/sandbox/from-tool.txt"));
     expect(readTextContent(verifyResult)).toContain("hello from writeFile");
   });
 
-  // it("runs a real capability from examples/siftd", async () => {
-  //   const { client } = await startClient("siftd");
-  //   const result = await callToolResult(client, {
-  //     name: "runCode",
-  //     arguments: {
-  //       code: "console.log(JSON.stringify(await spindb.listConnections({}), null, 2));",
-  //     },
-  //   });
-
-  //   expect(result.isError).toBeUndefined();
-  //   const output = readTextContent(result);
-  //   expect(output).toContain('"connections"');
-  //   expect(output).toContain('"name": "dev"');
-  //   expect(output).toContain('"name": "prod"');
-  // });
-
-  // it("returns a structured approval-required tool error", async () => {
-  //   const { client } = await startClient("siftd");
-  //   const result = await callToolResult(client, {
-  //     name: "runCode",
-  //     arguments: {
-  //       code: 'await spindb.executeSpinDbStatement({ connection: "dev", statement: "DELETE FROM widgets" });',
-  //     },
-  //   });
-
-  //   expect(result.isError).toBe(true);
-  //   expect(result.structuredContent).toMatchObject({
-  //     errorType: "APPROVAL_REQUIRED",
-  //     retryable: true,
-  //     approval: {
-  //       action: "spin-db:executeStatement",
-  //     },
-  //     requestApprovalArgs: {
-  //       approval: {
-  //         action: "spin-db:executeStatement",
-  //       },
-  //     },
-  //   });
-  //   expect(readTextContent(result)).toContain(
-  //     "Call requestApproval with approval set to the included approval object verbatim",
-  //   );
-  //   expect(readTextContent(result)).toContain("returned approvalUrl");
-  // });
-
   it("returns a structured missing env credential tool error", async () => {
     const { client } = await startClientFromWorkspace(CREDENTIAL_WORKSPACE_DIR, {
       env: {

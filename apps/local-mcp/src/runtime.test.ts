@@ -50,26 +50,26 @@ console.log("bash file:", await fs.readText("/sandbox/from-bash.txt"));
     expect(await readFile(path.join(session.sandboxDir, "from-bash.txt"), "utf8")).toBe("hello from bash\n");
   });
 
-  // it("creates an inspectable session layout for examples/siftd", async () => {
-  //   const sessionsRootDir = await mkdtemp(path.join(tmpdir(), "tokenspace-local-mcp-sessions-"));
-  //   const session = await createLocalSession({
-  //     workspaceDir: path.join(EXAMPLES_DIR, "siftd"),
-  //     sessionsRootDir,
-  //   });
+  it("creates an inspectable session layout for examples/demo", async () => {
+    const sessionsRootDir = await mkdtemp(path.join(tmpdir(), "tokenspace-local-mcp-sessions-"));
+    const session = await createLocalSession({
+      workspaceDir: path.join(EXAMPLES_DIR, "demo"),
+      sessionsRootDir,
+    });
 
-  //   const manifestText = await readFile(path.join(session.sessionRoot, "manifest.json"), "utf8");
-  //   const builtins = await readFile(path.join(session.sandboxDir, "builtins.d.ts"), "utf8");
-  //   const linearCapability = await readFile(
-  //     path.join(session.sandboxDir, "capabilities/linear/capability.d.ts"),
-  //     "utf8",
-  //   );
-  //   const systemSkill = await readFile(path.join(session.sandboxDir, "system/skills/bash/SKILL.md"), "utf8");
+    const manifestText = await readFile(path.join(session.sessionRoot, "manifest.json"), "utf8");
+    const builtins = await readFile(path.join(session.sandboxDir, "builtins.d.ts"), "utf8");
+    const linearCapability = await readFile(
+      path.join(session.sandboxDir, "capabilities/linear/capability.d.ts"),
+      "utf8",
+    );
+    const systemSkill = await readFile(path.join(session.sandboxDir, "system/skills/bash/SKILL.md"), "utf8");
 
-  //   expect(manifestText).toContain('"workspaceName": "siftd"');
-  //   expect(builtins.length).toBeGreaterThan(0);
-  //   expect(linearCapability).toContain("declare namespace linear");
-  //   expect(systemSkill).toContain("local MCP");
-  // });
+    expect(manifestText).toContain('"workspaceName": "demo"');
+    expect(builtins.length).toBeGreaterThan(0);
+    expect(linearCapability).toContain("declare namespace linear");
+    expect(systemSkill).toContain("local MCP");
+  });
 
   it("rejects symlink traversal during runtime execution", async () => {
     const sessionsRootDir = await mkdtemp(path.join(tmpdir(), "tokenspace-local-mcp-sessions-"));

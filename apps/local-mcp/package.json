@@ -37,7 +37,7 @@
     "run:cli": "bun run src/cli.ts",
     "dev": "bun --hot src/cli.ts",
     "inspect:testing": "bun run build && npx @modelcontextprotocol/inspector bun dist/cli.js ../../examples/testing",
-    "inspect:siftd": "bun run build && npx @modelcontextprotocol/inspector bun dist/cli.js ../../examples/siftd",
+    "inspect:demo": "bun run build && npx @modelcontextprotocol/inspector bun dist/cli.js ../../examples/demo",
     "test:unit": "bun test ./src",
     "test:integration": "bun test ./integration",
     "typecheck": "tsc --noEmit"

@@ -49,11 +49,11 @@ describe("Executor-backed revision compilation", () => {
         name: "Executor Compile Testing",
         dir: path.join(REPO_ROOT, "examples/testing"),
       },
-      // {
-      //   slug: "executor-compile-siftd",
-      //   name: "Executor Compile Siftd",
-      //   dir: path.join(REPO_ROOT, "examples/siftd"),
-      // },
+      {
+        slug: "executor-compile-demo",
+        name: "Executor Compile Demo",
+        dir: path.join(REPO_ROOT, "examples/demo"),
+      },
     ];
 
     for (const workspaceCase of workspaceCases) {

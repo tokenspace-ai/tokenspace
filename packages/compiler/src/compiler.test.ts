@@ -1,14 +1,16 @@
 import { describe, expect, it } from "bun:test";
+import fs from "node:fs";
+import path from "node:path";
 import { compileAgentCode, compileDeclarations, makeGlobalDeclarations } from "./compiler";
 
-// const splunkSource = fs.readFileSync(
-//   path.join(import.meta.dir, "../../../examples/siftd/src/capabilities/splunk/capability.ts"),
-//   "utf-8",
-// );
-// const splunkCredentialsSource = fs.readFileSync(
-//   path.join(import.meta.dir, "../../../examples/siftd/src/credentials.ts"),
-//   "utf-8",
-// );
+const splunkSource = fs.readFileSync(
+  path.join(import.meta.dir, "../../../examples/demo/src/capabilities/splunk/capability.ts"),
+  "utf-8",
+);
+const splunkCredentialsSource = fs.readFileSync(
+  path.join(import.meta.dir, "../../../examples/demo/src/credentials.ts"),
+  "utf-8",
+);
 
 const sandboxApis = [
   {
@@ -593,81 +595,75 @@ export const broken = value;
     expect(diagnostic?.code).toBeGreaterThan(0);
   });
 
-  // it("compiles the actual splunk.ts source", () => {
-  //   const externalTypes = SPLUNK_TEST_EXTERNAL_TYPES;
+  it("compiles the actual splunk.ts source", () => {
+    const externalTypes = SPLUNK_TEST_EXTERNAL_TYPES;
 
-  //   const result = compileDeclarations(
-  //     [
-  //       { fileName: "src/capabilities/splunk/capability.ts", content: splunkSource },
-  //       { fileName: "src/credentials.ts", content: splunkCredentialsSource },
-  //     ],
-  //     {
-  //       externalTypes,
-  //     },
-  //   );
+    const result = compileDeclarations(
+      [
+        { fileName: "src/capabilities/splunk/capability.ts", content: splunkSource },
+        { fileName: "src/credentials.ts", content: splunkCredentialsSource },
+      ],
+      {
+        externalTypes,
+      },
+    );
 
-  //   expect(result.success).toBe(true);
-  //   const capabilityDeclaration = result.declarations.find(
-  //     (decl) => decl.declarationFileName === "capabilities/splunk/capability.d.ts",
-  //   );
-  //   expect(capabilityDeclaration).toBeDefined();
+    expect(result.success).toBe(true);
+    const capabilityDeclaration = result.declarations.find(
+      (decl) => decl.declarationFileName === "capabilities/splunk/capability.d.ts",
+    );
+    expect(capabilityDeclaration).toBeDefined();
 
-  //   const content = capabilityDeclaration?.content;
+    const content = capabilityDeclaration?.content;
 
-  //   // Should have the key declarations as globals
-  //   expect(content).toContain("declare const searchSplunk");
-  //   expect(content).toContain("declare const splunkApiRequest");
-  //   expect(content).toContain("type SearchSplunkResult");
-  //   expect(content).not.toContain(`import z from "zod"`);
-  //   expect(content).not.toContain(`import("zod")`);
-  //   expect(content).not.toContain("z.infer<");
+    expect(content).toContain("declare const searchSplunk");
+    expect(content).toContain("declare const splunkApiRequest");
+    expect(content).toContain("type SearchSplunkResult");
+    expect(content).not.toContain(`import z from "zod"`);
+    expect(content).not.toContain(`import("zod")`);
+    expect(content).not.toContain("z.infer<");
 
-  //   // Should NOT have export keywords
-  //   expect(content).not.toContain("export ");
-  // });
+    expect(content).not.toContain("export ");
+  });
 
-  // it("generates output similar to existing capabilities/splunk/capability.d.ts", () => {
-  //   const existingDeclaration = sandboxApis.find(
-  //     (api) => api.fileName === "capabilities/splunk/capability.d.ts",
-  //   )?.content;
+  it("generates output similar to existing capabilities/splunk/capability.d.ts", () => {
+    const existingDeclaration = sandboxApis.find(
+      (api) => api.fileName === "capabilities/splunk/capability.d.ts",
+    )?.content;
 
-  //   const externalTypes = SPLUNK_TEST_EXTERNAL_TYPES;
+    const externalTypes = SPLUNK_TEST_EXTERNAL_TYPES;
 
-  //   const result = compileDeclarations(
-  //     [
-  //       { fileName: "src/capabilities/splunk/capability.ts", content: splunkSource },
-  //       { fileName: "src/credentials.ts", content: splunkCredentialsSource },
-  //     ],
-  //     {
-  //       externalTypes,
-  //     },
-  //   );
+    const result = compileDeclarations(
+      [
+        { fileName: "src/capabilities/splunk/capability.ts", content: splunkSource },
+        { fileName: "src/credentials.ts", content: splunkCredentialsSource },
+      ],
+      {
+        externalTypes,
+      },
+    );
 
-  //   expect(result.success).toBe(true);
-  //   const generatedContent = result.declarations.find(
-  //     (decl) => decl.declarationFileName === "capabilities/splunk/capability.d.ts",
-  //   )?.content;
+    expect(result.success).toBe(true);
+    const generatedContent = result.declarations.find(
+      (decl) => decl.declarationFileName === "capabilities/splunk/capability.d.ts",
+    )?.content;
 
-  //   // The generated output should contain all the key type definitions from the original
-  //   // Note: The exact format may differ due to TypeScript version differences
-  //   expect(generatedContent).toContain("SearchSplunkResult");
-  //   expect(generatedContent).toContain("SearchSplunkResult");
-  //   expect(generatedContent).toContain("SplunkApiRequestResult");
-  //   expect(generatedContent).toContain("declare const searchSplunk");
-  //   expect(generatedContent).toContain("declare const splunkApiRequest");
-  //   expect(generatedContent).not.toContain(`import("zod")`);
-  //   expect(generatedContent).not.toContain("z.infer<");
+    expect(generatedContent).toContain("SearchSplunkResult");
+    expect(generatedContent).toContain("SplunkApiRequestResult");
+    expect(generatedContent).toContain("declare const searchSplunk");
+    expect(generatedContent).toContain("declare const splunkApiRequest");
+    expect(generatedContent).not.toContain(`import("zod")`);
+    expect(generatedContent).not.toContain("z.infer<");
 
-  //   // Verify the existing declaration also has these (sanity check)
-  //   expect(existingDeclaration).toContain("searchSplunk");
-  //   expect(existingDeclaration).toContain("splunkApiRequest");
-  //   expect({
-  //     success: result.success,
-  //     diagnostics: result.diagnostics,
-  //     declarationFileName: "capabilities/splunk/capability.d.ts",
-  //     generatedContent,
-  //   }).toMatchSnapshot();
-  // });
+    expect(existingDeclaration).toContain("searchSplunk");
+    expect(existingDeclaration).toContain("splunkApiRequest");
+    expect({
+      success: result.success,
+      diagnostics: result.diagnostics,
+      declarationFileName: "capabilities/splunk/capability.d.ts",
+      generatedContent,
+    }).toMatchSnapshot();
+  });
 });
 
 describe("makeGlobalDeclarations", () => {
