@@ -8,7 +8,21 @@ declare module "@tokenspace/sdk" {
     | { [key: string]: SerializableValue };
   export type SerializableObject = { [key: string]: SerializableValue };
 
+  export interface TokenspaceFilesystem {
+    list(path: string): Promise<string[]>;
+    stat(path: string): Promise<{
+      isDirectory: boolean;
+      isFile: boolean;
+      size: number;
+    }>;
+    read(path: string): Promise<ArrayBuffer>;
+    readText(path: string): Promise<string>;
+    write(path: string, content: ArrayBuffer | string): Promise<void>;
+    delete(path: string): Promise<void>;
+  }
+
   export function getSecret(name: string): Promise<string>;
+  export function getSessionFilesystem(): TokenspaceFilesystem;
   type RequestOptions = {
     url: string | URL;
     method: string;

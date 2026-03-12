@@ -15,5 +15,5 @@ export { CredentialStoreNotInitializedError, getCredential, MissingCredentialErr
 export * from "./error";
 export * from "./fetch";
 export * from "./logger";
-export type { RuntimeExecutionContext } from "./runtime-context";
-export { getExecutionContext, runWithExecutionContext } from "./runtime-context";
+export * from "./runtime-context";
+export * from "./session-filesystem";

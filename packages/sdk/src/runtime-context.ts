@@ -1,10 +1,12 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Approval, SerializableApproval } from "./approvals";
+import type { TokenspaceFilesystem } from "./builtin-types";
 import type { CredentialStore } from "./credentials";
 
 export type RuntimeExecutionContext = {
   credentialStore?: CredentialStore;
   approvals: Approval[];
+  filesystem?: TokenspaceFilesystem;
 };
 
 const runtimeExecutionStorage = new AsyncLocalStorage<RuntimeExecutionContext>();
@@ -36,6 +38,7 @@ export function runWithExecutionContext<T>(
   context: {
     credentialStore?: CredentialStore | null;
     approvals?: Approval[] | SerializableApproval[] | null;
+    filesystem?: TokenspaceFilesystem | null;
   },
   fn: () => T,
 ): T {
@@ -43,6 +46,7 @@ export function runWithExecutionContext<T>(
     {
       credentialStore: context.credentialStore ?? undefined,
       approvals: normalizeApprovals(context.approvals ?? []),
+      filesystem: context.filesystem ?? undefined,
     },
     fn,
   );

@@ -7,11 +7,13 @@ import type {
   CredentialStore,
   JSONValue,
   SerializableApproval,
+  TokenspaceFilesystem,
   TokenspaceSession,
 } from "@tokenspace/sdk";
 import {
   ApprovalRequiredError,
   assertSerializable,
+  getSessionFilesystem,
   isAction,
   Logger,
   runWithExecutionContext,
@@ -62,17 +64,27 @@ export type RuntimeExecutionOptions = {
 };
 
 export async function executeCode(code: string, options?: RuntimeExecutionOptions): Promise<ToolOutputResult> {
+  const runtimeFs = options?.fileSystem ?? new InMemoryFs();
+  const tokenspaceFs = createTokenspaceFilesystem(runtimeFs);
+
   return await runWithExecutionContext(
     {
+      filesystem: tokenspaceFs,
       credentialStore: options?.credentialStore ?? undefined,
       approvals: options?.approvals ?? [],
     },
     async () => {
       if (options?.language === "bash") {
-        return await executeBash(code, options);
+        return await executeBash(code, {
+          ...options,
+          fileSystem: runtimeFs,
+        });
       }
 
-      return await executeTypeScript(code, options);
+      return await executeTypeScript(code, {
+        ...options,
+        fileSystem: runtimeFs,
+      });
     },
   );
 }
@@ -832,7 +844,7 @@ async function executeTypeScript(code: string, options?: RuntimeExecutionOptions
   sessionFs.mount("/sandbox", runtimeFs);
 
   const session = createSession(sessionId, runtimeFs);
-  const tokenspaceFs = createTokenspaceFilesystem(runtimeFs);
+  const tokenspaceFs = getSessionFilesystem();
 
   const logger = new Logger("usercode");
   const timerHandles = new Map<number, ReturnType<typeof setTimeout>>();
@@ -1027,7 +1039,7 @@ function createSession(sessionId: string, fs: IFileSystem): TokenspaceSession {
   };
 }
 
-function createTokenspaceFilesystem(runtimeFs: IFileSystem) {
+function createTokenspaceFilesystem(runtimeFs: IFileSystem): TokenspaceFilesystem {
   function toRuntimePath(path: string): string {
     const normalized = normalizeVirtualFsPath(path);
     if (normalized === "/sandbox") return "/";

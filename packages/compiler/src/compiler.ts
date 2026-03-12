@@ -586,6 +586,15 @@ export function compileDeclarations(
   const readRealFile = (fileName: string): string | undefined =>
     useFsModuleResolution ? ts.sys.readFile(fileName) : undefined;
   const hasRealFile = (fileName: string): boolean => (useFsModuleResolution ? ts.sys.fileExists(fileName) : false);
+  const getScriptKind = (fileName: string): ts.ScriptKind => {
+    if (fileName.endsWith(".d.ts")) return ts.ScriptKind.TS;
+    if (fileName.endsWith(".tsx")) return ts.ScriptKind.TSX;
+    if (fileName.endsWith(".jsx")) return ts.ScriptKind.JSX;
+    if (fileName.endsWith(".js") || fileName.endsWith(".mjs") || fileName.endsWith(".cjs")) {
+      return ts.ScriptKind.JS;
+    }
+    return ts.ScriptKind.TS;
+  };
   const toAbsoluteCompilerPath = (fileName: string): string => {
     const normalized = normalizeCompilerPath(fileName);
     if (fileName.startsWith("/") || /^[A-Za-z]:\//.test(fileName)) {
@@ -655,7 +664,7 @@ export function compileDeclarations(
     getSourceFile(fileName: string, languageVersion: ts.ScriptTarget): ts.SourceFile | undefined {
       const content = getVirtualFile(fileName) ?? readRealFile(fileName);
       if (content !== undefined) {
-        return ts.createSourceFile(fileName, content, languageVersion, true, ts.ScriptKind.TS);
+        return ts.createSourceFile(fileName, content, languageVersion, true, getScriptKind(fileName));
       }
       return undefined;
     },
@@ -676,8 +685,8 @@ export function compileDeclarations(
     realpath: useFsModuleResolution && ts.sys.realpath ? (p) => ts.sys.realpath!(p) : undefined,
     fileExists: (fileName: string) => hasVirtualFile(fileName) || hasRealFile(fileName),
     readFile: (fileName: string) => getVirtualFile(fileName) ?? readRealFile(fileName),
-    getCanonicalFileName: (fileName: string) => fileName.toLowerCase(),
-    useCaseSensitiveFileNames: () => false,
+    getCanonicalFileName: (fileName: string) => (ts.sys.useCaseSensitiveFileNames ? fileName : fileName.toLowerCase()),
+    useCaseSensitiveFileNames: () => ts.sys.useCaseSensitiveFileNames,
     getNewLine: () => "\n",
     resolveModuleNames(moduleNames: string[], containingFile: string): (ts.ResolvedModule | undefined)[] {
       return moduleNames.map((moduleName) => {
