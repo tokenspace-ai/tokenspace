@@ -135,7 +135,9 @@ async function main(): Promise<void> {
     if (hasMissing) {
       const credentialsUrl = `${controlServer.baseUrl}/credentials`;
       console.error(`Missing credentials detected — opening ${credentialsUrl}`);
-      openInBrowser(credentialsUrl);
+      if (!process.env.TOKENSPACE_NO_OPEN) {
+        openInBrowser(credentialsUrl);
+      }
     }
   } catch {
     // Non-fatal: don't block startup if credential check fails

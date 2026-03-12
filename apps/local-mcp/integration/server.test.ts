@@ -48,7 +48,7 @@ async function startClientFromWorkspace(
   const buildCacheDir = options?.buildCacheDir ?? (await mkdtemp(path.join(tmpdir(), "tokenspace-local-mcp-cache-")));
   tempDirsToRemove.add(sessionsRootDir);
   tempDirsToRemove.add(buildCacheDir);
-  const env = { ...process.env } as Record<string, string>;
+  const env = { ...process.env, TOKENSPACE_NO_OPEN: "1" } as Record<string, string>;
   for (const [key, value] of Object.entries(options?.env ?? {})) {
     if (value === undefined) {
       delete env[key];
