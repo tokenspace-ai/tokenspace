@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import { program } from "commander";
 import { login, logout, requireAuth, setVerbose } from "./auth.js";
 import { compileWorkspace } from "./commands/compile.js";
+import { listCredentials, setWorkspaceCredential } from "./commands/credentials.js";
 import { initWorkspace } from "./commands/init.js";
 import { linkWorkspace } from "./commands/link.js";
 import { pull } from "./commands/pull.js";
@@ -165,6 +166,38 @@ program
     try {
       await compileWorkspace({
         outDir: options.outDir,
+      });
+    } catch (error) {
+      console.error("Error:", error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  });
+
+const credentials = program.command("credentials").description("List and set workspace credentials");
+
+credentials
+  .command("list")
+  .description("List declared credentials for the linked tokenspace revision")
+  .action(async () => {
+    try {
+      await requireAuth();
+      await listCredentials();
+    } catch (error) {
+      console.error("Error:", error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  });
+
+credentials
+  .command("set")
+  .description("Set a workspace-scoped secret credential")
+  .argument("<credential-id>", "Credential id declared in the current revision")
+  .option("--stdin", "Read the secret value from stdin instead of prompting")
+  .action(async (credentialId: string, options) => {
+    try {
+      await requireAuth();
+      await setWorkspaceCredential(credentialId, {
+        stdin: options.stdin,
       });
     } catch (error) {
       console.error("Error:", error instanceof Error ? error.message : error);

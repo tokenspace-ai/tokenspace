@@ -76,6 +76,7 @@ export type Workspace = {
   _id: Id<"workspaces">;
   name: string;
   slug: string;
+  role: "workspace_admin" | "member";
   activeCommitId?: Id<"commits">;
   createdAt: number;
   updatedAt: number;
@@ -117,6 +118,31 @@ export type BuildManifestSummary = {
     diagnostics: { hash: string; size: number };
     deps?: { hash: string; size: number };
   };
+};
+
+export type CredentialRequirement = {
+  id: string;
+  label?: string;
+  group?: string;
+  kind: "secret" | "env" | "oauth";
+  scope: "workspace" | "session" | "user";
+  description?: string;
+  placeholder?: string;
+  optional?: boolean;
+  config?: Record<string, unknown>;
+};
+
+export type WorkspaceCredentialBinding = {
+  _id: Id<"credentialValues">;
+  workspaceId: Id<"workspaces">;
+  credentialId: string;
+  scope: "workspace" | "session" | "user";
+  subject: string;
+  kind: "secret" | "oauth";
+  keyVersion: number;
+  createdAt: number;
+  updatedAt: number;
+  updatedByUserId?: string;
 };
 
 /**
@@ -383,5 +409,54 @@ export async function getCurrentWorkingStateHash(
   return await c.query(api.workspace.getCurrentWorkingStateHash, {
     workspaceId,
     branchId,
+  });
+}
+
+export async function getWorkspaceRevision(
+  workspaceId: Id<"workspaces">,
+  branchId: Id<"branches">,
+  workingStateHash?: string,
+): Promise<Id<"revisions"> | null> {
+  const c = await getClient();
+  return await c.query(api.workspace.getRevision, {
+    workspaceId,
+    branchId,
+    workingStateHash,
+  });
+}
+
+export async function getCredentialRequirementsForRevision(
+  revisionId: Id<"revisions">,
+): Promise<CredentialRequirement[]> {
+  const c = await getClient();
+  return await c.query(api.credentials.getCredentialRequirementsForRevision, {
+    revisionId,
+  });
+}
+
+export async function listWorkspaceCredentialBindings(
+  workspaceId: Id<"workspaces">,
+): Promise<WorkspaceCredentialBinding[]> {
+  const c = await getClient();
+  return await c.query(api.credentials.listWorkspaceCredentialBindings, {
+    workspaceId,
+  });
+}
+
+export async function upsertWorkspaceSecretCredential(
+  workspaceId: Id<"workspaces">,
+  revisionId: Id<"revisions">,
+  credentialId: string,
+  value: string,
+): Promise<Id<"credentialValues">> {
+  const c = await getClient();
+  return await c.mutation(api.credentials.upsertWorkspaceCredential, {
+    workspaceId,
+    revisionId,
+    credentialId,
+    kind: "secret",
+    value: {
+      value,
+    },
   });
 }
