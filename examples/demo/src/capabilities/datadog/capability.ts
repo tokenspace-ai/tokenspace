@@ -316,7 +316,7 @@ async function listHostsInternal(args?: ListHostsArgs): Promise<ListHostsResult>
       meta: h.meta
         ? {
             platform: h.meta.platform,
-            cpuCores: h.meta.cpuCores,
+            cpuCores: h.meta.cpu_cores,
           }
         : undefined,
       sources: h.sources,

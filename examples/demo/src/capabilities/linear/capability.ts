@@ -146,7 +146,7 @@ function normalizeIssueIdentifier(identifier: string): NormalizedIssueIdentifier
   if (!match) {
     throw new LinearScopeError(
       `Invalid issue identifier: ${identifier}`,
-      "Expected format: <TEAM>-<NUMBER>, for example TOK-123",
+      "Expected format: <TEAM>-<NUMBER>, for example DEMO-123",
     );
   }
   const teamKey = normalizeTeamKey(match[1]);
@@ -256,7 +256,16 @@ async function linearGraphqlRequest<T>(query: string, variables?: Record<string,
     );
   }
 
-  const raw = await response.json();
+  let raw: unknown;
+  try {
+    raw = await response.json();
+  } catch (error) {
+    throw new LinearApiError(
+      "Linear GraphQL returned a non-JSON response",
+      response,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
   const envelope = graphQlEnvelopeSchema.safeParse(raw);
   if (!envelope.success) {
     throw new LinearApiError(

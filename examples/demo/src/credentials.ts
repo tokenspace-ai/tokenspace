@@ -76,6 +76,6 @@ export const linearApiKey = credentials.oauth({
     clientSecret: credentials.ref(linearClientSecret),
     authorizeUrl: "https://linear.app/oauth/authorize",
     tokenUrl: "https://api.linear.app/oauth/token",
-    scopes: ["read", "write", "issues:create", "comments:create"],
+    scopes: ["read", "write"],
   },
 });
