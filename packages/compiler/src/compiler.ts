@@ -685,8 +685,9 @@ export function compileDeclarations(
     realpath: useFsModuleResolution && ts.sys.realpath ? (p) => ts.sys.realpath!(p) : undefined,
     fileExists: (fileName: string) => hasVirtualFile(fileName) || hasRealFile(fileName),
     readFile: (fileName: string) => getVirtualFile(fileName) ?? readRealFile(fileName),
-    getCanonicalFileName: (fileName: string) => (ts.sys.useCaseSensitiveFileNames ? fileName : fileName.toLowerCase()),
-    useCaseSensitiveFileNames: () => ts.sys.useCaseSensitiveFileNames,
+    getCanonicalFileName: (fileName: string) =>
+      ts.sys?.useCaseSensitiveFileNames ? fileName : ts.sys ? fileName.toLowerCase() : fileName,
+    useCaseSensitiveFileNames: () => ts.sys?.useCaseSensitiveFileNames ?? false,
     getNewLine: () => "\n",
     resolveModuleNames(moduleNames: string[], containingFile: string): (ts.ResolvedModule | undefined)[] {
       return moduleNames.map((moduleName) => {
