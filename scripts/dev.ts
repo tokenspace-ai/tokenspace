@@ -4,7 +4,13 @@ import { runConvexLocalDev } from "@tokenspace/backend/dev";
 import { type ConvexLogger, loadPersistedKeys } from "@tokenspace/convex-local-dev";
 import type { Subprocess } from "bun";
 import { checkBunVersion } from "./lib/bun-version";
-import { CONVEX_STATE_DIR, readFilesRecursively, runInternalFunction, SEED_WORKSPACES } from "./lib/seed";
+import {
+  CONVEX_STATE_DIR,
+  readFilesRecursively,
+  runInternalFunction,
+  SEED_WORKSPACES,
+  type SeedCredential,
+} from "./lib/seed";
 
 const PID_FILE = "dev.pid";
 const childProcesses: Subprocess[] = [];
@@ -420,6 +426,28 @@ async function seedExampleWorkspaces(convexPort: number): Promise<void> {
       );
 
       log(fg.cyan(`Workspace '${workspace.slug}' ${result.status} (${result.workspaceId})`));
+
+      // Seed credentials if defined
+      const credentials: readonly SeedCredential[] =
+        "credentials" in workspace && Array.isArray(workspace.credentials) ? workspace.credentials : [];
+      for (const cred of credentials) {
+        const envValue = process.env[cred.envVar];
+        if (!envValue) {
+          log(fg.yellow(`Credential '${cred.credentialId}': skipped (${cred.envVar} not set)`));
+          continue;
+        }
+        try {
+          await runInternalFunction(convexUrl, keys.adminKey, "credentials:seedUpsertWorkspaceCredentialInternal", {
+            workspaceId: result.workspaceId,
+            credentialId: cred.credentialId,
+            kind: "secret",
+            value: { value: envValue },
+          });
+          log(`Credential '${cred.credentialId}': seeded from ${cred.envVar}`);
+        } catch (e) {
+          log(fg.yellow(`Credential '${cred.credentialId}': failed to seed: ${e}`));
+        }
+      }
     } catch (e) {
       log(fg.red(`Failed to seed workspace '${workspace.slug}': ${e}`));
     }
