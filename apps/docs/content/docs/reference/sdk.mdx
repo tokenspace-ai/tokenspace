@@ -17,6 +17,7 @@ description: Reference for the `@tokenspace/sdk` package.
 | `credentials.env` | Define an environment-backed credential. |
 | `credentials.oauth` | Define an OAuth credential. |
 | `credentials.ref` | Reference another credential definition, commonly for OAuth client secrets. |
+| `getSessionFilesystem` | Access the session-scoped virtual filesystem from capability code. |
 | `request` | Make authenticated HTTP requests with basic response checking. |
 | `parseResponseBody` | Parse JSON or text response bodies. |
 | `TokenspaceError` | Base error type for workspace-facing failures. |
@@ -57,6 +58,35 @@ Approval objects are matched by:
 - optional data fields
 
 That lets capability authors define precise approval scopes without building a separate policy engine in every action.
+
+## Session filesystem
+
+`getSessionFilesystem()` returns a `TokenspaceFilesystem` handle scoped to the current session. Files written through this handle persist across jobs within the same session but are isolated between sessions.
+
+```typescript
+import { getSessionFilesystem } from "@tokenspace/sdk";
+
+const fs = getSessionFilesystem();
+
+await fs.write("results/output.json", JSON.stringify(data));
+const text = await fs.readText("results/output.json");
+const entries = await fs.list("results");
+const info = await fs.stat("results/output.json");
+await fs.delete("results/output.json");
+```
+
+Available methods:
+
+| Method | Signature | Description |
+| --- | --- | --- |
+| `list` | `(path: string) => Promise<string[]>` | List direct children of a directory. |
+| `stat` | `(path: string) => Promise<{ isDirectory, isFile, size }>` | Get metadata for a path. |
+| `read` | `(path: string) => Promise<ArrayBuffer>` | Read a file as raw bytes. |
+| `readText` | `(path: string) => Promise<string>` | Read a file as UTF-8 text. |
+| `write` | `(path: string, content: ArrayBuffer \| string) => Promise<void>` | Write a file, creating parent directories as needed. |
+| `delete` | `(path: string) => Promise<void>` | Delete a file or directory recursively. |
+
+This is the same filesystem the agent interacts with through bash and the built-in `fs` global. Capability code and agent code share the same session files.
 
 ## HTTP helpers
 

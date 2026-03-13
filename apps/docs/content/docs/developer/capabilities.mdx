@@ -84,6 +84,27 @@ export const createIssue = action(createIssueInput, async (args) => {
 });
 ```
 
+## Access the session filesystem
+
+Capability code can read and write to the session filesystem using `getSessionFilesystem()`. This is useful for caching intermediate results, storing artifacts, or reading files the agent has created during the session.
+
+```typescript
+import { action, getSessionFilesystem } from "@tokenspace/sdk";
+import z from "zod";
+
+export const exportReport = action(
+  z.object({ name: z.string() }),
+  async (args) => {
+    const fs = getSessionFilesystem();
+    const report = { name: args.name, generatedAt: new Date().toISOString() };
+    await fs.write(`reports/${args.name}.json`, JSON.stringify(report, null, 2));
+    return { path: `reports/${args.name}.json` };
+  },
+);
+```
+
+Capability code and agent-generated code share the same session filesystem. See the [SDK reference](/docs/reference/sdk#session-filesystem) for the full API.
+
 ## Capability authoring rules that matter
 
 - Validate untrusted user input before external calls.
