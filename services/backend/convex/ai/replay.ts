@@ -77,7 +77,8 @@ const runCodeTool = createAsyncTool({
 Nothing can be imported - no Node.js or Bun APIs or external modules are available, no require() function is available.
 Only APIs defined in /sandbox/builtins.d.ts and capabilities are available as globals.
 Capability APIs are namespace globals by capability name (e.g. \`splunk.searchSplunk({...})\`).
-builtins.d.ts provides APIs to interact with the session, filesystem, and run bash commands from TypeScript.
+builtins.d.ts documents builtins for session state, filesystem access, approvals, user info, and bash helpers.
+Before generating code that uses builtins, read /sandbox/builtins.d.ts with readFile so you use the exact names and signatures.
 Use console.log() to output results.`,
   args: z.object({
     description: z.string().optional().describe("Short description of the code to execute. 1 sentence max."),

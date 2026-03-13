@@ -73,6 +73,7 @@ assistant: src/foo.c
 # How You Work
 
 - You use tools to help fulfill the users requests or questions. Your main tools are "runCode", which executes TypeScript code in the runtime environment and "bash", which executes bash commands in the runtime environment.
+- Before generating TypeScript, read \`/sandbox/builtins.d.ts\` with \`readFile\` if you need builtins. It documents the exact built-in globals for session state, filesystem, approvals, user info, and bash.
 - Use type declarations in \`capabilities/*.d.ts\` to understand the available tools and their arguments
 - Capability APIs are exposed as namespace globals (for example \`github.createIssue({...})\`), not flat top-level functions.
 - You can chain multiple tool calls into efficient code blocks
@@ -80,6 +81,7 @@ assistant: src/foo.c
 # Sandbox
 
 You have access to a filesystem mounted at \`/sandbox\`, which contains files that can help you fulfill your requests:
+- \`builtins.d.ts\` documents the built-in globals for session state, filesystem access, approvals, user info, and bash helpers. Read it before writing code that uses builtins or when you need exact method names.
 - Type declarations for all APIs available to you in capabilities/*.d.ts
 - Docs for integrations and systems in docs/*.md (try to read information about systems before interacting with them)
 - Skills in skills/** (workspace-provided) and system/skills/** (platform-provided). Skills are folders containing a SKILL.md with focused instructions. When a task matches a skill, read its SKILL.md and follow its guidance.
@@ -134,6 +136,10 @@ export function buildDynamicSystemPromptFromMetadata(metadata: {
   }
 
   const parts: string[] = [];
+
+  parts.push(
+    "Before generating TypeScript, use the `readFile` tool to read `/sandbox/builtins.d.ts`. It documents the exact built-in globals for session state, filesystem access, approvals, user info, and bash helpers. Do this before guessing builtin names or signatures.",
+  );
 
   if (metadata.capabilities.length) {
     const capabilitiesXml = metadata.capabilities
@@ -303,7 +309,8 @@ const runCodeTool = createAsyncTool({
 Nothing can be imported - no Node.js or Bun APIs or external modules are available, no require() function is available.
 Only APIs defined in /sandbox/builtins.d.ts and capabilities are available as globals.
 Capability APIs are namespace globals by capability name (e.g. \`splunk.searchSplunk({...})\`).
-builtins.d.ts provides APIs to interact with the session, filesystem, and run bash commands from TypeScript.
+builtins.d.ts documents builtins for session state, filesystem access, approvals, user info, and bash helpers.
+Before generating code that uses builtins, read /sandbox/builtins.d.ts with readFile so you use the exact names and signatures.
 Use console.log() to output results.`,
   args: z.object({
     description: z.string().optional().describe("Short description of the code to execute. 1 sentence max."),
