@@ -62,7 +62,12 @@ The automated release flow is:
 2. GitHub Actions runs `bun run release:check`.
 3. `changesets/action` opens or updates the release PR.
 4. Merge the release PR.
-5. GitHub Actions publishes the packages to npm.
+
+> **Note:** Automated npm publishing is currently disabled while npm trusted publishing is being configured. For now, publish manually after merging the release PR:
+>
+> ```bash
+> bun run release:publish
+> ```
 
 For local verification before merge:
 
@@ -71,5 +76,3 @@ bun install
 bun run release:check
 bun run release:pack-smoke
 ```
-
-Manual local publishing should be rare and only used when intentionally bypassing the GitHub Actions flow.

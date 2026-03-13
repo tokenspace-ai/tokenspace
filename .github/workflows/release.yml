@@ -27,11 +27,10 @@ jobs:
         run: bun install
       - name: Release readiness
         run: bun run release:check
-      - name: Create release PR or publish
+      - name: Create release PR
         uses: changesets/action@v1
         with:
           version: bun run release:version
-          publish: bun run release:publish
           title: Release packages
           commit: Release packages
         env:
