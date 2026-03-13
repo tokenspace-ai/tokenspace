@@ -82,6 +82,8 @@ describe("generateInstructions", () => {
   it("generates a runCode description with capabilities, sandbox, and skills guidance", async () => {
     const description = await generateRunCodeDescription(makeSession());
 
+    expect(description).toContain("/sandbox/builtins.d.ts");
+    expect(description).toContain("session state, filesystem access, approvals, user info, and bash helpers");
     expect(description).toContain("Available capability namespaces:");
     expect(description).toContain("Available capabilities:\n- testing: Exercise the local MCP sandbox");
     expect(description).toContain("testing: Exercise the local MCP sandbox");
@@ -94,6 +96,7 @@ describe("generateInstructions", () => {
     const promptText = await generateSystemInstructionsPrompt(makeSession());
 
     expect(promptText).toContain("# Tokenspace System Instructions");
+    expect(promptText).toContain("/sandbox/builtins.d.ts");
     expect(promptText).toContain("The runtime filesystem is virtual and rooted at `/sandbox`.");
     expect(promptText).toContain("- Release: Release guidance (skills/release/SKILL.md)");
     expect(promptText).toContain("- bash: Use Tokenspace's sandboxed bash environment");
@@ -103,6 +106,7 @@ describe("generateInstructions", () => {
     const overview = await generateWorkspaceOverview(makeSession());
 
     expect(overview).toContain("# Tokenspace Workspace Overview");
+    expect(overview).toContain("/sandbox/builtins.d.ts");
     expect(overview).toContain("- testing: Exercise the local MCP sandbox (capabilities/testing/CAPABILITY.md)");
     expect(overview).toContain("All file access is scoped to the virtual filesystem at `/sandbox`.");
     expect(overview).toContain("- Release: Release guidance (skills/release/SKILL.md)");

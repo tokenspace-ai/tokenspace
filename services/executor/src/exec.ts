@@ -1,8 +1,8 @@
 import { api } from "@tokenspace/backend/convex/_generated/api";
 import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
 import type { RuntimeExecutionOptions, ToolOutputResult } from "@tokenspace/runtime-core";
-import type { CredentialStore, MissingCredentialReason } from "@tokenspace/sdk";
-import { MissingCredentialError, TokenspaceError } from "@tokenspace/sdk";
+import type { CredentialStore, MissingCredentialReason, UserLookup, UserStore } from "@tokenspace/sdk";
+import { MissingCredentialError, TokenspaceError, UserInfoUnavailableError } from "@tokenspace/sdk";
 
 export { ExecutionError } from "@tokenspace/runtime-core";
 
@@ -22,6 +22,12 @@ type CredentialMissingPayload = {
     scope: "workspace" | "session" | "user";
     reason: MissingCredentialReason;
   };
+  details?: string;
+};
+
+type UserInfoUnavailablePayload = {
+  errorType: "USER_INFO_UNAVAILABLE";
+  reason: "not_initialized" | "non_interactive" | "local_mcp";
   details?: string;
 };
 
@@ -58,6 +64,23 @@ function extractCredentialMissingPayload(error: unknown): CredentialMissingPaylo
       scope: credential.scope,
       reason,
     },
+    details: typeof maybe.details === "string" ? maybe.details : undefined,
+  };
+}
+
+function extractUserInfoUnavailablePayload(error: unknown): UserInfoUnavailablePayload | null {
+  if (!error || typeof error !== "object") return null;
+  const data = (error as Record<string, unknown>).data;
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const maybe = data as Partial<UserInfoUnavailablePayload>;
+  if (maybe.errorType !== "USER_INFO_UNAVAILABLE") return null;
+  const reason =
+    maybe.reason === "not_initialized" || maybe.reason === "local_mcp" || maybe.reason === "non_interactive"
+      ? maybe.reason
+      : "non_interactive";
+  return {
+    errorType: "USER_INFO_UNAVAILABLE",
+    reason,
     details: typeof maybe.details === "string" ? maybe.details : undefined,
   };
 }
@@ -116,6 +139,55 @@ function createCredentialStore(convex: ConvexClient, options?: ExecutionOptions)
   };
 }
 
+function createUserStore(convex: ConvexClient, options?: ExecutionOptions): UserStore {
+  const jobId = options?.jobId ?? null;
+  const executorToken = process.env.TOKENSPACE_EXECUTOR_TOKEN?.trim();
+
+  function buildInitializationError(details: string): UserInfoUnavailableError {
+    return new UserInfoUnavailableError("User info is unavailable for this execution", "not_initialized", details);
+  }
+
+  async function runResolver<T>(call: () => Promise<T>): Promise<T> {
+    if (!jobId) {
+      throw buildInitializationError("Job ID is required to resolve user info");
+    }
+    if (!executorToken) {
+      throw buildInitializationError("Executor misconfigured: TOKENSPACE_EXECUTOR_TOKEN is not set");
+    }
+    try {
+      return await call();
+    } catch (error) {
+      const payload = extractUserInfoUnavailablePayload(error);
+      if (payload) {
+        throw new UserInfoUnavailableError(
+          "User info is unavailable for this execution",
+          payload.reason,
+          payload.details,
+        );
+      }
+      throw error;
+    }
+  }
+
+  return {
+    getCurrentUserInfo: async () =>
+      await runResolver(async () => {
+        return (await convex.action(api.executor.resolveCurrentUserInfoForJob, {
+          jobId: jobId as Id<"jobs">,
+          executorToken: executorToken!,
+        })) as Awaited<ReturnType<UserStore["getCurrentUserInfo"]>>;
+      }),
+    getInfo: async (args: UserLookup) =>
+      await runResolver(async () => {
+        return (await convex.action(api.executor.resolveUserInfoForJob, {
+          jobId: jobId as Id<"jobs">,
+          executorToken: executorToken!,
+          ...args,
+        })) as Awaited<ReturnType<UserStore["getInfo"]>>;
+      }),
+  };
+}
+
 export async function executeCode(
   code: string,
   convex: ConvexClient,
@@ -134,5 +206,6 @@ export async function executeCode(
     ...options,
     fileSystem,
     credentialStore: createCredentialStore(convex, options),
+    userStore: createUserStore(convex, options),
   });
 }

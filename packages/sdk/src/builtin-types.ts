@@ -75,6 +75,25 @@ export interface TokenspaceFilesystem {
 
 declare const fs: TokenspaceFilesystem;
 
+// @tokenspace-builtins-server-only:start
+export type TokenspaceUserInfo = {
+  id: string;
+  email?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  profilePictureUrl?: string | null;
+};
+
+export type UserLookup = { id: string; email?: never } | { email: string; id?: never };
+
+export interface TokenspaceUsers {
+  getCurrentUserInfo(): Promise<TokenspaceUserInfo>;
+  getInfo(args: UserLookup): Promise<TokenspaceUserInfo | null>;
+}
+
+declare const users: TokenspaceUsers;
+// @tokenspace-builtins-server-only:end
+
 declare class TokenspaceError extends Error {
   constructor(message: string, cause?: Error, details?: string, data?: Record<string, unknown>);
   readonly cause?: Error;

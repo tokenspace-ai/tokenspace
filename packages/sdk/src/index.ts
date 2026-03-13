@@ -17,3 +17,4 @@ export * from "./fetch";
 export * from "./logger";
 export * from "./runtime-context";
 export * from "./session-filesystem";
+export * from "./users";

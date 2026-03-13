@@ -6,14 +6,14 @@ import { buildWorkspace, fingerprintWorkspaceSource, loadBuiltWorkspace } from "
 
 const REPO_ROOT = path.join(import.meta.dir, "../../..");
 
-async function buildFixture(relativeWorkspaceDir: string) {
+async function buildFixture(relativeWorkspaceDir: string, mode: "local" | "server" = "local") {
   const outDir = await mkdtemp(path.join(tmpdir(), "tokenspace-compiler-test-"));
   try {
     const workspaceDir = path.join(REPO_ROOT, relativeWorkspaceDir);
     const result = await buildWorkspace({
       workspaceDir,
       outDir,
-      mode: "local",
+      mode,
     });
 
     const manifestPath = path.join(outDir, "manifest.json");
@@ -46,6 +46,18 @@ describe("workspace build", () => {
     expect(result.metadata.capabilities.length).toBeGreaterThan(0);
     expect(result.metadata.credentialRequirements.length).toBeGreaterThan(0);
     expect(result.metadata.models.length).toBeGreaterThan(0);
+  });
+
+  it("omits server-only users builtin declarations in local mode", async () => {
+    const result = await buildFixture("examples/testing", "local");
+    expect(result.revisionFs.builtins).not.toContain("declare const users");
+    expect(result.revisionFs.builtins).not.toContain("type TokenspaceUserInfo");
+  });
+
+  it("includes users builtin declarations in server mode", async () => {
+    const result = await buildFixture("examples/testing", "server");
+    expect(result.revisionFs.builtins).toContain("declare const users");
+    expect(result.revisionFs.builtins).toContain("type TokenspaceUserInfo");
   });
 
   it("fails with formatted declaration diagnostics including file path", async () => {

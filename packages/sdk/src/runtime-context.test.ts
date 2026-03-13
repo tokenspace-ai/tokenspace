@@ -4,6 +4,8 @@ import type { TokenspaceFilesystem } from "./builtin-types";
 import { type CredentialStore, getCredential, secret } from "./credentials";
 import { getExecutionContext, runWithExecutionContext } from "./runtime-context";
 import { getSessionFilesystem, SessionFilesystemNotInitializedError } from "./session-filesystem";
+import type { UserStore } from "./users";
+import { getCurrentUserInfo } from "./users";
 
 describe("@tokenspace/sdk runtime context", () => {
   test("preserves execution-scoped state across await boundaries", async () => {
@@ -14,6 +16,10 @@ describe("@tokenspace/sdk runtime context", () => {
 
     const credentialStore: CredentialStore = {
       load: async () => "scoped-value" as never,
+    };
+    const userStore: UserStore = {
+      getCurrentUserInfo: async () => ({ id: "user-1", email: "user@example.com" }),
+      getInfo: async () => null,
     };
     const filesystem: TokenspaceFilesystem = {
       list: async () => [],
@@ -27,6 +33,7 @@ describe("@tokenspace/sdk runtime context", () => {
     const value = await runWithExecutionContext(
       {
         credentialStore,
+        userStore,
         approvals: [{ action: "demo:allowed" }],
         filesystem,
       },
@@ -36,6 +43,7 @@ describe("@tokenspace/sdk runtime context", () => {
         expect(getExecutionContext()).toBeDefined();
         expect(hasApproval({ action: "demo:allowed" })).toBe(true);
         expect(getSessionFilesystem()).toBe(filesystem);
+        expect(await getCurrentUserInfo()).toEqual({ id: "user-1", email: "user@example.com" });
 
         return await getCredential(demoSecret);
       },

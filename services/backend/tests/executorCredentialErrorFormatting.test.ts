@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { formatCredentialMissingErrorForTool } from "../convex/executor";
+
+process.env.WORKOS_CLIENT_ID ??= "test-client-id";
+
+const { formatCredentialMissingErrorForTool } = await import("../convex/executor");
 
 function buildCredentialError(reason: "missing" | "expired" | "revoked" | "non_interactive") {
   return {

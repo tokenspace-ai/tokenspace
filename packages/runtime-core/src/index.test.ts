@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
-import type { CredentialStore } from "@tokenspace/sdk";
+import type { CredentialStore, UserStore } from "@tokenspace/sdk";
 import { InMemoryFs } from "just-bash";
 import { executeCode } from "./index";
 
 const workspaceBundle = `
-import { action, getSessionFilesystem, hasApproval } from "@tokenspace/sdk";
+import { action, getSessionFilesystem, hasApproval, getCurrentUserInfo } from "@tokenspace/sdk";
 import { getCredential, secret } from "@tokenspace/sdk/credentials";
 
 const demoSecret = secret({
@@ -38,6 +38,12 @@ export const sdkfs = {
   }),
   readFile: action(readFileSchema, async ({ path }) => {
     return await getSessionFilesystem().readText(path);
+  }),
+};
+
+export const sdkusers = {
+  current: action(readFileSchema, async () => {
+    return await getCurrentUserInfo();
   }),
 };
 
@@ -138,6 +144,32 @@ function createCredentialStore(value: string, delayMs = 0): CredentialStore {
   };
 }
 
+function createUserStore(
+  value: { id: string; email?: string | null; firstName?: string | null },
+  delayMs = 0,
+): UserStore {
+  return {
+    getCurrentUserInfo: async () => {
+      if (delayMs > 0) {
+        await Bun.sleep(delayMs);
+      }
+      return value;
+    },
+    getInfo: async (args) => {
+      if (delayMs > 0) {
+        await Bun.sleep(delayMs);
+      }
+      if ("id" in args && args.id === value.id) {
+        return value;
+      }
+      if ("email" in args && args.email === value.email) {
+        return value;
+      }
+      return null;
+    },
+  };
+}
+
 describe("@tokenspace/runtime-core", () => {
   test("executes code against a bundled workspace with an in-memory filesystem", async () => {
     const { bundlePath, cleanup } = await createBundle("export const demo = { value: 42 };");
@@ -203,6 +235,86 @@ describe("@tokenspace/runtime-core", () => {
 
       expect(approved.output).toBe("true");
       expect(denied.output).toBe("false");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test("shares one user API between sdk helpers and the builtin global", async () => {
+    const { bundlePath, cleanup } = await createBundle(workspaceBundle);
+
+    try {
+      const result = await executeCode(
+        `
+console.log(JSON.stringify(await sdkusers.current({ path: "" })));
+console.log(JSON.stringify(await users.getCurrentUserInfo()));
+console.log(JSON.stringify(await users.getInfo({ email: "user@example.com" })));
+`,
+        {
+          bundlePath,
+          fileSystem: new InMemoryFs(),
+          sessionId: "users-shared",
+          userStore: createUserStore({
+            id: "user-1",
+            email: "user@example.com",
+            firstName: "Ada",
+          }),
+        },
+      );
+
+      expect(result.output).toBe(
+        '{"id":"user-1","email":"user@example.com","firstName":"Ada"}\n' +
+          '{"id":"user-1","email":"user@example.com","firstName":"Ada"}\n' +
+          '{"id":"user-1","email":"user@example.com","firstName":"Ada"}',
+      );
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test("isolates user stores across concurrent executions", async () => {
+    const { bundlePath, cleanup } = await createBundle(workspaceBundle);
+
+    try {
+      const [first, second] = await Promise.all([
+        executeCode("console.log((await users.getCurrentUserInfo()).id);", {
+          bundlePath,
+          fileSystem: new InMemoryFs(),
+          sessionId: "user-a",
+          userStore: createUserStore({ id: "alpha" }, 10),
+        }),
+        executeCode("console.log((await users.getCurrentUserInfo()).id);", {
+          bundlePath,
+          fileSystem: new InMemoryFs(),
+          sessionId: "user-b",
+          userStore: createUserStore({ id: "beta" }, 1),
+        }),
+      ]);
+
+      expect(first.output).toBe("alpha");
+      expect(second.output).toBe("beta");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test("throws a typed error when user info is unavailable", async () => {
+    const { bundlePath, cleanup } = await createBundle("export const demo = { value: 42 };");
+
+    try {
+      await expect(
+        executeCode("await users.getCurrentUserInfo();", {
+          bundlePath,
+          fileSystem: new InMemoryFs(),
+          sessionId: "missing-user-store",
+        }),
+      ).rejects.toMatchObject({
+        message: "User info is unavailable for this execution",
+        data: {
+          errorType: "USER_INFO_UNAVAILABLE",
+          reason: "not_initialized",
+        },
+      });
     } finally {
       await cleanup();
     }

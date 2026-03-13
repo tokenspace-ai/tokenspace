@@ -3,7 +3,7 @@ import { lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { BUILTINS } from "@tokenspace/types";
+import { BUILTINS_LOCAL, BUILTINS_SERVER } from "@tokenspace/types";
 import { build } from "esbuild";
 import YAML from "yaml";
 import { type CompilationDiagnostic, compileDeclarations, type SourceFile } from "./compiler";
@@ -18,6 +18,7 @@ const RESERVED_NAMESPACE_GLOBALS = new Set([
   "__tokenspace",
   "session",
   "fs",
+  "users",
   "bash",
   "sleep",
   "debug",
@@ -798,7 +799,7 @@ export async function buildWorkspace(options: BuildWorkspaceOptions): Promise<Bu
     files: passthroughFiles,
     // System content is injected by the server when creating a revision.
     system: [],
-    builtins: BUILTINS,
+    builtins: mode === "server" ? BUILTINS_SERVER : BUILTINS_LOCAL,
   };
 
   const metadataEntries: Array<{ path: string; content: string }> = [

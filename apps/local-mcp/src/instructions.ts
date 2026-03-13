@@ -70,6 +70,7 @@ export async function generateInstructions(session: LocalSession): Promise<strin
 # How to use this TokenSpace
 
 - Your main tools to fulfill user requests are "runCode", which executes TypeScript code in the runtime environment and "bash", which executes bash commands in the runtime environment.
+- Before generating TypeScript, call \`readFile\` on \`/sandbox/builtins.d.ts\` when you need builtins. It documents the exact built-in globals for session state, filesystem access, approvals, user info, and bash.
 - Use type declarations in \`capabilities/*.d.ts\` to understand the available tools and their arguments
 - Capability APIs are exposed as namespace globals (for example \`github.createIssue({...})\`), not flat top-level functions.
 - You can chain multiple tool calls into efficient code blocks
@@ -92,6 +93,7 @@ When you have a task matching a skill, immediately call the \`readFile\` tool to
 # Filesystem
 
 You have access to a virtual filesystem mounted at \`/sandbox\`, which contains files that can help you fulfill your requests:
+- \`builtins.d.ts\` documents the built-in globals for session state, filesystem access, approvals, user info, and bash helpers. Read it before writing code that uses builtins or when you need exact method names.
 - Type declarations for all APIs available to you in capabilities/*.d.ts
 - Docs for integrations and systems in docs/*.md (try to read information about systems before interacting with them)
 - Skills in skills/** (tokenspace-provided) and system/skills/** (platform-provided). Skills are folders containing a SKILL.md with focused instructions. When a task matches a skill, read its SKILL.md and follow its guidance.
@@ -129,6 +131,7 @@ export async function generateRunCodeDescription(session: LocalSession): Promise
 
   return [
     "Execute TypeScript against the current Tokenspace workspace and session sandbox.",
+    "Before generating code that uses builtins, read /sandbox/builtins.d.ts with readFile. It documents builtins for session state, filesystem access, approvals, user info, and bash helpers.",
     "Capability APIs are exposed as namespace globals, not flat functions.",
     capabilitySummary ? `Available capability namespaces: ${capabilitySummary}.` : undefined,
     capabilityList ? `Available capabilities:\n${capabilityList}` : undefined,
@@ -155,6 +158,7 @@ export async function generateSystemInstructionsPrompt(session: LocalSession): P
 ## Main Tool
 
 - Use \`runCode\` for most workspace tasks. It executes TypeScript against the current Tokenspace runtime.
+- Before generating TypeScript that relies on builtins, read \`/sandbox/builtins.d.ts\` with \`readFile\`. It documents builtins for session state, filesystem access, approvals, user info, and bash helpers.
 - Capability APIs are exposed as namespace globals like \`github.createIssue({...})\`.
 - Before using an unfamiliar capability, read its \`CAPABILITY.md\` and \`capability.d.ts\` from \`/sandbox/capabilities/**\` with \`readFile\`.
 
@@ -195,6 +199,7 @@ export async function generateWorkspaceOverview(session: LocalSession): Promise<
 ## Main Guidance
 
 - Prefer \`runCode\` for workspace tasks.
+- Before generating TypeScript that relies on builtins, read \`/sandbox/builtins.d.ts\` with \`readFile\`.
 - Capability APIs are namespace globals such as \`github.createIssue({...})\`.
 - Before using a capability, read its \`CAPABILITY.md\` and \`capability.d.ts\` with \`readFile\`.
 - If the client did not load MCP server instructions automatically, use this overview as your bootstrap context.
