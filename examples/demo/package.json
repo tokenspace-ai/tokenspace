@@ -5,9 +5,9 @@
     "build": "tokenspace-compiler build --workspace . --out-dir build/tokenspace"
   },
   "dependencies": {
-    "@slack/web-api": "^7.14.1",
+    "@slack/web-api": "^7.15.0",
     "@tokenspace/sdk": "workspace:*",
-    "@types/bun": "^1.3.6",
+    "@types/bun": "^1.3.10",
     "zod": "^4.3.5"
   },
   "devDependencies": {

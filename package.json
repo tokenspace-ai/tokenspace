@@ -20,7 +20,7 @@
       "scripts"
     ],
     "catalog": {
-      "convex": "^1.32.0"
+      "convex": "^1.33.0"
     }
   },
   "scripts": {
@@ -68,10 +68,10 @@
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.7",
-    "@biomejs/biome": "^2.4.3",
+    "@biomejs/biome": "^2.4.6",
     "husky": "^9.1.7",
-    "lint-staged": "^16.2.7",
-    "turbo": "^2.8.10"
+    "lint-staged": "^16.3.3",
+    "turbo": "^2.8.16"
   },
   "lint-staged": {
     "*": [
