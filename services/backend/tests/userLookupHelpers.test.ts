@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   normalizeUserLookupEmail,
+  resolveCurrentUserInfo,
   resolveVisibleUserByEmail,
   resolveVisibleUserById,
   serializeUserInfo,
@@ -41,6 +42,29 @@ describe("user lookup helpers", () => {
       firstName: "Ada",
       lastName: "Lovelace",
       profilePictureUrl: "https://example.com/avatar.png",
+    });
+  });
+
+  it("resolves the current user without requiring workspace membership", async () => {
+    const result = await resolveCurrentUserInfo("user-self", {
+      loadUserById: async (userId) =>
+        userId === "user-self"
+          ? ({
+              id: "user-self",
+              email: "self@example.com",
+              firstName: "Self",
+              lastName: "User",
+              profilePictureUrl: null,
+            } as any)
+          : null,
+    });
+
+    expect(result).toEqual({
+      id: "user-self",
+      email: "self@example.com",
+      firstName: "Self",
+      lastName: "User",
+      profilePictureUrl: null,
     });
   });
 

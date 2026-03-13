@@ -80,6 +80,14 @@ export async function listUsersByEmail(email: string): Promise<User[]> {
   return users.data;
 }
 
+export async function resolveCurrentUserInfo(
+  userId: string,
+  deps: Pick<UserResolverDeps, "loadUserById"> = {},
+): Promise<UserInfo | null> {
+  const user = await (deps.loadUserById ?? loadUserById)(userId);
+  return user ? serializeUserInfo(user) : null;
+}
+
 export async function resolveVisibleUserById(
   ctx: UserResolverCtx,
   args: {

@@ -13,7 +13,7 @@ import {
 } from "./_generated/server";
 import { buildMissingCredentialPayload, WORKSPACE_CREDENTIAL_SUBJECT } from "./credentials";
 import type { UserInfo } from "./users";
-import { resolveVisibleUserByEmail, resolveVisibleUserById } from "./users";
+import { resolveCurrentUserInfo, resolveVisibleUserByEmail, resolveVisibleUserById } from "./users";
 
 const DEFAULT_JOB_TIMEOUT_MS = 5 * 60_000;
 const MIN_JOB_TIMEOUT_MS = 1_000;
@@ -503,7 +503,6 @@ export const resolveCurrentUserInfoForJob = action({
   handler: async (ctx, args): Promise<UserInfo> => {
     assertExecutorToken(args.executorToken);
     const job = await getJobRecordOrThrow(ctx, args.jobId);
-    const revision = await getJobRevisionOrThrow(ctx, job);
     const callerUserId = await resolveJobCallerUserId(ctx, job);
     if (!callerUserId) {
       throw new ConvexError(
@@ -511,11 +510,7 @@ export const resolveCurrentUserInfoForJob = action({
       );
     }
 
-    const userInfo = await resolveVisibleUserById(ctx, {
-      workspaceId: revision.workspaceId,
-      callerUserId,
-      targetUserId: callerUserId,
-    });
+    const userInfo = await resolveCurrentUserInfo(callerUserId);
     if (!userInfo) {
       throw new Error("Current user could not be resolved");
     }
