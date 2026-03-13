@@ -1,8 +1,19 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { internalMutation, type MutationCtx, mutation, type QueryCtx, query } from "./_generated/server";
+import {
+  type ActionCtx,
+  action,
+  internalMutation,
+  internalQuery,
+  type MutationCtx,
+  mutation,
+  type QueryCtx,
+  query,
+} from "./_generated/server";
 import { buildMissingCredentialPayload, WORKSPACE_CREDENTIAL_SUBJECT } from "./credentials";
+import type { UserInfo } from "./users";
+import { resolveVisibleUserByEmail, resolveVisibleUserById } from "./users";
 
 const DEFAULT_JOB_TIMEOUT_MS = 5 * 60_000;
 const MIN_JOB_TIMEOUT_MS = 1_000;
@@ -17,6 +28,7 @@ function assertExecutorToken(executorToken: string): void {
 }
 
 type PublicCtx = QueryCtx | MutationCtx;
+type InternalCtx = QueryCtx | MutationCtx | ActionCtx;
 
 async function requireUserOrExecutorToken(ctx: PublicCtx, executorToken?: string): Promise<{ userId?: string }> {
   const user = await ctx.auth.getUserIdentity();
@@ -82,6 +94,12 @@ type CredentialMissingPayload = {
   details?: string;
 };
 
+type UserInfoUnavailablePayload = {
+  errorType: "USER_INFO_UNAVAILABLE";
+  reason: "non_interactive";
+  details?: string;
+};
+
 function normalizeToolResult(result: unknown): ToolResultPayload {
   if (result && typeof result === "object" && !Array.isArray(result)) {
     const base = { ...(result as Record<string, unknown>) };
@@ -98,6 +116,14 @@ function normalizeToolResult(result: unknown): ToolResultPayload {
     return { output: "", truncated: false };
   }
   return { output: String(result), truncated: false };
+}
+
+function buildUserInfoUnavailablePayload(details: string): UserInfoUnavailablePayload {
+  return {
+    errorType: "USER_INFO_UNAVAILABLE",
+    reason: "non_interactive",
+    details,
+  };
 }
 
 function truncateOutput(output: string, fullOutputPath?: string): { output: string; truncated: boolean } {
@@ -119,6 +145,51 @@ function truncateErrorText(text: string): string {
   const suffix = "\n(error truncated)";
   const headLength = Math.max(0, MAX_JOB_OUTPUT_CHARS - suffix.length);
   return `${text.slice(0, headLength)}${suffix}`;
+}
+
+async function getJobRecordOrThrow(ctx: InternalCtx, jobId: Id<"jobs">): Promise<Doc<"jobs">> {
+  const job =
+    "db" in ctx
+      ? await ctx.db.get(jobId)
+      : await ctx.runQuery(internal.executor.getJobInternal, {
+          jobId,
+        });
+  if (!job) {
+    throw new Error("Job not found");
+  }
+  return job;
+}
+
+async function getJobRevisionOrThrow(ctx: InternalCtx, job: Doc<"jobs">): Promise<Doc<"revisions">> {
+  if (!job.revisionId) {
+    throw new Error("Job has no revision");
+  }
+  const revision = await ctx.runQuery(internal.revisions.getRevision, {
+    revisionId: job.revisionId,
+  });
+  if (!revision) {
+    throw new Error("Revision not found");
+  }
+  return revision;
+}
+
+export async function resolveJobCallerUserId(ctx: InternalCtx, job: Doc<"jobs">): Promise<string | null> {
+  if (job.sessionId) {
+    const session =
+      "db" in ctx
+        ? await ctx.db.get(job.sessionId)
+        : await ctx.runQuery(internal.sessions.getSession, {
+            sessionId: job.sessionId,
+          });
+    return session?.userId ?? null;
+  }
+  if (job.threadId) {
+    const threadContext = await ctx.runQuery(internal.ai.thread.getThreadContext, {
+      threadId: job.threadId,
+    });
+    return threadContext?.userId ?? null;
+  }
+  return null;
 }
 
 function parseCredentialMissingPayload(data: unknown): CredentialMissingPayload | null {
@@ -254,6 +325,15 @@ export const getJob = query({
       await assertUserCanAccessJob(ctx, access.userId, job);
     }
     return job;
+  },
+});
+
+export const getJobInternal = internalQuery({
+  args: {
+    jobId: v.id("jobs"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.jobId);
   },
 });
 
@@ -412,6 +492,74 @@ export const resolveCredentialForJob = query({
       envConfig,
     });
     return resolved ?? undefined;
+  },
+});
+
+export const resolveCurrentUserInfoForJob = action({
+  args: {
+    jobId: v.id("jobs"),
+    executorToken: v.string(),
+  },
+  handler: async (ctx, args): Promise<UserInfo> => {
+    assertExecutorToken(args.executorToken);
+    const job = await getJobRecordOrThrow(ctx, args.jobId);
+    const revision = await getJobRevisionOrThrow(ctx, job);
+    const callerUserId = await resolveJobCallerUserId(ctx, job);
+    if (!callerUserId) {
+      throw new ConvexError(
+        buildUserInfoUnavailablePayload("Current user info requires a session or thread context with a user."),
+      );
+    }
+
+    const userInfo = await resolveVisibleUserById(ctx, {
+      workspaceId: revision.workspaceId,
+      callerUserId,
+      targetUserId: callerUserId,
+    });
+    if (!userInfo) {
+      throw new Error("Current user could not be resolved");
+    }
+    return userInfo;
+  },
+});
+
+export const resolveUserInfoForJob = action({
+  args: {
+    jobId: v.id("jobs"),
+    executorToken: v.string(),
+    id: v.optional(v.string()),
+    email: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<UserInfo | null> => {
+    assertExecutorToken(args.executorToken);
+    const hasId = typeof args.id === "string" && args.id.trim().length > 0;
+    const hasEmail = typeof args.email === "string" && args.email.trim().length > 0;
+    if (hasId === hasEmail) {
+      throw new Error("Exactly one of id or email is required");
+    }
+
+    const job = await getJobRecordOrThrow(ctx, args.jobId);
+    const revision = await getJobRevisionOrThrow(ctx, job);
+    const callerUserId = await resolveJobCallerUserId(ctx, job);
+    if (!callerUserId) {
+      throw new ConvexError(
+        buildUserInfoUnavailablePayload("User lookup requires a session or thread context with a user."),
+      );
+    }
+
+    if (hasId) {
+      return await resolveVisibleUserById(ctx, {
+        workspaceId: revision.workspaceId,
+        callerUserId,
+        targetUserId: args.id!.trim(),
+      });
+    }
+
+    return await resolveVisibleUserByEmail(ctx, {
+      workspaceId: revision.workspaceId,
+      callerUserId,
+      email: args.email!,
+    });
   },
 });
 

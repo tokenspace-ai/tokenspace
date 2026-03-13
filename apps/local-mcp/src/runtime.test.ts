@@ -67,8 +67,21 @@ console.log("bash file:", await fs.readText("/sandbox/from-bash.txt"));
 
     expect(manifestText).toContain('"workspaceName": "demo"');
     expect(builtins.length).toBeGreaterThan(0);
+    expect(builtins).not.toContain("declare const users");
     expect(linearCapability).toContain("declare namespace linear");
     expect(systemSkill).toContain("local MCP");
+  });
+
+  it("returns an explicit local MCP error when a workspace imports the sdk user helper", async () => {
+    const sessionsRootDir = await mkdtemp(path.join(tmpdir(), "tokenspace-local-mcp-sessions-"));
+    const session = await createLocalSession({
+      workspaceDir: path.join(EXAMPLES_DIR, "testing"),
+      sessionsRootDir,
+    });
+
+    await expect(executeLocalSessionCode(session, "await localUsers.readCurrentUser({});")).rejects.toThrow(
+      "User info is unavailable in local MCP sessions",
+    );
   });
 
   it("rejects symlink traversal during runtime execution", async () => {

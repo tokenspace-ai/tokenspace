@@ -2,9 +2,11 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { Approval, SerializableApproval } from "./approvals";
 import type { TokenspaceFilesystem } from "./builtin-types";
 import type { CredentialStore } from "./credentials";
+import type { UserStore } from "./users";
 
 export type RuntimeExecutionContext = {
   credentialStore?: CredentialStore;
+  userStore?: UserStore;
   approvals: Approval[];
   filesystem?: TokenspaceFilesystem;
 };
@@ -12,6 +14,7 @@ export type RuntimeExecutionContext = {
 const runtimeExecutionStorage = new AsyncLocalStorage<RuntimeExecutionContext>();
 
 let fallbackCredentialStore: CredentialStore | undefined;
+let fallbackUserStore: UserStore | undefined;
 let fallbackApprovals: Approval[] = [];
 
 function cloneValue<T>(value: T): T {
@@ -37,6 +40,7 @@ function normalizeApprovals(approvals: Approval[] | SerializableApproval[]): App
 export function runWithExecutionContext<T>(
   context: {
     credentialStore?: CredentialStore | null;
+    userStore?: UserStore | null;
     approvals?: Approval[] | SerializableApproval[] | null;
     filesystem?: TokenspaceFilesystem | null;
   },
@@ -45,6 +49,7 @@ export function runWithExecutionContext<T>(
   return runtimeExecutionStorage.run(
     {
       credentialStore: context.credentialStore ?? undefined,
+      userStore: context.userStore ?? undefined,
       approvals: normalizeApprovals(context.approvals ?? []),
       filesystem: context.filesystem ?? undefined,
     },
@@ -62,6 +67,14 @@ export function getCredentialStore(): CredentialStore | undefined {
 
 export function setFallbackCredentialStore(store: CredentialStore | undefined): void {
   fallbackCredentialStore = store;
+}
+
+export function getUserStore(): UserStore | undefined {
+  return getExecutionContext()?.userStore ?? fallbackUserStore;
+}
+
+export function setFallbackUserStore(store: UserStore | undefined): void {
+  fallbackUserStore = store;
 }
 
 export function getApprovals(): Approval[] {

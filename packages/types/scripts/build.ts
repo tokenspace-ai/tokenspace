@@ -14,6 +14,8 @@ const DEFS_DIR = join(import.meta.dirname, "../defs");
 const SRC_DIR = join(import.meta.dirname, "../src");
 const OUTPUT_FILE = join(SRC_DIR, "generated.ts");
 const BUILTINS_SOURCE = join(import.meta.dirname, "../../sdk/src/builtin-types.ts");
+const SERVER_ONLY_START = "// @tokenspace-builtins-server-only:start";
+const SERVER_ONLY_END = "// @tokenspace-builtins-server-only:end";
 
 function makeGlobalDeclarations(content: string): string {
   const globalContent = content
@@ -45,6 +47,23 @@ function escapeForTemplateLiteral(content: string): string {
   return content.replaceAll("// @ts-nocheck", "").replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
 }
 
+function splitBuiltins(content: string): { local: string; server: string } {
+  const startIndex = content.indexOf(SERVER_ONLY_START);
+  const endIndex = content.indexOf(SERVER_ONLY_END);
+  if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
+    throw new Error("packages/sdk/src/builtin-types.ts is missing valid server-only builtin markers");
+  }
+
+  const before = content.slice(0, startIndex);
+  const serverOnly = content.slice(startIndex + SERVER_ONLY_START.length, endIndex);
+  const after = content.slice(endIndex + SERVER_ONLY_END.length);
+
+  return {
+    local: `${before}${after}`,
+    server: `${before}${serverOnly}${after}`,
+  };
+}
+
 async function build() {
   const files = await readdir(DEFS_DIR);
   // builtins are sourced from @tokenspace/sdk (single source of truth)
@@ -62,11 +81,16 @@ async function build() {
 
   // Builtins (from sdk, converted to ambient globals)
   const builtinsRaw = await readFile(BUILTINS_SOURCE, "utf-8");
-  const builtinsGlobal = makeGlobalDeclarations(builtinsRaw);
-  const escapedBuiltins = escapeForTemplateLiteral(builtinsGlobal);
-  allTypes.push(escapedBuiltins);
+  const builtins = splitBuiltins(builtinsRaw);
+  const builtinsLocal = makeGlobalDeclarations(builtins.local);
+  const builtinsServer = makeGlobalDeclarations(builtins.server);
+  const escapedBuiltinsLocal = escapeForTemplateLiteral(builtinsLocal);
+  const escapedBuiltinsServer = escapeForTemplateLiteral(builtinsServer);
+  allTypes.push(escapedBuiltinsServer);
   exports.push("/** Source: packages/sdk/src/builtin-types.ts (processed) */");
-  exports.push(`export const BUILTINS = \`${escapedBuiltins}\`;`);
+  exports.push(`export const BUILTINS_LOCAL = \`${escapedBuiltinsLocal}\`;`);
+  exports.push(`export const BUILTINS_SERVER = \`${escapedBuiltinsServer}\`;`);
+  exports.push("export const BUILTINS = BUILTINS_SERVER;");
   exports.push("");
 
   for (const file of dtsFiles.sort()) {
@@ -88,7 +112,7 @@ async function build() {
   await writeFile(OUTPUT_FILE, `${exports.join("\n")}\n`);
 
   console.log(
-    `Generated ${OUTPUT_FILE} with exports: SANDBOX_TYPES, BUILTINS, ${dtsFiles.map((f) => basename(f, ".d.ts").toUpperCase().replace(/-/g, "_")).join(", ")}`,
+    `Generated ${OUTPUT_FILE} with exports: SANDBOX_TYPES, BUILTINS_LOCAL, BUILTINS_SERVER, BUILTINS, ${dtsFiles.map((f) => basename(f, ".d.ts").toUpperCase().replace(/-/g, "_")).join(", ")}`,
   );
 }
 

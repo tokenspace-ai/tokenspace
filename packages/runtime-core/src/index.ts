@@ -9,6 +9,7 @@ import type {
   SerializableApproval,
   TokenspaceFilesystem,
   TokenspaceSession,
+  UserStore,
 } from "@tokenspace/sdk";
 import {
   ApprovalRequiredError,
@@ -18,6 +19,7 @@ import {
   Logger,
   runWithExecutionContext,
   TokenspaceError,
+  users as tokenspaceUsers,
 } from "@tokenspace/sdk";
 import {
   Bash,
@@ -60,6 +62,7 @@ export type RuntimeExecutionOptions = {
   timeoutMs?: number | null;
   fileSystem?: IFileSystem | null;
   credentialStore?: CredentialStore | null;
+  userStore?: UserStore | null;
   bundleCacheDir?: string | null;
 };
 
@@ -71,6 +74,7 @@ export async function executeCode(code: string, options?: RuntimeExecutionOption
     {
       filesystem: tokenspaceFs,
       credentialStore: options?.credentialStore ?? undefined,
+      userStore: options?.userStore ?? undefined,
       approvals: options?.approvals ?? [],
     },
     async () => {
@@ -209,6 +213,7 @@ const reservedRuntimeGlobals = new Set([
   "__tokenspace",
   "session",
   "fs",
+  "users",
   "bash",
   "sleep",
   "debug",
@@ -875,6 +880,7 @@ async function executeTypeScript(code: string, options?: RuntimeExecutionOptions
     ...workspaceGlobals,
     session,
     fs: tokenspaceFs,
+    users: tokenspaceUsers,
     setTimeout: (callback: () => void, delay: number) => {
       const id = nextTimerId++;
       const normalizedDelay = Number.isFinite(delay) ? Math.max(0, Math.floor(delay)) : 0;

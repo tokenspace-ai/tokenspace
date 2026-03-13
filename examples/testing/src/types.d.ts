@@ -21,8 +21,26 @@ declare module "@tokenspace/sdk" {
     delete(path: string): Promise<void>;
   }
 
+  export type TokenspaceUserInfo = {
+    id: string;
+    email?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    profilePictureUrl?: string | null;
+  };
+
+  export type UserLookup = { id: string; email?: never } | { email: string; id?: never };
+
+  export interface TokenspaceUsers {
+    getCurrentUserInfo(): Promise<TokenspaceUserInfo>;
+    getInfo(args: UserLookup): Promise<TokenspaceUserInfo | null>;
+  }
+
   export function getSecret(name: string): Promise<string>;
   export function getSessionFilesystem(): TokenspaceFilesystem;
+  export function getCurrentUserInfo(): Promise<TokenspaceUserInfo>;
+  export function getInfo(args: UserLookup): Promise<TokenspaceUserInfo | null>;
+  export const users: TokenspaceUsers;
   type RequestOptions = {
     url: string | URL;
     method: string;
