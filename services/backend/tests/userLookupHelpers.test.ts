@@ -101,6 +101,24 @@ describe("user lookup helpers", () => {
     expect(hidden).toBeNull();
   });
 
+  it("returns null when the caller is not a workspace member", async () => {
+    const ctx = createCtx([{ workspaceId: "ws-1", userId: "user-1", role: "member" }]);
+
+    const result = await resolveVisibleUserById(
+      ctx,
+      {
+        workspaceId: "ws-1" as any,
+        callerUserId: "outsider",
+        targetUserId: "user-1",
+      },
+      {
+        loadUserById: async () => demoUser as any,
+      },
+    );
+
+    expect(result).toBeNull();
+  });
+
   it("allows workspace admins to resolve users outside the workspace", async () => {
     const ctx = createCtx([{ workspaceId: "ws-1", userId: "caller", role: "workspace_admin" }]);
 

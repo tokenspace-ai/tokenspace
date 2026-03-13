@@ -98,6 +98,11 @@ export async function resolveVisibleUserById(
   },
   deps: UserResolverDeps = {},
 ): Promise<UserInfo | null> {
+  const callerMembership = await getWorkspaceMembership(ctx, args.workspaceId, args.callerUserId);
+  if (!args.isOrgAdmin && !callerMembership) {
+    return null;
+  }
+
   const canLookupOutsideWorkspace = await canLookupAcrossWorkspaceBoundary(
     ctx,
     args.workspaceId,
