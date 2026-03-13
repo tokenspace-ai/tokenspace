@@ -1,6 +1,6 @@
 ---
 title: TokenSpace CLI
-description: Use the CLI to authenticate, link a local workspace, sync source files, compile locally, and push revisions.
+description: Use the CLI to authenticate, link a local workspace, sync source files, compile locally, push revisions, and manage credentials.
 ---
 
 The TokenSpace CLI allows you to create and build tokenspaces locally, link them to remote tokenspaces, sync source files, compile locally, and push revisions.
@@ -88,6 +88,30 @@ tokenspace compile
 tokenspace compile --out-dir build/tokenspace
 ```
 
+## Manage credentials
+
+List the credential requirements declared by the current compiled revision:
+
+```bash
+tokenspace credentials list
+```
+
+This shows workspace-scoped and runtime-scoped credentials, their kinds (secret, env, oauth), and whether each workspace credential has been configured. Admin access is required to see configuration status.
+
+Set a workspace-scoped secret credential:
+
+```bash
+tokenspace credentials set <credential-id>
+```
+
+The CLI prompts for the secret value interactively. For non-interactive use (CI, scripts), pipe the value via `--stdin`:
+
+```bash
+echo "sk-abc123" | tokenspace credentials set my-api-key --stdin
+```
+
+Only workspace-scoped secret credentials can be set through the CLI. OAuth credentials must be connected through the web app, and env credentials are provided by the executor environment.
+
 ## When to use the CLI vs the UI
 
 Use the CLI when:
@@ -95,9 +119,10 @@ Use the CLI when:
 - you want the workspace files in a local editor
 - you want a local-first workflow that still pushes revisions to the app
 - you want to compile the workspace locally from the CLI
+- you want to list or set workspace credentials from the terminal or a script
 
 Use the UI when:
 
 - you want browser-based editing and review
-- you are managing credentials or approvals
+- you are managing OAuth credentials or approvals
 - you want to run and inspect chats directly in the product
