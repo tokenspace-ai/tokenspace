@@ -401,6 +401,7 @@ async function runBashScript(code: string, options: BashScriptOptions): Promise<
       PATH: "/usr/bin:/bin",
     },
     customCommands,
+    defenseInDepth: false,
     executionLimits:
       timeoutMs != null
         ? {
@@ -423,6 +424,8 @@ async function runBashScript(code: string, options: BashScriptOptions): Promise<
             }
           }
         : undefined,
+    python: false,
+    javascript: false,
   });
 
   return await bash.exec(code);
