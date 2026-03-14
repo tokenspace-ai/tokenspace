@@ -168,6 +168,27 @@ describe("executorAuth", () => {
         {
           runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
             if ("instanceTokenId" in args) {
+              return {
+                ...instance,
+                expiresAt: 999,
+              };
+            }
+            if ("executorId" in args) {
+              return executor;
+            }
+            return null;
+          },
+        } as any,
+        instanceToken.token,
+        1_000,
+      ),
+    ).rejects.toThrow("Executor instance heartbeat lease expired");
+
+    await expect(
+      verifyExecutorInstanceToken(
+        {
+          runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+            if ("instanceTokenId" in args) {
               return instance;
             }
             if ("executorId" in args) {

@@ -203,6 +203,9 @@ export async function verifyExecutorInstanceToken(
   if (instance.instanceTokenExpiresAt < now) {
     throw new Error("Executor instance token expired");
   }
+  if (instance.expiresAt < now) {
+    throw new Error("Executor instance heartbeat lease expired");
+  }
 
   const executor = await lookupExecutorById(ctx, instance.executorId);
   if (!executor) {

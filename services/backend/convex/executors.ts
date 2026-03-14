@@ -332,8 +332,17 @@ export const assignWorkspaceExecutor = mutation({
     executorId: v.optional(v.id("executors")),
   },
   handler: async (ctx, args) => {
-    await requireWorkspaceAdmin(ctx, args.workspaceId);
+    const { user } = await requireWorkspaceAdmin(ctx, args.workspaceId);
     await getWorkspaceOrThrow(ctx, args.workspaceId);
+    if (args.executorId) {
+      const executor = await ctx.db.get(args.executorId);
+      if (!executor) {
+        throw new Error("Executor not found");
+      }
+      if (!canManageExecutorLifecycle({ executor, user })) {
+        throw new Error("Unauthorized");
+      }
+    }
     await ctx.runMutation(internal.executors.setWorkspaceExecutorInternal, args);
     return {
       workspaceId: args.workspaceId,
@@ -393,6 +402,11 @@ export const rotateExecutorBootstrapToken = mutation({
       .query("executorInstances")
       .withIndex("by_executor", (q) => q.eq("executorId", executor._id))
       .collect();
+    for (const instance of instances) {
+      if (instance.status === "online") {
+        await ctx.db.patch(instance._id, { status: "offline", expiresAt: now });
+      }
+    }
     return {
       executor: await buildExecutorSummaryForUser(user, updated, instances, now),
       bootstrapToken: bootstrap.token,
@@ -421,6 +435,13 @@ export const setExecutorStatus = mutation({
       .query("executorInstances")
       .withIndex("by_executor", (q) => q.eq("executorId", executor._id))
       .collect();
+    if (args.status === "disabled") {
+      for (const instance of instances) {
+        if (instance.status === "online") {
+          await ctx.db.patch(instance._id, { status: "offline", expiresAt: updatedAt });
+        }
+      }
+    }
     return {
       executor: await buildExecutorSummaryForUser(user, updated, instances, updatedAt),
     };
