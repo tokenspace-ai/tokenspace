@@ -14,7 +14,9 @@ import {
 import { buildMissingCredentialPayload, WORKSPACE_CREDENTIAL_SUBJECT } from "./credentials";
 import { verifyExecutorInstanceToken } from "./executorAuth";
 import {
+  countNonterminalAssignments,
   moveSessionExecutorAssignment,
+  pickPreferredExecutorInstance,
   requireExecutorQueueAccess,
   resolveEffectiveAssignedInstanceId,
   scheduleJobToExecutorInstance,
@@ -197,6 +199,131 @@ async function requireExecutorAccessToJob(
   });
 }
 
+type RuntimeRunnableRoutingContext = {
+  instanceById: Map<Id<"executorInstances">, Doc<"executorInstances">>;
+  loadByInstanceId: Map<Id<"executorInstances">, number>;
+  workspaceById: Map<Id<"workspaces">, Doc<"workspaces"> | null>;
+  sessionStateById: Map<
+    Id<"sessions">,
+    { workspaceId: Id<"workspaces"> | null; preferredInstanceId?: Id<"executorInstances"> }
+  >;
+};
+
+function collectUniqueIds<T extends string>(ids: Array<T | null | undefined>): T[] {
+  const seen = new Set<string>();
+  const unique: T[] = [];
+  for (const id of ids) {
+    if (!id || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    unique.push(id);
+  }
+  return unique;
+}
+
+async function buildRuntimeRunnableRoutingContext(
+  ctx: PublicCtx,
+  args: {
+    executorId: Id<"executors">;
+    candidateJobs: Doc<"jobs">[];
+    executorPending: Doc<"jobs">[];
+    executorRunning: Doc<"jobs">[];
+  },
+): Promise<RuntimeRunnableRoutingContext> {
+  type SessionRunnableState =
+    RuntimeRunnableRoutingContext["sessionStateById"] extends Map<Id<"sessions">, infer TValue> ? TValue : never;
+  const workspaceIds = collectUniqueIds(args.candidateJobs.map((job) => job.workspaceId));
+  const sessionIds = collectUniqueIds(args.candidateJobs.map((job) => job.sessionId));
+
+  const [instances, workspaceEntries, sessionEntries] = await Promise.all([
+    ctx.db
+      .query("executorInstances")
+      .withIndex("by_executor", (q) => q.eq("executorId", args.executorId))
+      .collect(),
+    Promise.all(
+      workspaceIds.map(async (workspaceId) => {
+        return [workspaceId, await ctx.db.get(workspaceId)] as const;
+      }),
+    ),
+    Promise.all(
+      sessionIds.map(async (sessionId) => {
+        const session = await ctx.db.get(sessionId);
+        if (!session) {
+          return [
+            sessionId,
+            { workspaceId: null, preferredInstanceId: undefined } satisfies SessionRunnableState,
+          ] as const;
+        }
+        const [revision, assignment] = await Promise.all([
+          ctx.db.get(session.revisionId),
+          ctx.db
+            .query("sessionExecutorAssignments")
+            .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
+            .first(),
+        ]);
+        return [
+          sessionId,
+          {
+            workspaceId: revision?.workspaceId ?? null,
+            preferredInstanceId: assignment?.executorId === args.executorId ? assignment.assignedInstanceId : undefined,
+          } satisfies SessionRunnableState,
+        ] as const;
+      }),
+    ),
+  ]);
+
+  return {
+    instanceById: new Map(instances.map((instance) => [instance._id, instance])),
+    loadByInstanceId: countNonterminalAssignments([...args.executorPending, ...args.executorRunning]),
+    workspaceById: new Map(workspaceEntries),
+    sessionStateById: new Map(sessionEntries),
+  };
+}
+
+function resolveRunnableRuntimeAssignedInstanceId(args: {
+  job: Doc<"jobs">;
+  executorId: Id<"executors">;
+  routingContext: RuntimeRunnableRoutingContext;
+  now: number;
+}): Id<"executorInstances"> | null {
+  if (!args.job.workspaceId || !args.job.targetExecutorId || args.job.targetExecutorId !== args.executorId) {
+    return null;
+  }
+
+  const workspace = args.routingContext.workspaceById.get(args.job.workspaceId);
+  if (!workspace || workspace.executorId !== args.executorId) {
+    return null;
+  }
+
+  let preferredInstanceId: Id<"executorInstances"> | undefined;
+  if (args.job.sessionId) {
+    const sessionState = args.routingContext.sessionStateById.get(args.job.sessionId);
+    if (!sessionState || sessionState.workspaceId !== args.job.workspaceId) {
+      return null;
+    }
+    preferredInstanceId = sessionState.preferredInstanceId;
+  }
+
+  const assigned = args.job.assignedInstanceId
+    ? args.routingContext.instanceById.get(args.job.assignedInstanceId)
+    : null;
+  if (assigned && assigned.status === "online" && assigned.expiresAt >= args.now) {
+    return assigned._id;
+  }
+
+  return (
+    pickPreferredExecutorInstance({
+      instances: Array.from(args.routingContext.instanceById.values()),
+      queueKind: "runtime",
+      loadByInstanceId: args.routingContext.loadByInstanceId,
+      preferredInstanceId,
+      honorPreferredCapacity: args.job.sessionId !== undefined,
+      now: args.now,
+    })?._id ?? null
+  );
+}
+
 async function failToolBackedJobImmediately(
   ctx: MutationCtx,
   job: Pick<Doc<"jobs">, "_id" | "threadId" | "toolCallId"> & {
@@ -365,64 +492,35 @@ export const runnableJobs = query({
         )
         .collect(),
     ]);
+    const candidateJobs = Array.from(
+      new Map(
+        [...assignedPending, ...assignedRunning, ...executorPending, ...executorRunning].map((job) => [
+          String(job._id),
+          job,
+        ]),
+      ).values(),
+    );
+    const routingContext = await buildRuntimeRunnableRoutingContext(ctx, {
+      executorId: verified.executorId,
+      candidateJobs,
+      executorPending,
+      executorRunning,
+    });
 
     const runnable = new Map<string, Id<"jobs">>();
-    for (const job of assignedPending) {
-      if (!job.workspaceId || job.targetExecutorId !== verified.executorId) {
+    for (const job of candidateJobs) {
+      const effectiveAssignedInstanceId = resolveRunnableRuntimeAssignedInstanceId({
+        job,
+        executorId: verified.executorId,
+        routingContext,
+        now,
+      });
+      if (effectiveAssignedInstanceId !== verified.instanceId) {
         continue;
       }
-      try {
-        await requireExecutorAccessToJob(ctx, { instanceToken: args.instanceToken, job, now });
+      const reclaimable = job.status === "pending" || job.leaseExpiresAt == null || job.leaseExpiresAt < now;
+      if (reclaimable) {
         runnable.set(String(job._id), job._id);
-      } catch {
-        // Skip jobs whose workspace/executor assignment no longer matches.
-      }
-    }
-
-    for (const job of assignedRunning) {
-      const reclaimable = job.leaseExpiresAt == null || job.leaseExpiresAt < now;
-      if (!reclaimable || !job.workspaceId || job.targetExecutorId !== verified.executorId) {
-        continue;
-      }
-      try {
-        await requireExecutorAccessToJob(ctx, { instanceToken: args.instanceToken, job, now });
-        runnable.set(String(job._id), job._id);
-      } catch {
-        // Skip jobs whose workspace/executor assignment no longer matches.
-      }
-    }
-
-    for (const job of [...executorPending, ...executorRunning]) {
-      if (job.assignedInstanceId) {
-        const effective = await resolveEffectiveAssignedInstanceId(ctx, {
-          workspaceId: job.workspaceId,
-          targetExecutorId: job.targetExecutorId,
-          assignedInstanceId: job.assignedInstanceId,
-          queueKind: "runtime",
-          sessionId: job.sessionId,
-          now,
-        }).catch(() => null);
-        if (effective === verified.instanceId) {
-          const reclaimable = job.status === "pending" || job.leaseExpiresAt == null || job.leaseExpiresAt < now;
-          if (reclaimable) {
-            runnable.set(String(job._id), job._id);
-          }
-        }
-      } else {
-        const effective = await resolveEffectiveAssignedInstanceId(ctx, {
-          workspaceId: job.workspaceId,
-          targetExecutorId: job.targetExecutorId,
-          assignedInstanceId: undefined,
-          queueKind: "runtime",
-          sessionId: job.sessionId,
-          now,
-        }).catch(() => null);
-        if (effective === verified.instanceId) {
-          const reclaimable = job.status === "pending" || job.leaseExpiresAt == null || job.leaseExpiresAt < now;
-          if (reclaimable) {
-            runnable.set(String(job._id), job._id);
-          }
-        }
       }
     }
 

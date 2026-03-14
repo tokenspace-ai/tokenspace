@@ -97,6 +97,7 @@ describe("ExecutorSession", () => {
           return {
             executorId: "executor_1",
             instanceId: "instance_1",
+            instanceToken: "instance-token-1",
             instanceTokenExpiresAt: 11_000,
             lastHeartbeatAt: 2_000,
             expiresAt: 17_000,
