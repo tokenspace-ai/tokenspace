@@ -26,6 +26,9 @@ export function assertWorkspaceExecutorAssignmentState(args: {
   if (!args.executor) {
     throw new Error("Executor not found");
   }
+  if (args.executor._id !== args.expectedExecutorId) {
+    throw new Error("Executor document does not match expected executor id");
+  }
   if (args.executor.status !== "active") {
     throw new Error("Executor is not active");
   }
@@ -99,12 +102,12 @@ export const listEligibleExecutorInstancesInternal = internalQuery({
     const now = args.now ?? Date.now();
     const instances = await ctx.db
       .query("executorInstances")
-      .withIndex("by_executor_status", (q) => q.eq("executorId", args.executorId).eq("status", "online"))
+      .withIndex("by_executor_status_expires_at", (q) =>
+        q.eq("executorId", args.executorId).eq("status", "online").gte("expiresAt", now),
+      )
       .collect();
 
-    return instances
-      .filter((instance) => isExecutorInstanceHealthy(instance, now))
-      .sort((a, b) => b.lastHeartbeatAt - a.lastHeartbeatAt);
+    return instances;
   },
 });
 

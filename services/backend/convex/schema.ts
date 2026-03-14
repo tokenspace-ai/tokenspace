@@ -253,6 +253,7 @@ export default defineSchema({
   })
     .index("by_executor", ["executorId"])
     .index("by_executor_status", ["executorId", "status"])
+    .index("by_executor_status_expires_at", ["executorId", "status", "expiresAt"])
     .index("by_expires_at", ["expiresAt"]),
 
   workspaceMemberships: defineTable({

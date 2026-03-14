@@ -17,7 +17,7 @@ The updated direction is:
 - include both runtime jobs and compile jobs in scope
 - explicitly research a JWT-based executor auth model before locking the final auth implementation
 
-This document is intentionally high level. It identifies the architecture we should build, the main tradeoffs, and the research items to validate before implementation.
+This document is intentionally high-level. It identifies the architecture we should build, the main trade-offs, and the research items to validate before implementation.
 
 ## Current State
 
@@ -365,7 +365,7 @@ For UI efficiency we may also keep a summary on `executors`:
 
 - confirm workspace scoping decision
 - confirm fail-fast behavior and user-visible error model
-- confirm compile plus runtime routing requirements
+- confirm compile-and-runtime routing requirements
 - spike the registration and heartbeat API shape
 - spike JWT vs opaque-token executor auth
 

@@ -32,6 +32,16 @@ describe("isExecutorInstanceHealthy", () => {
         1_000,
       ),
     ).toBe(false);
+
+    expect(
+      isExecutorInstanceHealthy(
+        {
+          status: "online",
+          expiresAt: 1_000,
+        },
+        1_000,
+      ),
+    ).toBe(true);
   });
 });
 
@@ -87,6 +97,19 @@ describe("assertWorkspaceExecutorAssignmentState", () => {
         expectedExecutorId: executorId,
       }),
     ).toThrow("Executor is not active");
+  });
+
+  it("rejects an executor document that does not match the expected executor id", () => {
+    expect(() =>
+      assertWorkspaceExecutorAssignmentState({
+        executor: {
+          _id: "other_executor" as any,
+          status: "active",
+        },
+        workspace,
+        expectedExecutorId: executorId,
+      }),
+    ).toThrow("Executor document does not match expected executor id");
   });
 
   it("rejects a mismatched workspace assignment", () => {
