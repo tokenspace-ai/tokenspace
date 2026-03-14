@@ -407,8 +407,12 @@ export const rotateExecutorBootstrapToken = mutation({
         await ctx.db.patch(instance._id, { status: "offline", expiresAt: now });
       }
     }
+    const updatedInstances = await ctx.db
+      .query("executorInstances")
+      .withIndex("by_executor", (q) => q.eq("executorId", executor._id))
+      .collect();
     return {
-      executor: await buildExecutorSummaryForUser(user, updated, instances, now),
+      executor: await buildExecutorSummaryForUser(user, updated, updatedInstances, now),
       bootstrapToken: bootstrap.token,
       setup: buildExecutorSetupPayload(bootstrap.token),
     };
@@ -442,8 +446,15 @@ export const setExecutorStatus = mutation({
         }
       }
     }
+    const updatedInstances =
+      args.status === "disabled"
+        ? await ctx.db
+            .query("executorInstances")
+            .withIndex("by_executor", (q) => q.eq("executorId", executor._id))
+            .collect()
+        : instances;
     return {
-      executor: await buildExecutorSummaryForUser(user, updated, instances, updatedAt),
+      executor: await buildExecutorSummaryForUser(user, updated, updatedInstances, updatedAt),
     };
   },
 });
@@ -565,6 +576,9 @@ export const heartbeatExecutorInstance = mutation({
       const nextToken = await createOpaqueToken();
       rotatedInstanceToken = nextToken.token;
       instanceTokenExpiresAt = now + EXECUTOR_INSTANCE_TOKEN_TTL_MS;
+      patch.prevInstanceTokenId = instance.instanceTokenId;
+      patch.prevInstanceTokenHash = instance.instanceTokenHash;
+      patch.prevInstanceTokenExpiresAt = instance.instanceTokenExpiresAt;
       patch.instanceTokenId = nextToken.tokenId;
       patch.instanceTokenHash = nextToken.tokenHash;
       patch.instanceTokenIssuedAt = now;

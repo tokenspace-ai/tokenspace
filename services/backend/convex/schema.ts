@@ -257,6 +257,9 @@ export default defineSchema({
     instanceTokenHash: v.string(),
     instanceTokenIssuedAt: v.number(),
     instanceTokenExpiresAt: v.number(),
+    prevInstanceTokenId: v.optional(v.string()),
+    prevInstanceTokenHash: v.optional(v.string()),
+    prevInstanceTokenExpiresAt: v.optional(v.number()),
     hostname: v.optional(v.string()),
     version: v.optional(v.string()),
     maxConcurrentRuntimeJobs: v.optional(v.number()),
@@ -266,6 +269,7 @@ export default defineSchema({
     .index("by_executor_status", ["executorId", "status"])
     .index("by_executor_status_expires_at", ["executorId", "status", "expiresAt"])
     .index("by_instance_token_id", ["instanceTokenId"])
+    .index("by_prev_instance_token_id", ["prevInstanceTokenId"])
     .index("by_expires_at", ["expiresAt"]),
 
   workspaceMemberships: defineTable({
@@ -486,7 +490,11 @@ export default defineSchema({
     threadId: v.optional(v.string()),
     toolCallId: v.optional(v.string()),
     promptMessageId: v.optional(v.string()),
+    workspaceId: v.optional(v.id("workspaces")),
     revisionId: v.optional(v.id("revisions")), // Revision containing the bundle to execute against
+    targetExecutorId: v.optional(v.id("executors")),
+    assignedInstanceId: v.optional(v.id("executorInstances")),
+    assignmentUpdatedAt: v.optional(v.number()),
     sessionId: v.optional(v.id("sessions")), // Session for persistent filesystem access
     cwd: v.optional(v.string()), // Working directory relative to /sandbox (for bash commands)
     status: v.union(
@@ -527,6 +535,8 @@ export default defineSchema({
   })
     .index("by_status", ["status"])
     .index("by_status_thread", ["status", "threadId"])
+    .index("by_assigned_instance_status", ["assignedInstanceId", "status"])
+    .index("by_target_executor_status", ["targetExecutorId", "status"])
     .index("by_tool_call_id", ["threadId", "toolCallId"]),
 
   compileJobs: defineTable({
@@ -536,6 +546,9 @@ export default defineSchema({
     workingStateHash: v.optional(v.string()),
     userId: v.optional(v.string()),
     snapshotStorageId: v.id("_storage"),
+    targetExecutorId: v.optional(v.id("executors")),
+    assignedInstanceId: v.optional(v.id("executorInstances")),
+    assignmentUpdatedAt: v.optional(v.number()),
     status: v.union(
       v.literal("pending"),
       v.literal("running"),
@@ -566,6 +579,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_status", ["status"])
+    .index("by_assigned_instance_status", ["assignedInstanceId", "status"])
+    .index("by_target_executor_status", ["targetExecutorId", "status"])
     .index("by_workspace_status", ["workspaceId", "status"]),
 
   // Approvals - granted permissions for actions requiring human approval

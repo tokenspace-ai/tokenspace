@@ -239,7 +239,7 @@ export class CompileJobRunner {
 
   constructor(
     private readonly convex: ConvexClient,
-    private readonly executorToken: string,
+    private readonly instanceToken: string,
   ) {}
 
   enqueue(jobId: CompileJobId): void {
@@ -279,7 +279,7 @@ export class CompileJobRunner {
         compileJobId: jobId,
         workerId: this.workerId,
         leaseMs: LEASE_MS,
-        executorToken: this.executorToken,
+        instanceToken: this.instanceToken,
       });
       if (claim.status !== "running") {
         return;
@@ -295,7 +295,7 @@ export class CompileJobRunner {
             compileJobId: jobId,
             workerId: this.workerId,
             leaseMs: LEASE_MS,
-            executorToken: this.executorToken,
+            instanceToken: this.instanceToken,
           })
           .catch((error) => {
             console.warn(`[executor] compile heartbeat failed for ${jobId}: ${String(error)}`);
@@ -304,7 +304,7 @@ export class CompileJobRunner {
 
       const snapshotInfo = await this.convex.query(api.compileJobs.getCompileJobSnapshot, {
         compileJobId: jobId,
-        executorToken: this.executorToken,
+        instanceToken: this.instanceToken,
       });
 
       const snapshotResponse = await fetch(snapshotInfo.snapshotUrl, {
@@ -381,7 +381,7 @@ export class CompileJobRunner {
         compileJobId: jobId,
         workerId: this.workerId,
         manifest: manifestSummary,
-        executorToken: this.executorToken,
+        instanceToken: this.instanceToken,
       });
 
       if (prepare.kind === "existing") {
@@ -390,7 +390,7 @@ export class CompileJobRunner {
           revisionId: prepare.revisionId,
           workerId: this.workerId,
           artifactFingerprint: undefined,
-          executorToken: this.executorToken,
+          instanceToken: this.instanceToken,
         });
         return;
       }
@@ -452,7 +452,7 @@ export class CompileJobRunner {
         artifactFingerprint: prepare.artifactFingerprint,
         manifest: manifestSummary,
         artifacts,
-        executorToken: this.executorToken,
+        instanceToken: this.instanceToken,
       });
 
       console.log(`Revision id=${commit.revisionId} created for job ${jobId} in ${Date.now() - startTime}ms`);
@@ -467,7 +467,7 @@ export class CompileJobRunner {
         compilerVersion: buildResult.manifest.compilerVersion,
         sourceFingerprint: buildResult.manifest.sourceFingerprint,
         artifactFingerprint: prepare.artifactFingerprint,
-        executorToken: this.executorToken,
+        instanceToken: this.instanceToken,
       });
     } catch (error) {
       console.error(`Compile job ${jobId} failed in ${Date.now() - startTime}ms`, error);
@@ -477,7 +477,7 @@ export class CompileJobRunner {
           compileJobId: jobId,
           workerId: this.workerId,
           error: serialized,
-          executorToken: this.executorToken,
+          instanceToken: this.instanceToken,
         });
       } catch (failError) {
         console.warn(`[executor] failed to mark compile job ${jobId} as failed: ${String(failError)}`);

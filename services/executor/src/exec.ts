@@ -31,6 +31,10 @@ type UserInfoUnavailablePayload = {
   details?: string;
 };
 
+function getInstanceToken(): string | undefined {
+  return process.env.TOKENSPACE_EXECUTOR_INSTANCE_TOKEN?.trim() || process.env.TOKENSPACE_EXECUTOR_TOKEN?.trim();
+}
+
 function extractCredentialMissingPayload(error: unknown): CredentialMissingPayload | null {
   if (!error || typeof error !== "object") return null;
   const data = (error as Record<string, unknown>).data;
@@ -96,7 +100,7 @@ function toCredentialDefForError(payload: CredentialMissingPayload): any {
 
 function createCredentialStore(convex: ConvexClient, options?: ExecutionOptions): CredentialStore {
   const jobId = options?.jobId ?? null;
-  const executorToken = process.env.TOKENSPACE_EXECUTOR_TOKEN?.trim();
+  const instanceToken = getInstanceToken();
 
   return {
     load: (async (credentialId: string) => {
@@ -108,11 +112,11 @@ function createCredentialStore(convex: ConvexClient, options?: ExecutionOptions)
           { errorType: "CREDENTIAL_STORE_NOT_INITIALIZED" },
         );
       }
-      if (!executorToken) {
+      if (!instanceToken) {
         throw new TokenspaceError(
           "Credential resolution is unavailable for this execution",
           undefined,
-          "Executor misconfigured: TOKENSPACE_EXECUTOR_TOKEN is not set",
+          "Executor misconfigured: instance token is not set",
           { errorType: "CREDENTIAL_STORE_NOT_INITIALIZED" },
         );
       }
@@ -121,7 +125,7 @@ function createCredentialStore(convex: ConvexClient, options?: ExecutionOptions)
         const resolved = (await convex.query(api.executor.resolveCredentialForJob, {
           jobId: jobId as Id<"jobs">,
           credentialId,
-          executorToken,
+          instanceToken,
         })) as unknown;
         return resolved === null ? undefined : resolved;
       } catch (error) {
@@ -141,7 +145,7 @@ function createCredentialStore(convex: ConvexClient, options?: ExecutionOptions)
 
 function createUserStore(convex: ConvexClient, options?: ExecutionOptions): UserStore {
   const jobId = options?.jobId ?? null;
-  const executorToken = process.env.TOKENSPACE_EXECUTOR_TOKEN?.trim();
+  const instanceToken = getInstanceToken();
 
   function buildInitializationError(details: string): UserInfoUnavailableError {
     return new UserInfoUnavailableError("User info is unavailable for this execution", "not_initialized", details);
@@ -151,8 +155,8 @@ function createUserStore(convex: ConvexClient, options?: ExecutionOptions): User
     if (!jobId) {
       throw buildInitializationError("Job ID is required to resolve user info");
     }
-    if (!executorToken) {
-      throw buildInitializationError("Executor misconfigured: TOKENSPACE_EXECUTOR_TOKEN is not set");
+    if (!instanceToken) {
+      throw buildInitializationError("Executor misconfigured: instance token is not set");
     }
     try {
       return await call();
@@ -174,14 +178,14 @@ function createUserStore(convex: ConvexClient, options?: ExecutionOptions): User
       await runResolver(async () => {
         return (await convex.action(api.executor.resolveCurrentUserInfoForJob, {
           jobId: jobId as Id<"jobs">,
-          executorToken: executorToken!,
+          instanceToken: instanceToken!,
         })) as Awaited<ReturnType<UserStore["getCurrentUserInfo"]>>;
       }),
     getInfo: async (args: UserLookup) =>
       await runResolver(async () => {
         return (await convex.action(api.executor.resolveUserInfoForJob, {
           jobId: jobId as Id<"jobs">,
-          executorToken: executorToken!,
+          instanceToken: instanceToken!,
           ...args,
         })) as Awaited<ReturnType<UserStore["getInfo"]>>;
       }),

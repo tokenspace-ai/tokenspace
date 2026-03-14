@@ -290,7 +290,7 @@ function randomId(): string {
 export class RevisionWorkerPool {
   private static instance: RevisionWorkerPool | null = null;
   private readonly convex: ConvexClient;
-  private readonly executorToken: string;
+  private readonly instanceToken: string;
   private readonly config: PoolConfig;
   private readonly supervisorId: string;
   private readonly revisions = new Map<string, RevisionState>();
@@ -299,14 +299,14 @@ export class RevisionWorkerPool {
     { bundleUrl: string; depsUrl: string | null; promise: Promise<{ bundlePath: string }> }
   >();
 
-  private constructor(args: { convex: ConvexClient; executorToken: string; config: PoolConfig }) {
+  private constructor(args: { convex: ConvexClient; instanceToken: string; config: PoolConfig }) {
     this.convex = args.convex;
-    this.executorToken = args.executorToken;
+    this.instanceToken = args.instanceToken;
     this.config = args.config;
     this.supervisorId = randomUUID();
   }
 
-  static initialize(args: { convex: ConvexClient; executorToken: string }) {
+  static initialize(args: { convex: ConvexClient; instanceToken: string }) {
     if (RevisionWorkerPool.instance) return;
     const jobLeaseMs = parsePositiveInt(process.env.TOKENSPACE_RUNTIME_JOB_LEASE_MS, 30_000);
     const heartbeatIntervalMs = parsePositiveInt(
@@ -321,7 +321,7 @@ export class RevisionWorkerPool {
     };
     RevisionWorkerPool.instance = new RevisionWorkerPool({
       convex: args.convex,
-      executorToken: args.executorToken,
+      instanceToken: args.instanceToken,
       config,
     });
   }
@@ -334,7 +334,7 @@ export class RevisionWorkerPool {
   }
 
   async enqueue(jobId: JobId): Promise<void> {
-    const job = await this.convex.query(api.executor.getJob, { jobId, executorToken: this.executorToken });
+    const job = await this.convex.query(api.executor.getJob, { jobId, instanceToken: this.instanceToken });
     if (!job) return;
     const now = nowMs();
     const reclaimable =
@@ -441,7 +441,7 @@ export class RevisionWorkerPool {
         job: jobId,
         workerId: this.supervisorId,
         leaseMs: this.config.jobLeaseMs,
-        executorToken: this.executorToken,
+        instanceToken: this.instanceToken,
       })) as StartJobResult;
     } catch {
       // Job may have been claimed/processed by another runtime instance.
@@ -498,7 +498,7 @@ export class RevisionWorkerPool {
     const leaseLostPromise = new Promise<never>((_, reject) => {
       rejectLeaseLost = reject;
     });
-    const unsubStop = this.convex.onUpdate(api.executor.getJob, { jobId, executorToken: this.executorToken }, (job) => {
+    const unsubStop = this.convex.onUpdate(api.executor.getJob, { jobId, instanceToken: this.instanceToken }, (job) => {
       if (!job) return;
       if (job.stopRequestedAt && !stopRequested) {
         stopRequested = true;
@@ -518,7 +518,7 @@ export class RevisionWorkerPool {
             job: jobId,
             workerId: this.supervisorId,
             leaseMs: this.config.jobLeaseMs,
-            executorToken: this.executorToken,
+            instanceToken: this.instanceToken,
           })
           .catch((error) => {
             leaseLost = true;
@@ -553,7 +553,7 @@ export class RevisionWorkerPool {
         job: jobId,
         result,
         workerId: this.supervisorId,
-        executorToken: this.executorToken,
+        instanceToken: this.instanceToken,
       });
       console.log(`Job id=${jobId} completed in ${nowMs() - startTime}ms`);
     } catch (error) {
@@ -566,7 +566,7 @@ export class RevisionWorkerPool {
           await this.convex.mutation(api.executor.cancelJob, {
             job: jobId,
             workerId: this.supervisorId,
-            executorToken: this.executorToken,
+            instanceToken: this.instanceToken,
             error: serialized,
           });
         } catch (e) {
@@ -586,7 +586,7 @@ export class RevisionWorkerPool {
       await this.convex.mutation(api.executor.failJob, {
         job: jobId,
         workerId: this.supervisorId,
-        executorToken: this.executorToken,
+        instanceToken: this.instanceToken,
         error,
       });
     } catch (e) {

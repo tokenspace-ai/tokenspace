@@ -123,86 +123,93 @@ describe("executorAuth", () => {
       updatedAt: 950,
     };
 
-    const verified = await verifyExecutorInstanceToken(
-      {
+    const mockCtx = (overrides?: Partial<typeof instance>, executorOverrides?: Partial<typeof executor>) =>
+      ({
         runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
           if ("instanceTokenId" in args) {
-            return instance;
+            return { ...instance, ...overrides };
+          }
+          if ("prevInstanceTokenId" in args) {
+            return null;
           }
           if ("executorId" in args) {
-            return executor;
+            return { ...executor, ...executorOverrides };
           }
           return null;
         },
-      } as any,
-      instanceToken.token,
-      1_000,
-    );
+      }) as any;
+
+    const verified = await verifyExecutorInstanceToken(mockCtx(), instanceToken.token, 1_000);
 
     expect(verified.instanceId).toBe("instance_1");
     expect(verified.tokenVersion).toBe(2);
 
     await expect(
-      verifyExecutorInstanceToken(
-        {
-          runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
-            if ("instanceTokenId" in args) {
-              return {
-                ...instance,
-                instanceTokenExpiresAt: 999,
-              };
-            }
-            if ("executorId" in args) {
-              return executor;
-            }
-            return null;
-          },
-        } as any,
-        instanceToken.token,
-        1_000,
-      ),
+      verifyExecutorInstanceToken(mockCtx({ instanceTokenExpiresAt: 999 }), instanceToken.token, 1_000),
     ).rejects.toThrow("Executor instance token expired");
 
-    await expect(
-      verifyExecutorInstanceToken(
-        {
-          runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
-            if ("instanceTokenId" in args) {
-              return {
-                ...instance,
-                expiresAt: 999,
-              };
-            }
-            if ("executorId" in args) {
-              return executor;
-            }
-            return null;
-          },
-        } as any,
-        instanceToken.token,
-        1_000,
-      ),
-    ).rejects.toThrow("Executor instance heartbeat lease expired");
+    await expect(verifyExecutorInstanceToken(mockCtx({ expiresAt: 999 }), instanceToken.token, 1_000)).rejects.toThrow(
+      "Executor instance heartbeat lease expired",
+    );
 
     await expect(
-      verifyExecutorInstanceToken(
-        {
-          runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
-            if ("instanceTokenId" in args) {
-              return instance;
-            }
-            if ("executorId" in args) {
-              return {
-                ...executor,
-                tokenVersion: 3,
-              };
-            }
-            return null;
-          },
-        } as any,
-        instanceToken.token,
-        1_000,
-      ),
+      verifyExecutorInstanceToken(mockCtx(undefined, { tokenVersion: 3 }), instanceToken.token, 1_000),
     ).rejects.toThrow("Executor token version mismatch");
+  });
+
+  it("accepts previous token during grace window after rotation", async () => {
+    const oldToken = await createOpaqueToken();
+    const newToken = await createOpaqueToken();
+    const instance = {
+      _id: "instance_1",
+      executorId: "executor_1",
+      tokenVersion: 2,
+      status: "online",
+      registeredAt: 1_000,
+      lastHeartbeatAt: 1_500,
+      expiresAt: 5_000,
+      instanceTokenId: newToken.tokenId,
+      instanceTokenHash: newToken.tokenHash,
+      instanceTokenIssuedAt: 2_000,
+      instanceTokenExpiresAt: 5_000,
+      prevInstanceTokenId: oldToken.tokenId,
+      prevInstanceTokenHash: oldToken.tokenHash,
+      prevInstanceTokenExpiresAt: 3_000,
+    };
+    const executor = {
+      _id: "executor_1",
+      name: "Shared Fleet",
+      status: "active",
+      authMode: "opaque_secret",
+      tokenVersion: 2,
+      bootstrapTokenId: "bootstrap-id",
+      bootstrapTokenHash: "bootstrap-hash",
+      bootstrapIssuedAt: 900,
+      createdBy: "creator-user",
+      createdAt: 900,
+      updatedAt: 950,
+    };
+
+    const mockCtx = {
+      runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+        if ("instanceTokenId" in args) {
+          return null;
+        }
+        if ("prevInstanceTokenId" in args) {
+          return instance;
+        }
+        if ("executorId" in args) {
+          return executor;
+        }
+        return null;
+      },
+    } as any;
+
+    const verified = await verifyExecutorInstanceToken(mockCtx, oldToken.token, 2_500);
+    expect(verified.instanceId).toBe("instance_1");
+
+    await expect(verifyExecutorInstanceToken(mockCtx, oldToken.token, 3_001)).rejects.toThrow(
+      "Executor instance token expired",
+    );
   });
 });

@@ -1,7 +1,22 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
-import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+import {
+  action,
+  internalMutation,
+  internalQuery,
+  type MutationCtx,
+  mutation,
+  type QueryCtx,
+  query,
+} from "./_generated/server";
+import { verifyExecutorInstanceToken } from "./executorAuth";
+import {
+  requireExecutorQueueAccess,
+  resolveEffectiveAssignedInstanceId,
+  scheduleJobToExecutorInstance,
+} from "./executorRouting";
+import { assertWorkspaceAssignedToExecutor } from "./executors";
 
 const MIN_LEASE_MS = 1_000;
 const MAX_LEASE_MS = 10 * 60_000;
@@ -75,11 +90,18 @@ const vUploadInstruction = v.union(
   v.object({ kind: v.literal("upload"), uploadUrl: v.string() }),
 );
 
-function assertExecutorToken(executorToken: string): void {
-  const expected = process.env.TOKENSPACE_EXECUTOR_TOKEN;
-  if (!expected || executorToken !== expected) {
-    throw new Error("Unauthorized");
-  }
+async function requireExecutorAccessToCompileJob(
+  ctx: QueryCtx | MutationCtx,
+  args: { instanceToken: string; job: Doc<"compileJobs">; now?: number },
+) {
+  return await requireExecutorQueueAccess(ctx, {
+    instanceToken: args.instanceToken,
+    workspaceId: args.job.workspaceId,
+    targetExecutorId: args.job.targetExecutorId,
+    assignedInstanceId: args.job.assignedInstanceId,
+    queueKind: "compile",
+    now: args.now,
+  });
 }
 
 function clampLeaseMs(leaseMs: number): number {
@@ -134,6 +156,12 @@ export const createCompileJob = internalMutation({
   },
   returns: v.id("compileJobs"),
   handler: async (ctx, args) => {
+    const now = Date.now();
+    const scheduled = await scheduleJobToExecutorInstance(ctx, {
+      workspaceId: args.workspaceId,
+      queueKind: "compile",
+      now,
+    });
     return await ctx.db.insert("compileJobs", {
       workspaceId: args.workspaceId,
       branchId: args.branchId,
@@ -141,8 +169,13 @@ export const createCompileJob = internalMutation({
       workingStateHash: args.workingStateHash,
       userId: args.userId,
       snapshotStorageId: args.snapshotStorageId,
-      status: "pending",
-      createdAt: Date.now(),
+      targetExecutorId: scheduled.targetExecutorId,
+      assignedInstanceId: scheduled.kind === "assigned" ? scheduled.assignedInstanceId : undefined,
+      assignmentUpdatedAt: scheduled.assignmentUpdatedAt,
+      status: scheduled.kind === "assigned" ? "pending" : "failed",
+      error: scheduled.kind === "unavailable" ? scheduled.error : undefined,
+      completedAt: scheduled.kind === "unavailable" ? now : undefined,
+      createdAt: now,
     });
   },
 });
@@ -158,24 +191,73 @@ export const getCompileJob = internalQuery({
 
 export const runnableCompileJobs = query({
   args: {
-    executorToken: v.string(),
+    instanceToken: v.string(),
   },
   returns: v.array(v.id("compileJobs")),
   handler: async (ctx, args) => {
-    assertExecutorToken(args.executorToken);
     const now = Date.now();
+    const verified = await verifyExecutorInstanceToken(ctx, args.instanceToken, now);
+    const [assignedPending, assignedRunning, executorPending, executorRunning] = await Promise.all([
+      ctx.db
+        .query("compileJobs")
+        .withIndex("by_assigned_instance_status", (q) =>
+          q.eq("assignedInstanceId", verified.instanceId).eq("status", "pending"),
+        )
+        .take(RUNNABLE_SCAN_LIMIT),
+      ctx.db
+        .query("compileJobs")
+        .withIndex("by_assigned_instance_status", (q) =>
+          q.eq("assignedInstanceId", verified.instanceId).eq("status", "running"),
+        )
+        .take(RUNNABLE_SCAN_LIMIT),
+      ctx.db
+        .query("compileJobs")
+        .withIndex("by_target_executor_status", (q) =>
+          q.eq("targetExecutorId", verified.executorId).eq("status", "pending"),
+        )
+        .take(RUNNABLE_SCAN_LIMIT),
+      ctx.db
+        .query("compileJobs")
+        .withIndex("by_target_executor_status", (q) =>
+          q.eq("targetExecutorId", verified.executorId).eq("status", "running"),
+        )
+        .take(RUNNABLE_SCAN_LIMIT),
+    ]);
 
-    const pending = await ctx.db
-      .query("compileJobs")
-      .withIndex("by_status", (q) => q.eq("status", "pending"))
-      .take(RUNNABLE_SCAN_LIMIT);
-    const reclaimableRunning = await ctx.db
-      .query("compileJobs")
-      .withIndex("by_status", (q) => q.eq("status", "running"))
-      .filter((q) => q.or(q.eq(q.field("leaseExpiresAt"), undefined), q.lt(q.field("leaseExpiresAt"), now + 1)))
-      .take(RUNNABLE_SCAN_LIMIT);
+    const runnable = new Map<string, Id<"compileJobs">>();
+    for (const job of assignedPending) {
+      try {
+        await requireExecutorAccessToCompileJob(ctx, { instanceToken: args.instanceToken, job, now });
+        runnable.set(String(job._id), job._id);
+      } catch {}
+    }
+    for (const job of assignedRunning) {
+      if (job.leaseExpiresAt != null && job.leaseExpiresAt >= now) {
+        continue;
+      }
+      try {
+        await requireExecutorAccessToCompileJob(ctx, { instanceToken: args.instanceToken, job, now });
+        runnable.set(String(job._id), job._id);
+      } catch {}
+    }
+    for (const job of [...executorPending, ...executorRunning]) {
+      const effective = await resolveEffectiveAssignedInstanceId(ctx, {
+        workspaceId: job.workspaceId,
+        targetExecutorId: job.targetExecutorId,
+        assignedInstanceId: job.assignedInstanceId,
+        queueKind: "compile",
+        now,
+      }).catch(() => null);
+      if (effective !== verified.instanceId) {
+        continue;
+      }
+      if (job.status === "running" && job.leaseExpiresAt != null && job.leaseExpiresAt >= now) {
+        continue;
+      }
+      runnable.set(String(job._id), job._id);
+    }
 
-    return [...pending, ...reclaimableRunning].map((job) => job._id);
+    return Array.from(runnable.values());
   },
 });
 
@@ -184,7 +266,7 @@ export const claimCompileJob = mutation({
     compileJobId: v.id("compileJobs"),
     workerId: v.string(),
     leaseMs: v.number(),
-    executorToken: v.string(),
+    instanceToken: v.string(),
   },
   returns: v.object({
     _id: v.id("compileJobs"),
@@ -196,10 +278,17 @@ export const claimCompileJob = mutation({
     userId: v.optional(v.string()),
   }),
   handler: async (ctx, args) => {
-    assertExecutorToken(args.executorToken);
+    const now = Date.now();
+    const verified = await verifyExecutorInstanceToken(ctx, args.instanceToken, now);
     const job = await ctx.db.get(args.compileJobId);
     if (!job) {
       throw new Error("Compile job not found");
+    }
+    if (!job.targetExecutorId) {
+      throw new Error("Compile job is missing executor assignment");
+    }
+    if (job.targetExecutorId !== verified.executorId) {
+      throw new Error("Compile job is assigned to a different executor");
     }
     if (job.status === "completed" || job.status === "failed" || job.status === "canceled") {
       return {
@@ -213,7 +302,26 @@ export const claimCompileJob = mutation({
       };
     }
 
-    const now = Date.now();
+    const effectiveAssignedInstanceId = await resolveEffectiveAssignedInstanceId(ctx, {
+      workspaceId: job.workspaceId,
+      targetExecutorId: job.targetExecutorId,
+      assignedInstanceId: job.assignedInstanceId,
+      queueKind: "compile",
+      now,
+    });
+    if (!effectiveAssignedInstanceId) {
+      throw new Error("No healthy executor instance is available for this compile job");
+    }
+    if (effectiveAssignedInstanceId !== verified.instanceId) {
+      throw new Error("Compile job is assigned to a different executor instance");
+    }
+    if (job.assignedInstanceId !== effectiveAssignedInstanceId) {
+      await ctx.db.patch(job._id, {
+        assignedInstanceId: effectiveAssignedInstanceId,
+        assignmentUpdatedAt: now,
+      });
+    }
+
     const leaseMs = clampLeaseMs(args.leaseMs);
     const leaseExpiresAt = now + leaseMs;
 
@@ -260,14 +368,17 @@ export const heartbeatCompileJob = mutation({
     compileJobId: v.id("compileJobs"),
     workerId: v.string(),
     leaseMs: v.number(),
-    executorToken: v.string(),
+    instanceToken: v.string(),
   },
   handler: async (ctx, args) => {
-    assertExecutorToken(args.executorToken);
     const job = await ctx.db.get(args.compileJobId);
     if (!job) {
       throw new Error("Compile job not found");
     }
+    await requireExecutorAccessToCompileJob(ctx, {
+      instanceToken: args.instanceToken,
+      job,
+    });
     if (job.status !== "running") {
       throw new Error("Compile job is not running");
     }
@@ -285,7 +396,7 @@ export const heartbeatCompileJob = mutation({
 export const getCompileJobSnapshot = query({
   args: {
     compileJobId: v.id("compileJobs"),
-    executorToken: v.string(),
+    instanceToken: v.string(),
   },
   returns: v.object({
     workspaceId: v.id("workspaces"),
@@ -296,11 +407,14 @@ export const getCompileJobSnapshot = query({
     snapshotUrl: v.string(),
   }),
   handler: async (ctx, args) => {
-    assertExecutorToken(args.executorToken);
     const job = await ctx.db.get(args.compileJobId);
     if (!job) {
       throw new Error("Compile job not found");
     }
+    await requireExecutorAccessToCompileJob(ctx, {
+      instanceToken: args.instanceToken,
+      job,
+    });
     const snapshotUrl = await ctx.storage.getUrl(job.snapshotStorageId);
     if (!snapshotUrl) {
       throw new Error("Compile snapshot storage URL unavailable");
@@ -321,7 +435,7 @@ export const prepareRevisionFromBuildForExecutor = action({
     compileJobId: v.id("compileJobs"),
     workerId: v.string(),
     manifest: vBuildManifestSummary,
-    executorToken: v.string(),
+    instanceToken: v.string(),
   },
   returns: v.union(
     v.object({
@@ -342,13 +456,23 @@ export const prepareRevisionFromBuildForExecutor = action({
     }),
   ),
   handler: async (ctx, args): Promise<PrepareResult> => {
-    assertExecutorToken(args.executorToken);
     const job = await ctx.runQuery(internal.compileJobs.getCompileJob, {
       compileJobId: args.compileJobId,
     });
     if (!job) {
       throw new Error("Compile job not found");
     }
+    const verified = await verifyExecutorInstanceToken(ctx, args.instanceToken);
+    if (!job.targetExecutorId || !job.assignedInstanceId) {
+      throw new Error("Compile job is missing executor assignment");
+    }
+    if (verified.executorId !== job.targetExecutorId || verified.instanceId !== job.assignedInstanceId) {
+      throw new Error("Compile job is assigned to a different executor instance");
+    }
+    await assertWorkspaceAssignedToExecutor(ctx, {
+      workspaceId: job.workspaceId,
+      executorId: job.targetExecutorId,
+    });
     assertRunningOwnedJob(job, args.workerId);
 
     await assertBranchHeadUnchanged(ctx, {
@@ -378,20 +502,30 @@ export const commitRevisionFromBuildForExecutor = action({
       diagnostics: vArtifactReference,
       deps: v.optional(vArtifactReference),
     }),
-    executorToken: v.string(),
+    instanceToken: v.string(),
   },
   returns: v.object({
     revisionId: v.id("revisions"),
     created: v.boolean(),
   }),
   handler: async (ctx, args): Promise<CommitResult> => {
-    assertExecutorToken(args.executorToken);
     const job = await ctx.runQuery(internal.compileJobs.getCompileJob, {
       compileJobId: args.compileJobId,
     });
     if (!job) {
       throw new Error("Compile job not found");
     }
+    const verified = await verifyExecutorInstanceToken(ctx, args.instanceToken);
+    if (!job.targetExecutorId || !job.assignedInstanceId) {
+      throw new Error("Compile job is missing executor assignment");
+    }
+    if (verified.executorId !== job.targetExecutorId || verified.instanceId !== job.assignedInstanceId) {
+      throw new Error("Compile job is assigned to a different executor instance");
+    }
+    await assertWorkspaceAssignedToExecutor(ctx, {
+      workspaceId: job.workspaceId,
+      executorId: job.targetExecutorId,
+    });
     assertRunningOwnedJob(job, args.workerId);
 
     await assertBranchHeadUnchanged(ctx, {
@@ -422,14 +556,17 @@ export const completeCompileJob = mutation({
     compilerVersion: v.optional(v.string()),
     sourceFingerprint: v.optional(v.string()),
     artifactFingerprint: v.optional(v.string()),
-    executorToken: v.string(),
+    instanceToken: v.string(),
   },
   handler: async (ctx, args) => {
-    assertExecutorToken(args.executorToken);
     const job = await ctx.db.get(args.compileJobId);
     if (!job) {
       throw new Error("Compile job not found");
     }
+    await requireExecutorAccessToCompileJob(ctx, {
+      instanceToken: args.instanceToken,
+      job,
+    });
     if (job.status !== "running") {
       throw new Error("Compile job is not running");
     }
@@ -469,14 +606,17 @@ export const cancelCompileJob = mutation({
         data: v.optional(v.any()),
       }),
     ),
-    executorToken: v.string(),
+    instanceToken: v.string(),
   },
   handler: async (ctx, args) => {
-    assertExecutorToken(args.executorToken);
     const job = await ctx.db.get(args.compileJobId);
     if (!job) {
       throw new Error("Compile job not found");
     }
+    await requireExecutorAccessToCompileJob(ctx, {
+      instanceToken: args.instanceToken,
+      job,
+    });
     if (job.status !== "running" && job.status !== "pending") {
       return;
     }
@@ -501,14 +641,17 @@ export const failCompileJob = mutation({
       details: v.optional(v.string()),
       data: v.optional(v.any()),
     }),
-    executorToken: v.string(),
+    instanceToken: v.string(),
   },
   handler: async (ctx, args) => {
-    assertExecutorToken(args.executorToken);
     const job = await ctx.db.get(args.compileJobId);
     if (!job) {
       throw new Error("Compile job not found");
     }
+    await requireExecutorAccessToCompileJob(ctx, {
+      instanceToken: args.instanceToken,
+      job,
+    });
     if (job.status !== "running") {
       throw new Error("Compile job is not running");
     }

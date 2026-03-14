@@ -12,19 +12,23 @@ function requireEnv(name: string): string {
   return value;
 }
 
+function requireInstanceToken(): string {
+  return process.env.TOKENSPACE_EXECUTOR_INSTANCE_TOKEN ?? requireEnv("TOKENSPACE_EXECUTOR_TOKEN");
+}
+
 async function main() {
   const convexUrl = requireEnv("CONVEX_URL");
-  const executorToken = requireEnv("TOKENSPACE_EXECUTOR_TOKEN");
+  const instanceToken = requireInstanceToken();
   console.log(`Starting tokenspace executor with CONVEX_URL=${convexUrl}`);
 
   const convex = new ConvexClient(convexUrl);
-  RevisionWorkerPool.initialize({ convex, executorToken });
+  RevisionWorkerPool.initialize({ convex, instanceToken });
   const pool = RevisionWorkerPool.get();
-  const compileJobRunner = new CompileJobRunner(convex, executorToken);
+  const compileJobRunner = new CompileJobRunner(convex, instanceToken);
   const seenJobs = new Set<string>();
   const seenCompileJobs = new Set<string>();
 
-  const unsub = convex.onUpdate(api.executor.runnableJobs, { executorToken }, (jobs) => {
+  const unsub = convex.onUpdate(api.executor.runnableJobs, { instanceToken }, (jobs) => {
     for (const job of jobs) {
       if (!seenJobs.has(job)) {
         seenJobs.add(job);
@@ -36,7 +40,7 @@ async function main() {
       }
     }
   });
-  const unsubCompileJobs = convex.onUpdate(api.compileJobs.runnableCompileJobs, { executorToken }, (jobs) => {
+  const unsubCompileJobs = convex.onUpdate(api.compileJobs.runnableCompileJobs, { instanceToken }, (jobs) => {
     for (const job of jobs) {
       if (!seenCompileJobs.has(job)) {
         seenCompileJobs.add(job);

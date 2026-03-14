@@ -108,6 +108,21 @@ async function lookupInstanceByTokenId(
   return await ctx.runQuery(internal.executorAuth.getExecutorInstanceByTokenIdInternal, { instanceTokenId });
 }
 
+async function lookupInstanceByPrevTokenId(
+  ctx: ExecutorAuthCtx,
+  prevInstanceTokenId: string,
+): Promise<Doc<"executorInstances"> | null> {
+  if ("db" in ctx) {
+    return await ctx.db
+      .query("executorInstances")
+      .withIndex("by_prev_instance_token_id", (q) => q.eq("prevInstanceTokenId", prevInstanceTokenId))
+      .first();
+  }
+  return await ctx.runQuery(internal.executorAuth.getExecutorInstanceByPrevTokenIdInternal, {
+    prevInstanceTokenId,
+  });
+}
+
 async function lookupExecutorById(ctx: ExecutorAuthCtx, executorId: Id<"executors">): Promise<Doc<"executors"> | null> {
   if ("db" in ctx) {
     return await ctx.db.get(executorId);
@@ -196,13 +211,41 @@ export async function verifyExecutorInstanceToken(
   now: number = Date.now(),
 ): Promise<{ executor: Doc<"executors">; instance: Doc<"executorInstances"> } & VerifiedExecutorIdentity> {
   const parsed = parseOpaqueToken(instanceToken);
-  const instance = await lookupInstanceByTokenId(ctx, parsed.tokenId);
-  if (!instance || !(await verifyOpaqueToken(parsed.secret, instance.instanceTokenHash))) {
+
+  let instance = await lookupInstanceByTokenId(ctx, parsed.tokenId);
+  let usedPrevToken = false;
+
+  if (!instance) {
+    instance = await lookupInstanceByPrevTokenId(ctx, parsed.tokenId);
+    if (instance) {
+      usedPrevToken = true;
+    }
+  }
+
+  if (!instance) {
     throw new Error("Unauthorized");
   }
-  if (instance.instanceTokenExpiresAt < now) {
-    throw new Error("Executor instance token expired");
+
+  if (usedPrevToken) {
+    if (
+      !instance.prevInstanceTokenHash ||
+      !instance.prevInstanceTokenExpiresAt ||
+      !(await verifyOpaqueToken(parsed.secret, instance.prevInstanceTokenHash))
+    ) {
+      throw new Error("Unauthorized");
+    }
+    if (instance.prevInstanceTokenExpiresAt < now) {
+      throw new Error("Executor instance token expired");
+    }
+  } else {
+    if (!(await verifyOpaqueToken(parsed.secret, instance.instanceTokenHash))) {
+      throw new Error("Unauthorized");
+    }
+    if (instance.instanceTokenExpiresAt < now) {
+      throw new Error("Executor instance token expired");
+    }
   }
+
   if (instance.expiresAt < now) {
     throw new Error("Executor instance heartbeat lease expired");
   }
@@ -250,6 +293,18 @@ export const getExecutorInstanceByTokenIdInternal = internalQuery({
     return await ctx.db
       .query("executorInstances")
       .withIndex("by_instance_token_id", (q) => q.eq("instanceTokenId", args.instanceTokenId))
+      .first();
+  },
+});
+
+export const getExecutorInstanceByPrevTokenIdInternal = internalQuery({
+  args: {
+    prevInstanceTokenId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("executorInstances")
+      .withIndex("by_prev_instance_token_id", (q) => q.eq("prevInstanceTokenId", args.prevInstanceTokenId))
       .first();
   },
 });
