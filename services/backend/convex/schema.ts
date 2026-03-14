@@ -235,17 +235,28 @@ export default defineSchema({
     status: executorStatusValidator,
     authMode: executorAuthModeValidator,
     tokenVersion: v.number(),
+    bootstrapTokenId: v.string(),
+    bootstrapTokenHash: v.string(),
+    bootstrapIssuedAt: v.number(),
+    bootstrapLastUsedAt: v.optional(v.number()),
     createdBy: v.string(),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_status", ["status"]),
+  })
+    .index("by_status", ["status"])
+    .index("by_bootstrap_token_id", ["bootstrapTokenId"]),
 
   executorInstances: defineTable({
     executorId: v.id("executors"),
+    tokenVersion: v.number(),
     status: executorInstanceStatusValidator,
     registeredAt: v.number(),
     lastHeartbeatAt: v.number(),
     expiresAt: v.number(),
+    instanceTokenId: v.string(),
+    instanceTokenHash: v.string(),
+    instanceTokenIssuedAt: v.number(),
+    instanceTokenExpiresAt: v.number(),
     hostname: v.optional(v.string()),
     version: v.optional(v.string()),
     maxConcurrentRuntimeJobs: v.optional(v.number()),
@@ -254,6 +265,7 @@ export default defineSchema({
     .index("by_executor", ["executorId"])
     .index("by_executor_status", ["executorId", "status"])
     .index("by_executor_status_expires_at", ["executorId", "status", "expiresAt"])
+    .index("by_instance_token_id", ["instanceTokenId"])
     .index("by_expires_at", ["expiresAt"]),
 
   workspaceMemberships: defineTable({

@@ -30,6 +30,7 @@ import type * as credentials from "../credentials.js";
 import type * as credentialsCrypto from "../credentialsCrypto.js";
 import type * as crons from "../crons.js";
 import type * as executor from "../executor.js";
+import type * as executorAuth from "../executorAuth.js";
 import type * as executors from "../executors.js";
 import type * as fs_fileBlobs from "../fs/fileBlobs.js";
 import type * as fs_index from "../fs/index.js";
@@ -80,6 +81,7 @@ declare const fullApi: ApiFromModules<{
   credentialsCrypto: typeof credentialsCrypto;
   crons: typeof crons;
   executor: typeof executor;
+  executorAuth: typeof executorAuth;
   executors: typeof executors;
   "fs/fileBlobs": typeof fs_fileBlobs;
   "fs/index": typeof fs_index;
