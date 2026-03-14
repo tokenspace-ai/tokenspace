@@ -31,6 +31,9 @@ const workspaceInvitationStatusValidator = v.union(
   v.literal("dismissed"),
   v.literal("revoked"),
 );
+const executorStatusValidator = v.union(v.literal("active"), v.literal("disabled"));
+const executorAuthModeValidator = v.union(v.literal("opaque_secret"), v.literal("jwt"), v.literal("hybrid"));
+const executorInstanceStatusValidator = v.union(v.literal("online"), v.literal("offline"), v.literal("draining"));
 
 export default defineSchema({
   // Chat threads (backed by durable-agents component threads)
@@ -204,6 +207,7 @@ export default defineSchema({
     name: v.string(),
     slug: v.string(), // URL-friendly identifier
     activeCommitId: v.optional(v.id("commits")), // Current production version
+    executorId: v.optional(v.id("executors")),
     iconBlobId: v.optional(v.id("blobs")),
     iconMimeType: v.optional(v.string()),
     models: v.optional(
@@ -222,7 +226,35 @@ export default defineSchema({
     updatedAt: v.number(),
     // unused for now:
     gitSyncEnabled: v.optional(v.boolean()),
-  }).index("by_slug", ["slug"]),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_executor", ["executorId"]),
+
+  executors: defineTable({
+    name: v.string(),
+    status: executorStatusValidator,
+    authMode: executorAuthModeValidator,
+    tokenVersion: v.number(),
+    createdBy: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_status", ["status"]),
+
+  executorInstances: defineTable({
+    executorId: v.id("executors"),
+    status: executorInstanceStatusValidator,
+    registeredAt: v.number(),
+    lastHeartbeatAt: v.number(),
+    expiresAt: v.number(),
+    hostname: v.optional(v.string()),
+    version: v.optional(v.string()),
+    maxConcurrentRuntimeJobs: v.optional(v.number()),
+    maxConcurrentCompileJobs: v.optional(v.number()),
+  })
+    .index("by_executor", ["executorId"])
+    .index("by_executor_status", ["executorId", "status"])
+    .index("by_executor_status_expires_at", ["executorId", "status", "expiresAt"])
+    .index("by_expires_at", ["expiresAt"]),
 
   workspaceMemberships: defineTable({
     workspaceId: v.id("workspaces"),
