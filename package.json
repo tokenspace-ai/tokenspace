@@ -29,6 +29,7 @@
     "update-convex-binary": "bun run scripts/update-convex-binary-version.ts",
     "dev": "bun run scripts/dev.ts --seed",
     "dev:stop": "bun run scripts/dev.ts stop",
+    "dev:lib": "turbo dev:lib",
     "db:nuke": "bun run scripts/nuke-db.ts",
     "db:seed": "bun run scripts/seed.ts",
     "db:seed:update": "bun run scripts/seed.ts --update",

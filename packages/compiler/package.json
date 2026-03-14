@@ -34,7 +34,8 @@
     "build:types": "tsc -p tsconfig.build.json --emitDeclarationOnly",
     "prepack": "bun --cwd ../types build && bun --cwd ../system-content build && bun run clean && bun run build",
     "typecheck": "tsc --noEmit",
-    "test:unit": "bun test"
+    "test:unit": "bun test",
+    "dev:lib": "tsc -w --preserveWatchOutput -p tsconfig.build.json"
   },
   "engines": {
     "bun": ">=1.3.9"
