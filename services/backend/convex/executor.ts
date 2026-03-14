@@ -748,6 +748,32 @@ export const requestStopJob = mutation({
   },
 });
 
+export const requestStopJobInternal = internalMutation({
+  args: {
+    jobId: v.id("jobs"),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (!job) {
+      throw new Error("Job not found");
+    }
+    if (job.status === "completed" || job.status === "failed" || job.status === "canceled") {
+      return job;
+    }
+    if (job.stopRequestedAt) {
+      return job;
+    }
+
+    await ctx.db.patch(args.jobId, {
+      stopRequestedAt: Date.now(),
+      stopReason: args.reason,
+    });
+
+    return await ctx.db.get(args.jobId);
+  },
+});
+
 export const claimJob = mutation({
   args: {
     job: v.id("jobs"),

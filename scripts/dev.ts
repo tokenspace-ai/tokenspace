@@ -1,16 +1,10 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import { runConvexLocalDev } from "@tokenspace/backend/dev";
-import { type ConvexLogger, loadPersistedKeys } from "@tokenspace/convex-local-dev";
+import type { ConvexLogger } from "@tokenspace/convex-local-dev";
 import type { Subprocess } from "bun";
 import { checkBunVersion } from "./lib/bun-version";
-import {
-  CONVEX_STATE_DIR,
-  readFilesRecursively,
-  runInternalFunction,
-  SEED_WORKSPACES,
-  type SeedCredential,
-} from "./lib/seed";
+import { getAdminKey, seedConfiguredWorkspaces } from "./lib/seed";
 
 const PID_FILE = "dev.pid";
 const childProcesses: Subprocess[] = [];
@@ -242,11 +236,6 @@ async function getDotEnvVariables(): Promise<Record<string, string>> {
     }
   }
 
-  // Ensure TOKENSPACE_EXECUTOR_TOKEN is included even if not in .env
-  if (!vars.TOKENSPACE_EXECUTOR_TOKEN && process.env.TOKENSPACE_EXECUTOR_TOKEN) {
-    vars.TOKENSPACE_EXECUTOR_TOKEN = process.env.TOKENSPACE_EXECUTOR_TOKEN;
-  }
-
   return vars;
 }
 
@@ -373,87 +362,6 @@ async function waitForSignal() {
   });
 }
 
-/**
- * Seed example workspaces
- */
-async function seedExampleWorkspaces(convexPort: number): Promise<void> {
-  await Bun.sleep(1000);
-  const seedPrefix = c.magenta("seed".padEnd(LOG_PREFIX_LENGTH, " "));
-  const log = (msg: string) => console.log(`${seedPrefix} ${msg}`);
-
-  log("Seeding example workspaces...");
-
-  const convexUrl = `http://127.0.0.1:${convexPort}`;
-  const instanceName = process.env.CONVEX_DEPLOYMENT ?? "tokenspace";
-  const keys = loadPersistedKeys(CONVEX_STATE_DIR, instanceName);
-
-  if (!keys?.adminKey) {
-    log(fg.yellow("Warning: Could not load admin key, skipping seed"));
-    return;
-  }
-
-  for (const workspace of SEED_WORKSPACES) {
-    // Check if workspace already exists
-    try {
-      const exists = await runInternalFunction<boolean>(convexUrl, keys.adminKey, "seed:workspaceExists", {
-        slug: workspace.slug,
-      });
-
-      if (exists) {
-        log(`Workspace '${workspace.slug}' already exists, skipping`);
-        continue;
-      }
-    } catch (e) {
-      log(fg.yellow(`Warning: Could not check workspace '${workspace.slug}': ${e}`));
-      continue;
-    }
-
-    // Read files from workspace directory
-    const files = readFilesRecursively(workspace.dir);
-    log(`Workspace '${workspace.slug}': found ${files.length} files in ${workspace.dir}`);
-
-    // Seed the workspace
-    try {
-      const result = await runInternalFunction<{ workspaceId: string; status: string }>(
-        convexUrl,
-        keys.adminKey,
-        "seed:seedWorkspace",
-        {
-          slug: workspace.slug,
-          name: workspace.name,
-          files,
-        },
-      );
-
-      log(fg.cyan(`Workspace '${workspace.slug}' ${result.status} (${result.workspaceId})`));
-
-      // Seed credentials if defined
-      const credentials: readonly SeedCredential[] =
-        "credentials" in workspace && Array.isArray(workspace.credentials) ? workspace.credentials : [];
-      for (const cred of credentials) {
-        const envValue = process.env[cred.envVar];
-        if (!envValue) {
-          log(fg.yellow(`Credential '${cred.credentialId}': skipped (${cred.envVar} not set)`));
-          continue;
-        }
-        try {
-          await runInternalFunction(convexUrl, keys.adminKey, "credentials:seedUpsertWorkspaceCredentialInternal", {
-            workspaceId: result.workspaceId,
-            credentialId: cred.credentialId,
-            kind: "secret",
-            value: { value: envValue },
-          });
-          log(`Credential '${cred.credentialId}': seeded from ${cred.envVar}`);
-        } catch (e) {
-          log(fg.yellow(`Credential '${cred.credentialId}': failed to seed: ${e}`));
-        }
-      }
-    } catch (e) {
-      log(fg.red(`Failed to seed workspace '${workspace.slug}': ${e}`));
-    }
-  }
-}
-
 async function main() {
   try {
     const bunVersionError = checkBunVersion();
@@ -487,20 +395,23 @@ async function main() {
 
     const ports = extractPortsFromEnvironment();
 
-    if (!process.env.TOKENSPACE_EXECUTOR_TOKEN) {
-      process.env.TOKENSPACE_EXECUTOR_TOKEN = crypto.randomUUID();
-      console.log(
-        `${c.blue("config".padEnd(LOG_PREFIX_LENGTH, " "))} Generated ephemeral TOKENSPACE_EXECUTOR_TOKEN (not set in .env)`,
-      );
-    }
-
     await runConvex(ports.convexPort);
+    await Bun.sleep(1000);
 
-    // Seed example workspaces if --seed flag is provided
-    if (shouldSeed) {
-      // Wait a moment for Convex to be fully ready
-      await Bun.sleep(1000);
-      await seedExampleWorkspaces(ports.convexPort);
+    const seedPrefix = c.magenta("seed".padEnd(LOG_PREFIX_LENGTH, " "));
+    const log = (message: string) => console.log(`${seedPrefix} ${message}`);
+    const convexUrl = process.env.CONVEX_URL!;
+    const adminKey = getAdminKey();
+    const seedResult = await seedConfiguredWorkspaces({
+      convexUrl,
+      adminKey,
+      seedWorkspaces: shouldSeed,
+      executorMode: "assignAndRotateBootstrap",
+      log,
+    });
+    const bootstrapToken = seedResult.executor.bootstrapToken;
+    if (!bootstrapToken) {
+      throw new Error("Local dev executor bootstrap token was not returned");
     }
 
     // Start the dev servers
@@ -508,7 +419,10 @@ async function main() {
       cwd: "apps/web",
       env: { VITE_CONVEX_URL: process.env.CONVEX_URL! },
     });
-    runCommand("executor", c.yellow, ["bun", "run", "dev"], { cwd: "services/executor", env: {} });
+    runCommand("executor", c.yellow, ["bun", "run", "dev"], {
+      cwd: "services/executor",
+      env: { TOKENSPACE_EXECUTOR_BOOTSTRAP_TOKEN: bootstrapToken },
+    });
 
     // Open URLs in browser if requested
     const webUrl = `http://localhost:${ports.webPort}`;

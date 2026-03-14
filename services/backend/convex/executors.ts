@@ -31,6 +31,10 @@ type ExecutorCtx = QueryCtx | MutationCtx | ActionCtx;
 type ExecutorDoc = Doc<"executors">;
 type WorkspaceDoc = Doc<"workspaces">;
 type ExecutorInstanceDoc = Doc<"executorInstances">;
+type ExecutorWriteCtx = MutationCtx;
+
+export const LOCAL_DEV_EXECUTOR_NAME = "Local Dev Executor";
+export const LOCAL_DEV_EXECUTOR_CREATED_BY = "dev-seed";
 
 type ExecutorManagerIdentity = Pick<UserIdentity, "subject"> & { role?: string | null };
 
@@ -164,6 +168,177 @@ async function getWorkspaceDoc(ctx: ExecutorCtx, workspaceId: Id<"workspaces">):
     return await ctx.db.get(workspaceId);
   }
   return await ctx.runQuery(internal.workspace.getInternal, { workspaceId });
+}
+
+function sortExecutorsByRecency(executors: ExecutorDoc[]): ExecutorDoc[] {
+  return [...executors].sort((a, b) => {
+    if (a.updatedAt !== b.updatedAt) {
+      return b.updatedAt - a.updatedAt;
+    }
+    return String(b._id).localeCompare(String(a._id));
+  });
+}
+
+async function listExecutorsByMarker(
+  ctx: ExecutorWriteCtx,
+  args: { name: string; createdBy: string },
+): Promise<ExecutorDoc[]> {
+  const executors = await ctx.db.query("executors").collect();
+  return sortExecutorsByRecency(
+    executors.filter((executor) => executor.name === args.name && executor.createdBy === args.createdBy),
+  );
+}
+
+export async function setWorkspaceExecutorInternalImpl(
+  ctx: ExecutorWriteCtx,
+  args: {
+    workspaceId: Id<"workspaces">;
+    executorId: Id<"executors"> | undefined;
+  },
+): Promise<void> {
+  const workspace = await ctx.db.get(args.workspaceId);
+  if (!workspace) {
+    throw new Error("Workspace not found");
+  }
+
+  if (args.executorId !== undefined) {
+    const executor = await ctx.db.get(args.executorId);
+    if (!executor) {
+      throw new Error("Executor not found");
+    }
+    if (executor.status !== "active") {
+      throw new Error("Executor is not active");
+    }
+  }
+  if (workspace.executorId !== args.executorId) {
+    await assertNoNonterminalJobsForWorkspaceExecutor(ctx, args.workspaceId, workspace.executorId);
+    await clearSessionExecutorAssignmentsForWorkspace(ctx, {
+      workspaceId: args.workspaceId,
+    });
+  }
+
+  await ctx.db.patch(args.workspaceId, {
+    executorId: args.executorId,
+    updatedAt: Date.now(),
+  });
+}
+
+async function createExecutorInternalRecord(
+  ctx: ExecutorWriteCtx,
+  args: { name: string; createdBy: string; now: number },
+): Promise<{ executorId: Id<"executors">; bootstrapToken: string }> {
+  const bootstrap = await createOpaqueToken();
+  const executorId = await ctx.db.insert("executors", {
+    name: normalizeExecutorName(args.name),
+    status: "active",
+    authMode: "opaque_secret",
+    tokenVersion: 1,
+    bootstrapTokenId: bootstrap.tokenId,
+    bootstrapTokenHash: bootstrap.tokenHash,
+    bootstrapIssuedAt: args.now,
+    createdBy: args.createdBy,
+    createdAt: args.now,
+    updatedAt: args.now,
+  });
+  return {
+    executorId,
+    bootstrapToken: bootstrap.token,
+  };
+}
+
+async function rotateExecutorBootstrapInternal(
+  ctx: ExecutorWriteCtx,
+  args: { executor: ExecutorDoc; now: number },
+): Promise<{ bootstrapToken: string }> {
+  const bootstrap = await createOpaqueToken();
+  await ctx.db.patch(args.executor._id, {
+    bootstrapTokenId: bootstrap.tokenId,
+    bootstrapTokenHash: bootstrap.tokenHash,
+    bootstrapIssuedAt: args.now,
+    bootstrapLastUsedAt: undefined,
+    tokenVersion: args.executor.tokenVersion + 1,
+    updatedAt: args.now,
+  });
+  const instances = await ctx.db
+    .query("executorInstances")
+    .withIndex("by_executor", (q) => q.eq("executorId", args.executor._id))
+    .collect();
+  for (const instance of instances) {
+    if (instance.status === "online") {
+      await ctx.db.patch(instance._id, { status: "offline", expiresAt: args.now });
+    }
+  }
+  return {
+    bootstrapToken: bootstrap.token,
+  };
+}
+
+export async function ensureLocalDevExecutorInternalImpl(
+  ctx: ExecutorWriteCtx,
+  args: {
+    workspaceIds?: Id<"workspaces">[];
+    rotateBootstrap?: boolean;
+  },
+): Promise<{
+  executorId: Id<"executors">;
+  assignedWorkspaceIds: Id<"workspaces">[];
+  bootstrapToken?: string;
+}> {
+  const now = Date.now();
+  const existing = await listExecutorsByMarker(ctx, {
+    name: LOCAL_DEV_EXECUTOR_NAME,
+    createdBy: LOCAL_DEV_EXECUTOR_CREATED_BY,
+  });
+
+  let executor = existing[0] ?? null;
+  let bootstrapToken: string | undefined;
+
+  if (!executor) {
+    const created = await createExecutorInternalRecord(ctx, {
+      name: LOCAL_DEV_EXECUTOR_NAME,
+      createdBy: LOCAL_DEV_EXECUTOR_CREATED_BY,
+      now,
+    });
+    const createdExecutor = await ctx.db.get(created.executorId);
+    bootstrapToken = created.bootstrapToken;
+    if (!createdExecutor) {
+      throw new Error("Executor not found after creation");
+    }
+    executor = createdExecutor;
+  } else if (executor.status !== "active") {
+    await ctx.db.patch(executor._id, {
+      status: "active",
+      updatedAt: now,
+    });
+    const reactivatedExecutor = await ctx.db.get(executor._id);
+    if (!reactivatedExecutor) {
+      throw new Error("Executor not found after reactivation");
+    }
+    executor = reactivatedExecutor;
+  }
+
+  if (args.rotateBootstrap) {
+    const rotated = await rotateExecutorBootstrapInternal(ctx, {
+      executor,
+      now,
+    });
+    bootstrapToken = rotated.bootstrapToken;
+  }
+
+  const assignedWorkspaceIds: Id<"workspaces">[] = [];
+  for (const workspaceId of args.workspaceIds ?? []) {
+    await setWorkspaceExecutorInternalImpl(ctx, {
+      workspaceId,
+      executorId: executor._id,
+    });
+    assignedWorkspaceIds.push(workspaceId);
+  }
+
+  return {
+    executorId: executor._id,
+    assignedWorkspaceIds,
+    ...(bootstrapToken ? { bootstrapToken } : {}),
+  };
 }
 
 async function getWorkspaceOrThrow(ctx: QueryCtx | MutationCtx, workspaceId: Id<"workspaces">): Promise<WorkspaceDoc> {
@@ -334,6 +509,53 @@ export const createExecutor = mutation({
       bootstrapToken: bootstrap.token,
       setup: buildExecutorSetupPayload(bootstrap.token),
     };
+  },
+});
+
+export const createExecutorForWorkspaceTest = internalMutation({
+  args: {
+    workspaceId: v.id("workspaces"),
+    name: v.optional(v.string()),
+    createdBy: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const bootstrap = await createOpaqueToken();
+    const name = normalizeExecutorName(args.name ?? "Test Executor");
+    const executorId = await ctx.db.insert("executors", {
+      name,
+      status: "active",
+      authMode: "opaque_secret",
+      tokenVersion: 1,
+      bootstrapTokenId: bootstrap.tokenId,
+      bootstrapTokenHash: bootstrap.tokenHash,
+      bootstrapIssuedAt: now,
+      createdBy: args.createdBy ?? "integration-test",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await ctx.runMutation(internal.executors.setWorkspaceExecutorInternal, {
+      workspaceId: args.workspaceId,
+      executorId,
+    });
+
+    return {
+      workspaceId: args.workspaceId,
+      executorId,
+      bootstrapToken: bootstrap.token,
+      setup: buildExecutorSetupPayload(bootstrap.token),
+    };
+  },
+});
+
+export const ensureLocalDevExecutorInternal = internalMutation({
+  args: {
+    workspaceIds: v.optional(v.array(v.id("workspaces"))),
+    rotateBootstrap: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    return await ensureLocalDevExecutorInternalImpl(ctx, args);
   },
 });
 
@@ -743,30 +965,9 @@ export const setWorkspaceExecutorInternal = internalMutation({
     executorId: v.optional(v.id("executors")),
   },
   handler: async (ctx, args) => {
-    const workspace = await ctx.db.get(args.workspaceId);
-    if (!workspace) {
-      throw new Error("Workspace not found");
-    }
-
-    if (args.executorId !== undefined) {
-      const executor = await ctx.db.get(args.executorId);
-      if (!executor) {
-        throw new Error("Executor not found");
-      }
-      if (executor.status !== "active") {
-        throw new Error("Executor is not active");
-      }
-    }
-    if (workspace.executorId !== args.executorId) {
-      await assertNoNonterminalJobsForWorkspaceExecutor(ctx, args.workspaceId, workspace.executorId);
-      await clearSessionExecutorAssignmentsForWorkspace(ctx, {
-        workspaceId: args.workspaceId,
-      });
-    }
-
-    await ctx.db.patch(args.workspaceId, {
+    await setWorkspaceExecutorInternalImpl(ctx, {
+      workspaceId: args.workspaceId,
       executorId: args.executorId,
-      updatedAt: Date.now(),
     });
   },
 });

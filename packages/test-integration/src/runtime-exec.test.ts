@@ -10,7 +10,15 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { ConvexFs as ConvexSessionFs } from "@tokenspace/session-fs";
 import { ConvexClient } from "convex/browser";
 import { getSharedContext, getSharedHarness, waitForSetup } from "./setup";
-import { api, EXECUTOR_TOKEN, getFunctionName, internal, type TestContext, waitForJobCompletion } from "./test-utils";
+import {
+  api,
+  EXAMPLE_DIR,
+  getFunctionName,
+  internal,
+  readFilesRecursively,
+  type TestContext,
+  waitForJobCompletion,
+} from "./test-utils";
 
 /**
  * Create a new session for testing.
@@ -59,6 +67,26 @@ async function runTypeScriptJob(revisionId: string, compiledCode: string, sessio
   return job.output ?? "";
 }
 
+async function registerAuthTestInstance(client: ConvexClient): Promise<string> {
+  const backend = getSharedHarness().getBackend();
+  const suffix = Date.now().toString(36);
+  const seeded = (await backend.runFunction(getFunctionName(internal.seed.seedWorkspace), {
+    slug: `auth-executor-${suffix}`,
+    name: `Auth Executor ${suffix}`,
+    files: readFilesRecursively(EXAMPLE_DIR),
+  })) as { workspaceId: string };
+  const created = (await backend.runFunction(getFunctionName(internal.executors.createExecutorForWorkspaceTest), {
+    workspaceId: seeded.workspaceId,
+    name: `Auth Executor ${suffix}`,
+  })) as { bootstrapToken: string };
+  const registered = (await client.mutation(api.executors.registerExecutorInstance, {
+    bootstrapToken: created.bootstrapToken,
+    hostname: "auth-test",
+    version: "test",
+  })) as { instanceToken: string };
+  return registered.instanceToken;
+}
+
 describe("Executor Execution", () => {
   let context: TestContext;
   let client: ConvexClient;
@@ -73,9 +101,9 @@ describe("Executor Execution", () => {
   });
 
   describe("TypeScript Execution", () => {
-    it("rejects executor-only APIs with an invalid token", async () => {
+    it("rejects invalid executor tokens and accepts registered instance tokens", async () => {
       const backend = getSharedHarness().getBackend();
-
+      const instanceToken = await registerAuthTestInstance(client);
       const jobId = (await backend.runFunction(getFunctionName(internal.executor.createJob), {
         code: "console.log('auth test')",
         language: "typescript",
@@ -84,21 +112,21 @@ describe("Executor Execution", () => {
 
       await expect(
         client.query(api.executor.runnableJobs, {
-          executorToken: "invalid-token",
+          instanceToken: "invalid-token",
         }),
-      ).rejects.toThrow(/Unauthorized/);
+      ).rejects.toThrow(/Unauthorized|Invalid executor token/);
 
       await expect(
         client.mutation(api.executor.claimJob, {
           job: jobId as any,
           workerId: "unauthorized-worker",
           leaseMs: 30_000,
-          executorToken: "invalid-token",
+          instanceToken: "invalid-token",
         }),
-      ).rejects.toThrow(/Unauthorized/);
+      ).rejects.toThrow(/Unauthorized|Invalid executor token/);
 
       const runnable = (await client.query(api.executor.runnableJobs, {
-        executorToken: EXECUTOR_TOKEN,
+        instanceToken,
       })) as string[];
       expect(Array.isArray(runnable)).toBe(true);
     });
@@ -555,9 +583,8 @@ console.log("done");
 
       const startTime = Date.now();
       while (Date.now() - startTime < 10_000) {
-        const job = (await backend.runFunction(getFunctionName(api.executor.getJob), {
+        const job = (await backend.runFunction(getFunctionName(internal.executor.getJobInternal), {
           jobId,
-          executorToken: EXECUTOR_TOKEN,
         })) as {
           status: string;
         } | null;
@@ -566,10 +593,9 @@ console.log("done");
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
 
-      await backend.runFunction(getFunctionName(api.executor.requestStopJob), {
+      await backend.runFunction(getFunctionName(internal.executor.requestStopJobInternal), {
         jobId,
         reason: "test stop",
-        executorToken: EXECUTOR_TOKEN,
       });
 
       const job = await waitForJobCompletion(backend, jobId, 30_000);

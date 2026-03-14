@@ -11,7 +11,9 @@ import { ConvexFs } from "@tokenspace/session-fs";
 import type { ConvexClient } from "convex/browser";
 import { InMemoryFs } from "just-bash";
 
-export type ExecutionOptions = Omit<RuntimeExecutionOptions, "credentialStore" | "fileSystem">;
+export type ExecutionOptions = Omit<RuntimeExecutionOptions, "credentialStore" | "fileSystem"> & {
+  getInstanceToken?: () => string | undefined;
+};
 
 type CredentialMissingPayload = {
   errorType: "CREDENTIAL_MISSING";
@@ -30,10 +32,6 @@ type UserInfoUnavailablePayload = {
   reason: "not_initialized" | "non_interactive" | "local_mcp";
   details?: string;
 };
-
-function getInstanceToken(): string | undefined {
-  return process.env.TOKENSPACE_EXECUTOR_INSTANCE_TOKEN?.trim() || process.env.TOKENSPACE_EXECUTOR_TOKEN?.trim();
-}
 
 function extractCredentialMissingPayload(error: unknown): CredentialMissingPayload | null {
   if (!error || typeof error !== "object") return null;
@@ -98,12 +96,12 @@ function toCredentialDefForError(payload: CredentialMissingPayload): any {
   };
 }
 
-function createCredentialStore(convex: ConvexClient, options?: ExecutionOptions): CredentialStore {
+export function createCredentialStore(convex: ConvexClient, options?: ExecutionOptions): CredentialStore {
   const jobId = options?.jobId ?? null;
-  const instanceToken = getInstanceToken();
 
   return {
     load: (async (credentialId: string) => {
+      const instanceToken = options?.getInstanceToken?.();
       if (!jobId) {
         throw new TokenspaceError(
           "Credential resolution is unavailable for this execution",
@@ -143,15 +141,15 @@ function createCredentialStore(convex: ConvexClient, options?: ExecutionOptions)
   };
 }
 
-function createUserStore(convex: ConvexClient, options?: ExecutionOptions): UserStore {
+export function createUserStore(convex: ConvexClient, options?: ExecutionOptions): UserStore {
   const jobId = options?.jobId ?? null;
-  const instanceToken = getInstanceToken();
 
   function buildInitializationError(details: string): UserInfoUnavailableError {
     return new UserInfoUnavailableError("User info is unavailable for this execution", "not_initialized", details);
   }
 
   async function runResolver<T>(call: () => Promise<T>): Promise<T> {
+    const instanceToken = options?.getInstanceToken?.();
     if (!jobId) {
       throw buildInitializationError("Job ID is required to resolve user info");
     }
@@ -176,6 +174,7 @@ function createUserStore(convex: ConvexClient, options?: ExecutionOptions): User
   return {
     getCurrentUserInfo: async () =>
       await runResolver(async () => {
+        const instanceToken = options?.getInstanceToken?.();
         return (await convex.action(api.executor.resolveCurrentUserInfoForJob, {
           jobId: jobId as Id<"jobs">,
           instanceToken: instanceToken!,
@@ -183,6 +182,7 @@ function createUserStore(convex: ConvexClient, options?: ExecutionOptions): User
       }),
     getInfo: async (args: UserLookup) =>
       await runResolver(async () => {
+        const instanceToken = options?.getInstanceToken?.();
         return (await convex.action(api.executor.resolveUserInfoForJob, {
           jobId: jobId as Id<"jobs">,
           instanceToken: instanceToken!,
