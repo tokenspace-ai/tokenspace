@@ -272,6 +272,19 @@ export default defineSchema({
     .index("by_prev_instance_token_id", ["prevInstanceTokenId"])
     .index("by_expires_at", ["expiresAt"]),
 
+  sessionExecutorAssignments: defineTable({
+    sessionId: v.id("sessions"),
+    workspaceId: v.id("workspaces"),
+    executorId: v.id("executors"),
+    assignedInstanceId: v.id("executorInstances"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_session", ["sessionId"])
+    .index("by_workspace", ["workspaceId"])
+    .index("by_executor", ["executorId"])
+    .index("by_instance", ["assignedInstanceId"]),
+
   workspaceMemberships: defineTable({
     workspaceId: v.id("workspaces"),
     userId: v.string(),

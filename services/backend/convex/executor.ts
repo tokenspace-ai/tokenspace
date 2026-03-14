@@ -14,6 +14,7 @@ import {
 import { buildMissingCredentialPayload, WORKSPACE_CREDENTIAL_SUBJECT } from "./credentials";
 import { verifyExecutorInstanceToken } from "./executorAuth";
 import {
+  moveSessionExecutorAssignment,
   requireExecutorQueueAccess,
   resolveEffectiveAssignedInstanceId,
   scheduleJobToExecutorInstance,
@@ -33,13 +34,19 @@ type InternalCtx = QueryCtx | MutationCtx | ActionCtx;
 async function requireUserOrExecutorAccess(
   ctx: PublicCtx,
   instanceToken?: string,
-): Promise<{ userId?: string } | { instanceToken: string }> {
+): Promise<
+  { userId: string } | { instanceToken: string; executorId: Id<"executors">; instanceId: Id<"executorInstances"> }
+> {
   const user = await ctx.auth.getUserIdentity();
   if (user) {
     return { userId: user.subject };
   }
   if (instanceToken) {
-    return { instanceToken };
+    const verified = await verifyExecutorInstanceToken(ctx, instanceToken, Date.now());
+    if (!verified.instanceId) {
+      throw new Error("Unauthorized");
+    }
+    return { instanceToken, executorId: verified.executorId, instanceId: verified.instanceId };
   }
   throw new Error("Unauthorized");
 }
@@ -185,6 +192,7 @@ async function requireExecutorAccessToJob(
     targetExecutorId: args.job.targetExecutorId,
     assignedInstanceId: args.job.assignedInstanceId,
     queueKind: "runtime",
+    sessionId: args.job.sessionId,
     now: args.now,
   });
 }
@@ -391,6 +399,7 @@ export const runnableJobs = query({
           targetExecutorId: job.targetExecutorId,
           assignedInstanceId: job.assignedInstanceId,
           queueKind: "runtime",
+          sessionId: job.sessionId,
           now,
         }).catch(() => null);
         if (effective === verified.instanceId) {
@@ -405,6 +414,7 @@ export const runnableJobs = query({
           targetExecutorId: job.targetExecutorId,
           assignedInstanceId: undefined,
           queueKind: "runtime",
+          sessionId: job.sessionId,
           now,
         }).catch(() => null);
         if (effective === verified.instanceId) {
@@ -769,6 +779,7 @@ export const claimJob = mutation({
       targetExecutorId: job.targetExecutorId,
       assignedInstanceId: job.assignedInstanceId,
       queueKind: "runtime",
+      sessionId: job.sessionId,
       now,
     });
     if (!effectiveAssignedInstanceId) {
@@ -782,6 +793,15 @@ export const claimJob = mutation({
         assignedInstanceId: effectiveAssignedInstanceId,
         assignmentUpdatedAt: now,
       });
+      if (job.sessionId) {
+        await moveSessionExecutorAssignment(ctx, {
+          sessionId: job.sessionId,
+          workspaceId: job.workspaceId,
+          executorId: job.targetExecutorId,
+          assignedInstanceId: effectiveAssignedInstanceId,
+          now,
+        });
+      }
     }
 
     // Handle cancellation request before claiming.
@@ -928,6 +948,7 @@ export const createJob = internalMutation({
     const scheduled = await scheduleJobToExecutorInstance(ctx, {
       workspaceId: revision.workspaceId,
       queueKind: "runtime",
+      sessionId: args.sessionId,
       now,
     });
     const baseJob = {

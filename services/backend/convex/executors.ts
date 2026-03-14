@@ -22,6 +22,10 @@ import {
   verifyExecutorBootstrapToken,
   verifyExecutorInstanceToken,
 } from "./executorAuth";
+import {
+  clearSessionExecutorAssignmentsForExecutor,
+  clearSessionExecutorAssignmentsForWorkspace,
+} from "./executorRouting";
 
 type ExecutorCtx = QueryCtx | MutationCtx | ActionCtx;
 type ExecutorDoc = Doc<"executors">;
@@ -236,12 +240,13 @@ export const listAssignableExecutorsForWorkspace = query({
     const workspace = await getWorkspaceOrThrow(ctx, args.workspaceId);
     const now = Date.now();
     const { executors, instancesByExecutorId } = await listAllExecutorsWithInstances(ctx);
+    const assignableExecutors = executors.filter((executor) => canManageExecutorLifecycle({ executor, user }));
 
     return {
       workspaceId: workspace._id,
       currentExecutorId: workspace.executorId ?? null,
       executors: await Promise.all(
-        executors.map(
+        assignableExecutors.map(
           async (executor) =>
             await buildExecutorSummaryForUser(user, executor, instancesByExecutorId.get(executor._id) ?? [], now),
         ),
@@ -290,7 +295,7 @@ export const createExecutor = mutation({
   },
   handler: async (ctx, args) => {
     const { user } = await requireWorkspaceAdmin(ctx, args.workspaceId);
-    await getWorkspaceOrThrow(ctx, args.workspaceId);
+    const workspace = await getWorkspaceOrThrow(ctx, args.workspaceId);
 
     const name = normalizeExecutorName(args.name);
     const now = Date.now();
@@ -308,6 +313,12 @@ export const createExecutor = mutation({
       updatedAt: now,
     });
 
+    if (workspace.executorId !== executorId) {
+      await assertNoNonterminalJobsForWorkspaceExecutor(ctx, args.workspaceId, workspace.executorId);
+      await clearSessionExecutorAssignmentsForWorkspace(ctx, {
+        workspaceId: args.workspaceId,
+      });
+    }
     await ctx.db.patch(args.workspaceId, {
       executorId,
       updatedAt: now,
@@ -466,16 +477,53 @@ export const deleteExecutor = mutation({
   handler: async (ctx, args) => {
     await requireExecutorLifecycleManager(ctx, args.executorId);
     const now = Date.now();
-    const [workspaces, instances] = await Promise.all([
-      ctx.db
-        .query("workspaces")
-        .withIndex("by_executor", (q) => q.eq("executorId", args.executorId))
-        .collect(),
-      ctx.db
-        .query("executorInstances")
-        .withIndex("by_executor", (q) => q.eq("executorId", args.executorId))
-        .collect(),
-    ]);
+    const [workspaces, instances, pendingJobs, runningJobs, pendingCompileJobs, runningCompileJobs] = await Promise.all(
+      [
+        ctx.db
+          .query("workspaces")
+          .withIndex("by_executor", (q) => q.eq("executorId", args.executorId))
+          .collect(),
+        ctx.db
+          .query("executorInstances")
+          .withIndex("by_executor", (q) => q.eq("executorId", args.executorId))
+          .collect(),
+        ctx.db
+          .query("jobs")
+          .withIndex("by_target_executor_status", (q) =>
+            q.eq("targetExecutorId", args.executorId).eq("status", "pending"),
+          )
+          .collect(),
+        ctx.db
+          .query("jobs")
+          .withIndex("by_target_executor_status", (q) =>
+            q.eq("targetExecutorId", args.executorId).eq("status", "running"),
+          )
+          .collect(),
+        ctx.db
+          .query("compileJobs")
+          .withIndex("by_target_executor_status", (q) =>
+            q.eq("targetExecutorId", args.executorId).eq("status", "pending"),
+          )
+          .collect(),
+        ctx.db
+          .query("compileJobs")
+          .withIndex("by_target_executor_status", (q) =>
+            q.eq("targetExecutorId", args.executorId).eq("status", "running"),
+          )
+          .collect(),
+      ],
+    );
+    const nonterminalCount =
+      pendingJobs.length + runningJobs.length + pendingCompileJobs.length + runningCompileJobs.length;
+    if (nonterminalCount > 0) {
+      throw new Error(
+        `Cannot delete executor while it has ${nonterminalCount} pending/running job(s). Wait for them to complete or cancel them first.`,
+      );
+    }
+
+    await clearSessionExecutorAssignmentsForExecutor(ctx, {
+      executorId: args.executorId,
+    });
 
     for (const workspace of workspaces) {
       await ctx.db.patch(workspace._id, {
@@ -641,6 +689,54 @@ export const listEligibleExecutorInstancesInternal = internalQuery({
   },
 });
 
+async function assertNoNonterminalJobsForWorkspaceExecutor(
+  ctx: MutationCtx,
+  workspaceId: Id<"workspaces">,
+  currentExecutorId: Id<"executors"> | undefined,
+): Promise<void> {
+  if (!currentExecutorId) return;
+  const [pendingJob, pendingCompile] = await Promise.all([
+    ctx.db
+      .query("jobs")
+      .withIndex("by_target_executor_status", (q) =>
+        q.eq("targetExecutorId", currentExecutorId).eq("status", "pending"),
+      )
+      .first(),
+    ctx.db
+      .query("compileJobs")
+      .withIndex("by_target_executor_status", (q) =>
+        q.eq("targetExecutorId", currentExecutorId).eq("status", "pending"),
+      )
+      .first(),
+  ]);
+  const hasPending =
+    (pendingJob && pendingJob.workspaceId === workspaceId) ||
+    (pendingCompile && pendingCompile.workspaceId === workspaceId);
+  if (hasPending) {
+    throw new Error("Cannot reassign executor while workspace has pending jobs on the current executor");
+  }
+  const [runningJob, runningCompile] = await Promise.all([
+    ctx.db
+      .query("jobs")
+      .withIndex("by_target_executor_status", (q) =>
+        q.eq("targetExecutorId", currentExecutorId).eq("status", "running"),
+      )
+      .first(),
+    ctx.db
+      .query("compileJobs")
+      .withIndex("by_target_executor_status", (q) =>
+        q.eq("targetExecutorId", currentExecutorId).eq("status", "running"),
+      )
+      .first(),
+  ]);
+  const hasRunning =
+    (runningJob && runningJob.workspaceId === workspaceId) ||
+    (runningCompile && runningCompile.workspaceId === workspaceId);
+  if (hasRunning) {
+    throw new Error("Cannot reassign executor while workspace has running jobs on the current executor");
+  }
+}
+
 export const setWorkspaceExecutorInternal = internalMutation({
   args: {
     workspaceId: v.id("workspaces"),
@@ -660,6 +756,12 @@ export const setWorkspaceExecutorInternal = internalMutation({
       if (executor.status !== "active") {
         throw new Error("Executor is not active");
       }
+    }
+    if (workspace.executorId !== args.executorId) {
+      await assertNoNonterminalJobsForWorkspaceExecutor(ctx, args.workspaceId, workspace.executorId);
+      await clearSessionExecutorAssignmentsForWorkspace(ctx, {
+        workspaceId: args.workspaceId,
+      });
     }
 
     await ctx.db.patch(args.workspaceId, {

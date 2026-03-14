@@ -3,7 +3,8 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { verifyExecutorInstanceToken } from "./executorAuth";
 import { assertWorkspaceAssignedToExecutor, isExecutorInstanceHealthy } from "./executors";
 
-type RoutingCtx = QueryCtx | MutationCtx;
+type ReadRoutingCtx = QueryCtx | MutationCtx;
+type WriteRoutingCtx = MutationCtx;
 
 export type QueueKind = "runtime" | "compile";
 
@@ -48,8 +49,78 @@ type ScheduledAssignment =
       };
     };
 
+type SessionExecutorAssignmentDoc = Doc<"sessionExecutorAssignments">;
+
 function compareInstanceIds(a: Id<"executorInstances">, b: Id<"executorInstances">): number {
   return String(a).localeCompare(String(b));
+}
+
+async function getSessionExecutorAssignment(
+  ctx: ReadRoutingCtx,
+  sessionId: Id<"sessions">,
+): Promise<SessionExecutorAssignmentDoc | null> {
+  return await ctx.db
+    .query("sessionExecutorAssignments")
+    .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
+    .first();
+}
+
+async function upsertSessionExecutorAssignment(
+  ctx: WriteRoutingCtx,
+  args: {
+    sessionId: Id<"sessions">;
+    workspaceId: Id<"workspaces">;
+    executorId: Id<"executors">;
+    assignedInstanceId: Id<"executorInstances">;
+    now: number;
+  },
+): Promise<void> {
+  const existing = await getSessionExecutorAssignment(ctx, args.sessionId);
+  if (existing) {
+    await ctx.db.patch(existing._id, {
+      workspaceId: args.workspaceId,
+      executorId: args.executorId,
+      assignedInstanceId: args.assignedInstanceId,
+      updatedAt: args.now,
+    });
+    return;
+  }
+
+  await ctx.db.insert("sessionExecutorAssignments", {
+    sessionId: args.sessionId,
+    workspaceId: args.workspaceId,
+    executorId: args.executorId,
+    assignedInstanceId: args.assignedInstanceId,
+    createdAt: args.now,
+    updatedAt: args.now,
+  });
+}
+
+async function deleteSessionExecutorAssignmentBySessionId(
+  ctx: WriteRoutingCtx,
+  sessionId: Id<"sessions">,
+): Promise<void> {
+  const existing = await getSessionExecutorAssignment(ctx, sessionId);
+  if (existing) {
+    await ctx.db.delete(existing._id);
+  }
+}
+
+async function assertSessionBelongsToWorkspace(
+  ctx: ReadRoutingCtx,
+  args: { sessionId: Id<"sessions">; workspaceId: Id<"workspaces"> },
+): Promise<void> {
+  const session = await ctx.db.get(args.sessionId);
+  if (!session) {
+    throw new Error("Session not found");
+  }
+  const revision = await ctx.db.get(session.revisionId);
+  if (!revision) {
+    throw new Error("Session revision not found");
+  }
+  if (revision.workspaceId !== args.workspaceId) {
+    throw new Error("Session does not belong to workspace");
+  }
 }
 
 function buildInstanceLoadMap(records: AssignmentAwareRecord[]): Map<Id<"executorInstances">, number> {
@@ -97,11 +168,26 @@ export function pickPreferredExecutorInstance(args: {
   instances: SchedulableInstance[];
   queueKind: QueueKind;
   loadByInstanceId: Map<Id<"executorInstances">, number>;
+  preferredInstanceId?: Id<"executorInstances">;
+  honorPreferredCapacity?: boolean;
   now?: number;
 }): SchedulableInstance | null {
   const now = args.now ?? Date.now();
-  const eligible = args.instances
-    .filter((instance) => isExecutorInstanceHealthy(instance, now))
+  const healthyInstances = args.instances.filter((instance) => isExecutorInstanceHealthy(instance, now));
+  const preferred = args.preferredInstanceId
+    ? healthyInstances.find((instance) => instance._id === args.preferredInstanceId)
+    : null;
+  if (preferred) {
+    if (args.honorPreferredCapacity) {
+      return preferred;
+    }
+    const capacity = getInstanceCapacity(preferred, args.queueKind);
+    if (capacity == null || (args.loadByInstanceId.get(preferred._id) ?? 0) < capacity) {
+      return preferred;
+    }
+  }
+
+  const eligible = healthyInstances
     .filter((instance) => {
       const capacity = getInstanceCapacity(instance, args.queueKind);
       if (capacity == null) {
@@ -124,7 +210,7 @@ export function pickPreferredExecutorInstance(args: {
 }
 
 async function listExecutorInstances(
-  ctx: RoutingCtx,
+  ctx: ReadRoutingCtx,
   executorId: Id<"executors">,
 ): Promise<Array<Doc<"executorInstances">>> {
   return await ctx.db
@@ -134,7 +220,7 @@ async function listExecutorInstances(
 }
 
 async function listNonterminalQueueAssignments(
-  ctx: RoutingCtx,
+  ctx: ReadRoutingCtx,
   args: { executorId: Id<"executors">; queueKind: QueueKind },
 ): Promise<AssignmentAwareRecord[]> {
   if (args.queueKind === "runtime") {
@@ -169,10 +255,11 @@ async function listNonterminalQueueAssignments(
 }
 
 export async function scheduleJobToExecutorInstance(
-  ctx: RoutingCtx,
+  ctx: WriteRoutingCtx,
   args: {
     workspaceId: Id<"workspaces">;
     queueKind: QueueKind;
+    sessionId?: Id<"sessions">;
     now?: number;
   },
 ): Promise<ScheduledAssignment> {
@@ -215,11 +302,24 @@ export async function scheduleJobToExecutorInstance(
       queueKind: args.queueKind,
     }),
   ]);
+  let preferredInstanceId: Id<"executorInstances"> | undefined;
+  if (args.queueKind === "runtime" && args.sessionId) {
+    await assertSessionBelongsToWorkspace(ctx, {
+      sessionId: args.sessionId,
+      workspaceId: workspace._id,
+    });
+    const assignment = await getSessionExecutorAssignment(ctx, args.sessionId);
+    if (assignment?.executorId === executor._id) {
+      preferredInstanceId = assignment.assignedInstanceId;
+    }
+  }
 
   const preferred = pickPreferredExecutorInstance({
     instances,
     queueKind: args.queueKind,
     loadByInstanceId: buildInstanceLoadMap(nonterminalAssignments),
+    preferredInstanceId,
+    honorPreferredCapacity: args.queueKind === "runtime" && args.sessionId !== undefined,
     now,
   });
 
@@ -237,6 +337,16 @@ export async function scheduleJobToExecutorInstance(
     };
   }
 
+  if (args.queueKind === "runtime" && args.sessionId) {
+    await upsertSessionExecutorAssignment(ctx, {
+      sessionId: args.sessionId,
+      workspaceId: workspace._id,
+      executorId: executor._id,
+      assignedInstanceId: preferred._id,
+      now,
+    });
+  }
+
   return {
     kind: "assigned",
     workspaceId: workspace._id,
@@ -247,12 +357,13 @@ export async function scheduleJobToExecutorInstance(
 }
 
 export async function resolveEffectiveAssignedInstanceId(
-  ctx: RoutingCtx,
+  ctx: ReadRoutingCtx,
   args: {
     workspaceId?: Id<"workspaces">;
     targetExecutorId?: Id<"executors">;
     assignedInstanceId?: Id<"executorInstances">;
     queueKind: QueueKind;
+    sessionId?: Id<"sessions">;
     now?: number;
   },
 ): Promise<Id<"executorInstances"> | null> {
@@ -273,6 +384,17 @@ export async function resolveEffectiveAssignedInstanceId(
       queueKind: args.queueKind,
     }),
   ]);
+  let preferredInstanceId: Id<"executorInstances"> | undefined;
+  if (args.queueKind === "runtime" && args.sessionId) {
+    await assertSessionBelongsToWorkspace(ctx, {
+      sessionId: args.sessionId,
+      workspaceId: args.workspaceId,
+    });
+    const assignment = await getSessionExecutorAssignment(ctx, args.sessionId);
+    if (assignment?.executorId === args.targetExecutorId) {
+      preferredInstanceId = assignment.assignedInstanceId;
+    }
+  }
 
   const assigned = args.assignedInstanceId
     ? instances.find((instance) => instance._id === args.assignedInstanceId)
@@ -286,19 +408,22 @@ export async function resolveEffectiveAssignedInstanceId(
       instances,
       queueKind: args.queueKind,
       loadByInstanceId: buildInstanceLoadMap(nonterminalAssignments),
+      preferredInstanceId,
+      honorPreferredCapacity: args.queueKind === "runtime" && args.sessionId !== undefined,
       now,
     })?._id ?? null
   );
 }
 
 export async function requireExecutorQueueAccess(
-  ctx: RoutingCtx,
+  ctx: ReadRoutingCtx,
   args: {
     instanceToken: string;
     workspaceId?: Id<"workspaces">;
     targetExecutorId?: Id<"executors">;
     assignedInstanceId?: Id<"executorInstances">;
     queueKind: QueueKind;
+    sessionId?: Id<"sessions">;
     now?: number;
   },
 ): Promise<Awaited<ReturnType<typeof verifyExecutorInstanceToken>>> {
@@ -320,6 +445,7 @@ export async function requireExecutorQueueAccess(
     targetExecutorId: args.targetExecutorId,
     assignedInstanceId: args.assignedInstanceId,
     queueKind: args.queueKind,
+    sessionId: args.sessionId,
     now,
   });
   if (!effectiveAssignedInstanceId) {
@@ -356,4 +482,62 @@ export function countNonterminalAssignments<T extends QueueSchedulableRecord>(
   records: T[],
 ): Map<Id<"executorInstances">, number> {
   return buildInstanceLoadMap(records.filter((record) => isNonterminalStatus(record.status)));
+}
+
+export async function moveSessionExecutorAssignment(
+  ctx: WriteRoutingCtx,
+  args: {
+    sessionId: Id<"sessions">;
+    workspaceId: Id<"workspaces">;
+    executorId: Id<"executors">;
+    assignedInstanceId: Id<"executorInstances">;
+    now?: number;
+  },
+): Promise<void> {
+  await assertSessionBelongsToWorkspace(ctx, {
+    sessionId: args.sessionId,
+    workspaceId: args.workspaceId,
+  });
+  await upsertSessionExecutorAssignment(ctx, {
+    sessionId: args.sessionId,
+    workspaceId: args.workspaceId,
+    executorId: args.executorId,
+    assignedInstanceId: args.assignedInstanceId,
+    now: args.now ?? Date.now(),
+  });
+}
+
+export async function clearSessionExecutorAssignment(
+  ctx: WriteRoutingCtx,
+  args: { sessionId: Id<"sessions"> },
+): Promise<void> {
+  await deleteSessionExecutorAssignmentBySessionId(ctx, args.sessionId);
+}
+
+export async function clearSessionExecutorAssignmentsForWorkspace(
+  ctx: WriteRoutingCtx,
+  args: { workspaceId: Id<"workspaces"> },
+): Promise<number> {
+  const assignments = await ctx.db
+    .query("sessionExecutorAssignments")
+    .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
+    .collect();
+  for (const assignment of assignments) {
+    await ctx.db.delete(assignment._id);
+  }
+  return assignments.length;
+}
+
+export async function clearSessionExecutorAssignmentsForExecutor(
+  ctx: WriteRoutingCtx,
+  args: { executorId: Id<"executors"> },
+): Promise<number> {
+  const assignments = await ctx.db
+    .query("sessionExecutorAssignments")
+    .withIndex("by_executor", (q) => q.eq("executorId", args.executorId))
+    .collect();
+  for (const assignment of assignments) {
+    await ctx.db.delete(assignment._id);
+  }
+  return assignments.length;
 }
