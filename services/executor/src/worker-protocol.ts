@@ -12,6 +12,7 @@ export type WorkerExecRequest = {
   requestId: string;
   jobId: string;
   revisionId: string;
+  instanceToken: string;
   language: "typescript" | "bash";
   code: string;
   bundleUrl?: string | null;
@@ -22,7 +23,13 @@ export type WorkerExecRequest = {
   timeoutMs?: number | null;
 };
 
-export type ParentToChildMessage = WorkerInitRequest | WorkerExecRequest;
+export type WorkerTokenUpdateRequest = {
+  type: "token_update";
+  requestId: string;
+  instanceToken: string;
+};
+
+export type ParentToChildMessage = WorkerInitRequest | WorkerExecRequest | WorkerTokenUpdateRequest;
 
 export type WorkerReadyResponse = {
   type: "ready";

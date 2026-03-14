@@ -8,6 +8,7 @@ type WorkerState = {
   revisionId: string | null;
   bundleUrl: string | null;
   bundlePath: string | null;
+  instanceToken: string | null;
 };
 
 function writeMessage(message: ChildToParentMessage) {
@@ -41,7 +42,7 @@ async function main() {
   }
 
   const convex = new ConvexClient(convexUrl);
-  const state: WorkerState = { revisionId: null, bundleUrl: null, bundlePath: null };
+  const state: WorkerState = { revisionId: null, bundleUrl: null, bundlePath: null, instanceToken: null };
 
   let buffer = "";
   process.stdin.setEncoding("utf8");
@@ -70,6 +71,11 @@ async function main() {
       return;
     }
 
+    if (message.type === "token_update") {
+      state.instanceToken = message.instanceToken;
+      return;
+    }
+
     if (message.type === "exec") {
       if (state.revisionId && state.revisionId !== message.revisionId) {
         writeMessage({
@@ -91,12 +97,14 @@ async function main() {
       }
 
       const approvals = (message.approvals ?? []) as SerializableApproval[];
+      state.instanceToken = message.instanceToken;
 
       try {
         const result = await executeCode(message.code, convex, {
           approvals,
           bundleUrl: state.bundleUrl,
           bundlePath: state.bundlePath,
+          getInstanceToken: () => state.instanceToken ?? undefined,
           language: message.language,
           jobId: message.jobId,
           sessionId: message.sessionId,
