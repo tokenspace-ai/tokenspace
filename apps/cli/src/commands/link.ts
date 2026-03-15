@@ -1,7 +1,7 @@
 import path from "node:path";
+import { api } from "@tokenspace/backend/convex/_generated/api";
 import pc from "picocolors";
 import { getClient, getWorkspaceBySlug, type Workspace } from "../client.js";
-import { api } from "../generated/convex.js";
 import {
   ensureGitignoreEntry,
   formatDisplayPath,

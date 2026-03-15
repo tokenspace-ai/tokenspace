@@ -1,10 +1,12 @@
 /**
  * Convex client setup for CLI operations
  */
+
+import { api } from "@tokenspace/backend/convex/_generated/api";
+import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
 import { ConvexHttpClient } from "convex/browser";
 import pc from "picocolors";
 import { ensureStoredAuthDiscovery, getAccessToken, getAccessTokenWithRefresh } from "./auth.js";
-import { api, type Id } from "./generated/convex.js";
 
 let client: ConvexHttpClient | null = null;
 let clientPromise: Promise<ConvexHttpClient> | null = null;

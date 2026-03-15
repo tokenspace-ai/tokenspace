@@ -1,7 +1,7 @@
+import { api } from "@tokenspace/backend/convex/_generated/api";
 import pc from "picocolors";
 import { getStoredAuth, isTokenExpired } from "../auth";
 import { getClient, getUserId } from "../client";
-import { api } from "../generated/convex.js";
 
 /**
  * Whoami command - shows current user info
