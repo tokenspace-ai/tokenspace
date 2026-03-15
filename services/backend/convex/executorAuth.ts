@@ -8,7 +8,7 @@ const textEncoder = new TextEncoder();
 const TOKEN_SELECTOR_BYTES = 12;
 const TOKEN_SECRET_BYTES = 32;
 
-export const EXECUTOR_IMAGE = "ghcr.io/tokenspace/executor:latest";
+export const EXECUTOR_IMAGE = "ghcr.io/tokenspace-ai/executor:latest";
 export const EXECUTOR_BOOTSTRAP_ENV_VAR = "TOKENSPACE_TOKEN";
 export const EXECUTOR_CONVEX_URL_ENV_VAR = "TOKENSPACE_API_URL";
 export const EXECUTOR_HEARTBEAT_INTERVAL_MS = 30_000;
@@ -177,11 +177,7 @@ export function buildExecutorSetupPayload(bootstrapToken: string, convexUrl: str
         `  -e ${EXECUTOR_BOOTSTRAP_ENV_VAR}="${bootstrapToken}" \\`,
         `  ${EXECUTOR_IMAGE}`,
       ].join("\n"),
-      raw: [
-        `export ${EXECUTOR_CONVEX_URL_ENV_VAR}="${convexUrl}"`,
-        `export ${EXECUTOR_BOOTSTRAP_ENV_VAR}="${bootstrapToken}"`,
-        "bun run ./services/executor/src/main.ts",
-      ].join("\n"),
+      raw: `bunx @tokenspace/executor@latest --api "${convexUrl}" --token "${bootstrapToken}"`,
     },
   };
 }

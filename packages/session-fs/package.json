@@ -1,12 +1,40 @@
 {
   "name": "@tokenspace/session-fs",
-  "private": true,
+  "version": "0.2.1",
   "license": "Apache-2.0",
-  "main": "./src/index.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tokenspace-ai/tokenspace.git",
+    "directory": "packages/session-fs"
+  },
+  "homepage": "https://github.com/tokenspace-ai/tokenspace/tree/main/packages/session-fs#readme",
+  "bugs": {
+    "url": "https://github.com/tokenspace-ai/tokenspace/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
+    "clean": "rm -rf dist",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "bun run clean && bun run build",
     "test:unit": "bun test",
     "typecheck": "tsc --noEmit",
     "build:types": "tsc --declaration --emitDeclarationOnly --outDir dist"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@tokenspace/backend": "workspace:*",

@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { unlink } from "node:fs/promises";
-import { runConvexLocalDev } from "@tokenspace/backend/dev";
 import type { ConvexLogger } from "@tokenspace/convex-local-dev";
 import type { Subprocess } from "bun";
 import { checkBunVersion } from "./lib/bun-version";
+import { runConvexLocalDev } from "./lib/convex-local-dev";
 import { getAdminKey, seedConfiguredWorkspaces } from "./lib/seed";
 
 const PID_FILE = "dev.pid";

@@ -36,7 +36,7 @@
     "llm:recordings:export": "bun run scripts/export-llm-recordings.ts",
     "llm:recordings:seed": "bun run scripts/seed-llm-recordings.ts",
     "build": "turbo build",
-    "build:public-packages": "bun --cwd packages/types build && bun --cwd packages/system-content build && bun --cwd packages/sdk build && bun --cwd packages/compiler build && bun --cwd packages/runtime-core build && bun --cwd apps/cli build && bun --cwd apps/local-mcp build && bun --cwd apps/local-mcp build:types",
+    "build:public-packages": "bun --cwd packages/types build && bun --cwd packages/system-content build && bun --cwd packages/sdk build && bun --cwd packages/compiler build && bun --cwd packages/runtime-core build && bun --cwd packages/session-fs build && bun --cwd apps/cli build && bun --cwd apps/local-mcp build && bun --cwd apps/local-mcp build:types && bun --cwd services/executor build",
     "codegen": "turbo codegen",
     "dev:web": "bun scripts/update-convex-url.ts && turbo -F web dev",
     "dev:docs": "turbo -F @tokenspace/docs dev",

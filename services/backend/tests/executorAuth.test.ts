@@ -48,7 +48,8 @@ describe("executorAuth", () => {
     expect(setup.instanceTokenRefreshWindowMs).toBe(EXECUTOR_INSTANCE_TOKEN_REFRESH_WINDOW_MS);
     expect(setup.snippets.docker).toContain(EXECUTOR_BOOTSTRAP_ENV_VAR);
     expect(setup.snippets.docker).toContain(bootstrapToken);
-    expect(setup.snippets.raw).toContain(EXECUTOR_CONVEX_URL_ENV_VAR);
+    expect(setup.snippets.raw).toContain("@tokenspace/executor");
+    expect(setup.snippets.raw).toContain(bootstrapToken);
     expect(setup.snippets.docker).toContain("https://example.convex.cloud");
     expect(setup.snippets.raw).toContain("https://example.convex.cloud");
     expect(setup.snippets.docker).not.toContain("<your-convex-url>");

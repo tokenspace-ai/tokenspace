@@ -322,7 +322,7 @@ Example startup shape:
 docker run \
   -e CONVEX_URL="..." \
   -e TOKENSPACE_TOKEN="..." \
-  ghcr.io/tokenspace/executor:latest
+  ghcr.io/tokenspace-ai/executor:latest
 ```
 
 The exact packaging can be decided later. The important part for this plan is that startup is generated from a single bootstrap secret and executor metadata.
