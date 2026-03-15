@@ -386,6 +386,9 @@ export class IntegrationTestHarness {
 
     // Set required environment variables on the backend before deploy
     console.log("Setting environment variables...");
+    if (this.backend.backendUrl) {
+      await this.backend.setEnv("CONVEX_URL", this.backend.backendUrl);
+    }
     await this.backend.setEnv("WORKOS_CLIENT_ID", "test-client-id");
     await this.backend.setEnv("RESEND_API_KEY", "test-resend-api-key");
     await this.backend.setEnv("RESEND_FROM_EMAIL", "TokenSpace <onboarding@resend.dev>");
