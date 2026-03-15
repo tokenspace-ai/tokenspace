@@ -23,9 +23,7 @@ describe("Runtime Execution", () => {
   it("compiles and executes simple code via executor service", async () => {
     const backend = getSharedHarness().getBackend();
 
-    // Compile the code using fs.operations.compileCode
-    const compileResult = (await backend.runFunction(getFunctionName(internal.fs.operations.compileCode), {
-      revisionId: context.revisionId,
+    const jobId = (await backend.runFunction(getFunctionName(internal.executor.createJob), {
       code: `
 const message = "Hello from integration test!";
 console.log(message);
@@ -38,14 +36,6 @@ console.log("Sum:", sum);
 // Test session id is available
 console.log("Session ID:", session.id);
 `,
-    })) as { success: boolean; code?: string; error?: string };
-
-    expect(compileResult.success).toBe(true);
-    expect(compileResult.code).toBeDefined();
-
-    // Create a job for the executor service to process
-    const jobId = (await backend.runFunction(getFunctionName(internal.executor.createJob), {
-      code: compileResult.code!,
       revisionId: context.revisionId,
     })) as string;
 
@@ -64,9 +54,7 @@ console.log("Session ID:", session.id);
   it("handles code with type annotations correctly", async () => {
     const backend = getSharedHarness().getBackend();
 
-    // Test that TypeScript code with type annotations compiles and runs
-    const compileResult = (await backend.runFunction(getFunctionName(internal.fs.operations.compileCode), {
-      revisionId: context.revisionId,
+    const jobId = (await backend.runFunction(getFunctionName(internal.executor.createJob), {
       code: `
 const numbers: number[] = [1, 2, 3, 4, 5];
 const doubled: number[] = numbers.map(n => n * 2);
@@ -78,13 +66,6 @@ record["a"] = 1;
 record["b"] = 2;
 console.log("Record:", JSON.stringify(record));
 `,
-    })) as { success: boolean; code?: string; error?: string };
-
-    expect(compileResult.success).toBe(true);
-
-    // Create a job for the executor service to process
-    const jobId = (await backend.runFunction(getFunctionName(internal.executor.createJob), {
-      code: compileResult.code!,
       revisionId: context.revisionId,
     })) as string;
 
@@ -99,39 +80,47 @@ console.log("Record:", JSON.stringify(record));
   it("reports compilation errors for invalid TypeScript", async () => {
     const backend = getSharedHarness().getBackend();
 
-    // Test that invalid TypeScript produces a compilation error
-    const compileResult = (await backend.runFunction(getFunctionName(internal.fs.operations.compileCode), {
-      revisionId: context.revisionId,
+    const jobId = (await backend.runFunction(getFunctionName(internal.executor.createJob), {
       code: `
 // This should fail - type error
 const x: string = 123;
 console.log(x);
 `,
-    })) as { success: boolean; code?: string; error?: string };
+      revisionId: context.revisionId,
+    })) as string;
 
-    expect(compileResult.success).toBe(false);
-    expect(compileResult.error).toBeDefined();
-    expect(compileResult.error).toContain("Type");
+    const job = await waitForJobCompletion(backend, jobId);
+    expect(job.status).toBe("failed");
+    expect(job.error?.message).toContain("TypeScript compilation failed");
+    expect(job.error?.message).toContain("Type 'number' is not assignable to type 'string'");
+  });
+
+  it("reports syntax diagnostics with locations for invalid TypeScript", async () => {
+    const backend = getSharedHarness().getBackend();
+
+    const jobId = (await backend.runFunction(getFunctionName(internal.executor.createJob), {
+      code: `
+const items = [1, 2, 3;
+console.log(items.length);
+`,
+      revisionId: context.revisionId,
+    })) as string;
+
+    const job = await waitForJobCompletion(backend, jobId);
+    expect(job.status).toBe("failed");
+    expect(job.error?.message).toContain("TypeScript compilation failed");
+    expect(job.error?.message).toContain("Line 2:");
   });
 
   it("reports runtime errors for invalid code execution", async () => {
     const backend = getSharedHarness().getBackend();
 
-    // Compile valid TypeScript that will fail at runtime
-    const compileResult = (await backend.runFunction(getFunctionName(internal.fs.operations.compileCode), {
-      revisionId: context.revisionId,
+    const jobId = (await backend.runFunction(getFunctionName(internal.executor.createJob), {
       code: `
 // This compiles but fails at runtime - undefined variable
 const obj: any = undefined;
 console.log(obj.property);
 `,
-    })) as { success: boolean; code?: string; error?: string };
-
-    expect(compileResult.success).toBe(true);
-
-    // Create a job for the executor service to process
-    const jobId = (await backend.runFunction(getFunctionName(internal.executor.createJob), {
-      code: compileResult.code!,
       revisionId: context.revisionId,
     })) as string;
 

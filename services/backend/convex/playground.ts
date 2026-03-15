@@ -47,37 +47,12 @@ export const runPlaygroundCode = action({
     const language = args.language ?? "typescript";
     const approvals = await ctx.runQuery(internal.approvals.listApprovals, { sessionId });
 
-    // For TypeScript, compile the code first
-    if (language === "typescript") {
-      const compiledCode = await ctx.runAction(internal.fs.operations.compileCode, {
-        code: args.code,
-        revisionId: args.revisionId,
-      });
-      if (!compiledCode.success) {
-        return {
-          success: false,
-          error: compiledCode.error,
-          sessionId,
-        };
-      }
-      const job = await ctx.runMutation(internal.executor.createJob, {
-        code: compiledCode.code!, // Use transpiled JavaScript, not original TypeScript
-        language: "typescript",
-        revisionId: args.revisionId,
-        sessionId,
-        timeoutMs: args.timeoutMs,
-        approvals,
-      });
-      return { success: true, jobId: job, sessionId };
-    }
-
-    // For Bash, pass through directly without compilation
     const job = await ctx.runMutation(internal.executor.createJob, {
       code: args.code,
-      language: "bash",
+      language,
       revisionId: args.revisionId,
       sessionId,
-      cwd: args.cwd,
+      cwd: language === "bash" ? args.cwd : undefined,
       timeoutMs: args.timeoutMs,
       approvals,
     });
