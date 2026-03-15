@@ -55,7 +55,7 @@ const workspaceNavItems: AdminNavItemConfig[] = [
 
 const settingsNavItems: AdminNavItemConfig[] = [
   { id: "settings", label: "General", icon: SettingsIcon, to: "/workspace/$slug/admin/settings" },
-  { id: "executor", label: "Executor", icon: ServerIcon, to: "/workspace/$slug/admin/executor" },
+  { id: "executor", label: "Execution Environment", icon: ServerIcon, to: "/workspace/$slug/admin/executor" },
   { id: "credentials", label: "Credentials", icon: KeyRoundIcon, to: "/workspace/$slug/admin/credentials" },
   { id: "members", label: "Members", icon: UsersIcon, to: "/workspace/$slug/admin/members" },
   { id: "models", label: "Models", icon: BrainCircuitIcon, to: "/workspace/$slug/admin/models" },

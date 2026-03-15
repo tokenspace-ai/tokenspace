@@ -20,10 +20,10 @@ function readExecutorVersion(): string {
 }
 
 async function main() {
-  const convexUrl = requireEnv("CONVEX_URL");
-  const bootstrapToken = requireEnv("TOKENSPACE_EXECUTOR_BOOTSTRAP_TOKEN");
+  const convexUrl = process.env.TOKENSPACE_API_URL || requireEnv("CONVEX_URL");
+  const bootstrapToken = requireEnv("TOKENSPACE_TOKEN");
   const executorVersion = readExecutorVersion();
-  console.log(`Starting tokenspace executor with CONVEX_URL=${convexUrl}`);
+  console.log(`Starting tokenspace executor with API URL=${convexUrl}`);
 
   const convex = new ConvexClient(convexUrl);
   const session = new ExecutorSession({

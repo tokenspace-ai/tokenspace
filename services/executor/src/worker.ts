@@ -36,9 +36,9 @@ function toErrorPayload(error: unknown): {
 }
 
 async function main() {
-  const convexUrl = process.env.CONVEX_URL;
+  const convexUrl = process.env.TOKENSPACE_API_URL || process.env.CONVEX_URL;
   if (!convexUrl) {
-    throw new Error("CONVEX_URL is required");
+    throw new Error("TOKENSPACE_API_URL or CONVEX_URL is required");
   }
 
   const convex = new ConvexClient(convexUrl);

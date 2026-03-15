@@ -587,7 +587,7 @@ export class IntegrationTestHarness {
       env: {
         ...process.env,
         CONVEX_URL: this.backend.backendUrl,
-        TOKENSPACE_EXECUTOR_BOOTSTRAP_TOKEN: bootstrapToken,
+        TOKENSPACE_TOKEN: bootstrapToken,
       },
       stdout: executorLogFile ?? "inherit",
       stderr: executorLogFile ?? "inherit",

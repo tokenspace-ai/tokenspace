@@ -138,6 +138,7 @@ export function AppSidebar({
   const assignedExecutorStatus = useQuery(api.executors.getAssignedExecutorStatus, { workspaceId });
   const executorState =
     assignedExecutorStatus === undefined ? null : deriveWorkspaceExecutorState(assignedExecutorStatus);
+  const executorLabel = assignedExecutorStatus?.executor.name ?? "Unassigned";
 
   return (
     <Sidebar variant="sidebar" collapsible="icon" className="border-r">
@@ -273,22 +274,25 @@ export function AppSidebar({
           </SidebarMenuItem>
 
           <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip={executorState ? `Executor ${executorState.label}` : "Executor status"}>
-              <Link to="/workspace/$slug/admin/executor" params={{ slug: slug ?? "" }}>
-                <ServerIcon className={cn("size-4", executorState?.iconClassName)} />
-                <span>Executor</span>
-              </Link>
-            </SidebarMenuButton>
-            {executorState ? <SidebarMenuBadge>{executorState.label}</SidebarMenuBadge> : null}
-          </SidebarMenuItem>
-
-          <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip="Admin">
               <Link to="/workspace/$slug/admin/settings" params={{ slug: slug ?? "" }}>
                 <CogIcon className="size-4" />
                 <span>Settings</span>
               </Link>
             </SidebarMenuButton>
+          </SidebarMenuItem>
+
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              asChild
+              tooltip={executorState ? `${executorLabel} (${executorState.label})` : "Executor status"}
+            >
+              <Link to="/workspace/$slug/admin/executor" params={{ slug: slug ?? "" }}>
+                <ServerIcon className={cn("size-4", executorState?.iconClassName)} />
+                <span>{executorLabel}</span>
+              </Link>
+            </SidebarMenuButton>
+            {executorState ? <SidebarMenuBadge>{executorState.label}</SidebarMenuBadge> : null}
           </SidebarMenuItem>
         </SidebarMenu>
         <SidebarSeparator />

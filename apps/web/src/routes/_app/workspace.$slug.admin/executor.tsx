@@ -35,7 +35,7 @@ function ExecutorSettingsPage() {
     <div className="flex flex-1 flex-col overflow-y-auto">
       <div className="mx-auto w-full max-w-5xl space-y-8 p-8">
         <div>
-          <h1 className="text-lg font-semibold">Executor</h1>
+          <h1 className="text-lg font-semibold">Execution Environment</h1>
           <p className="text-sm text-muted-foreground">
             Assign a self-hosted executor, inspect instance health, and bootstrap new executor fleets.
           </p>

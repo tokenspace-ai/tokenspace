@@ -4,20 +4,46 @@ import { useMutation, useQuery } from "convex/react";
 import {
   AlertCircleIcon,
   CheckCircle2Icon,
-  CircleDotIcon,
-  CpuIcon,
   KeyRoundIcon,
   Loader2,
+  MoreHorizontalIcon,
+  PlusIcon,
   ServerIcon,
+  UnplugIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { CodeBlock, CodeBlockCopyButton } from "@/components/ai-elements/code-block";
 import { RelativeTime } from "@/components/relative-time";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -66,7 +92,12 @@ export function WorkspaceExecutorSettings({
   const [newExecutorName, setNewExecutorName] = useState("");
   const [isAssigning, setIsAssigning] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isUnassigning, setIsUnassigning] = useState(false);
   const [setupState, setSetupState] = useState<SetupState | null>(null);
+
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [unassignDialogOpen, setUnassignDialogOpen] = useState(false);
 
   const currentExecutorId = assignableExecutors?.currentExecutorId ?? assignedStatus?.currentExecutorId ?? null;
 
@@ -105,11 +136,29 @@ export function WorkspaceExecutorSettings({
         executorId: selectedExecutorId as Id<"executors">,
       });
       toast.success("Executor assignment updated");
+      setAssignDialogOpen(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update executor assignment");
       console.error(error);
     } finally {
       setIsAssigning(false);
+    }
+  };
+
+  const handleUnassignExecutor = async () => {
+    setIsUnassigning(true);
+    try {
+      await assignWorkspaceExecutor({
+        workspaceId,
+        executorId: undefined,
+      });
+      toast.success("Executor unassigned");
+      setUnassignDialogOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to unassign executor");
+      console.error(error);
+    } finally {
+      setIsUnassigning(false);
     }
   };
 
@@ -130,6 +179,7 @@ export function WorkspaceExecutorSettings({
       });
       setSelectedExecutorId(result.executor._id);
       setNewExecutorName("");
+      setCreateDialogOpen(false);
       toast.success("Executor created and assigned");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create executor");
@@ -169,13 +219,42 @@ export function WorkspaceExecutorSettings({
             <div>
               <CardTitle className="flex items-center gap-2">
                 <ServerIcon className="size-4" />
-                Current Assignment
+                {assignedStatus ? assignedStatus.executor.name : "No Executor Assigned"}
               </CardTitle>
               <CardDescription>
                 Review the executor assigned to this workspace and the fleet's live health.
               </CardDescription>
             </div>
-            <ExecutorStateBadge state={executorState} />
+            <div className="flex items-center gap-2">
+              <ExecutorStateBadge state={executorState} />
+              {isWorkspaceAdmin && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-8">
+                      <MoreHorizontalIcon className="size-4" />
+                      <span className="sr-only">Executor actions</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => setAssignDialogOpen(true)}>
+                      <ServerIcon className="size-4" />
+                      Change executor
+                    </DropdownMenuItem>
+                    {assignedStatus && (
+                      <DropdownMenuItem variant="destructive" onSelect={() => setUnassignDialogOpen(true)}>
+                        <UnplugIcon className="size-4" />
+                        Unassign executor
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onSelect={() => setCreateDialogOpen(true)}>
+                      <PlusIcon className="size-4" />
+                      Create new executor
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -311,91 +390,117 @@ export function WorkspaceExecutorSettings({
         </CardContent>
       </Card>
 
-      {isWorkspaceAdmin && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CircleDotIcon className="size-4" />
-              Assignment Controls
-            </CardTitle>
-            <CardDescription>Select an existing executor for this workspace.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-2">
-              <Label htmlFor="executor-select">Assigned executor</Label>
-              <Select value={selectedExecutorId} onValueChange={setSelectedExecutorId}>
-                <SelectTrigger id="executor-select">
-                  <SelectValue placeholder="Choose an executor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {executorOptions.map((executor) => (
-                    <SelectItem key={executor._id} value={executor._id}>
-                      {executor.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
+      <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assign Executor</DialogTitle>
+            <DialogDescription>Select an existing executor for this workspace.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2 py-2">
+            <Label htmlFor="executor-select">Executor</Label>
+            <Select value={selectedExecutorId} onValueChange={setSelectedExecutorId}>
+              <SelectTrigger id="executor-select">
+                <SelectValue placeholder="Choose an executor" />
+              </SelectTrigger>
+              <SelectContent>
+                {executorOptions.map((executor) => (
+                  <SelectItem key={executor._id} value={executor._id}>
+                    {executor.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {assignableExecutors && assignableExecutors.executors.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                No assignable executors are available yet. Create one below to bootstrap this workspace.
-              </p>
+              <p className="text-sm text-muted-foreground">No assignable executors available. Create one first.</p>
             )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAssignExecutor} disabled={!canApplyAssignment || isAssigning}>
+              {isAssigning ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Apply"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-            <div className="flex justify-end">
-              <Button onClick={handleAssignExecutor} disabled={!canApplyAssignment || isAssigning}>
-                {isAssigning ? (
-                  <>
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  "Apply Assignment"
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {isWorkspaceAdmin && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CpuIcon className="size-4" />
-              Create Executor
-            </CardTitle>
-            <CardDescription>
+      <Dialog
+        open={createDialogOpen}
+        onOpenChange={(open) => {
+          setCreateDialogOpen(open);
+          if (!open) setNewExecutorName("");
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Executor</DialogTitle>
+            <DialogDescription>
               Create a self-hosted executor and immediately assign it to this workspace.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-2">
-              <Label htmlFor="new-executor-name">Executor name</Label>
-              <Input
-                id="new-executor-name"
-                placeholder="Production fleet"
-                value={newExecutorName}
-                onChange={(event) => setNewExecutorName(event.target.value)}
-              />
-            </div>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2 py-2">
+            <Label htmlFor="new-executor-name">Executor name</Label>
+            <Input
+              id="new-executor-name"
+              placeholder="Production fleet"
+              value={newExecutorName}
+              onChange={(event) => setNewExecutorName(event.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateExecutor} disabled={isCreating || !newExecutorName.trim()}>
+              {isCreating ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-            <div className="flex justify-end">
-              <Button onClick={handleCreateExecutor} disabled={isCreating || !newExecutorName.trim()}>
-                {isCreating ? (
-                  <>
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  "Create Executor"
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <AlertDialog open={unassignDialogOpen} onOpenChange={setUnassignDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unassign executor</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the executor assignment from the workspace. Code execution will stop working until a new
+              executor is assigned.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleUnassignExecutor}
+              disabled={isUnassigning}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isUnassigning ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Unassigning...
+                </>
+              ) : (
+                "Unassign"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {setupState && (
         <Card>
