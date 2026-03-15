@@ -37,9 +37,9 @@ export const LOCAL_DEV_EXECUTOR_NAME = "Local Dev Executor";
 export const LOCAL_DEV_EXECUTOR_CREATED_BY = "dev-seed";
 
 function getConvexUrl(): string {
-  const url = process.env.CONVEX_URL?.trim();
+  const url = process.env.CONVEX_URL?.trim() || process.env.CONVEX_CLOUD_URL?.trim();
   if (!url) {
-    throw new Error("Server misconfigured: CONVEX_URL is not set");
+    throw new Error("Server misconfigured: neither CONVEX_URL nor CONVEX_CLOUD_URL is set");
   }
   return url;
 }
