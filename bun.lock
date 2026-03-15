@@ -19,7 +19,8 @@
         "tokenspace": "./dist/cli.js",
       },
       "dependencies": {
-        "@tokenspace/compiler": "^0.2.1",
+        "@tokenspace/backend": "^0.2.2",
+        "@tokenspace/compiler": "^0.2.2",
         "chokidar": "^4.0.3",
         "commander": "^14.0.3",
         "convex": "^1.33.0",

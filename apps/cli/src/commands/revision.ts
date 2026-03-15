@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
 import { type BuildManifestSummary, commitRevisionFromBuild, prepareRevisionFromBuild } from "../client.js";
-import type { Id } from "../generated/convex.js";
 
 type BuildManifestFile = BuildManifestSummary & {
   artifacts: BuildManifestSummary["artifacts"] & {
