@@ -4,7 +4,6 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { nitro } from "nitro/vite";
 import { defineConfig } from "vite";
-import tsconfigPaths from "vite-tsconfig-paths";
 import { consoleForwardPlugin } from "./vite-console-forward";
 
 const IS_VERCEL_BUILD = ["production", "preview"].includes(process.env.VERCEL_ENV ?? "");
@@ -19,11 +18,13 @@ function loadPortFromEnvironment() {
 }
 
 export default defineConfig({
+  resolve: {
+    tsconfigPaths: true,
+  },
   server: {
     port: loadPortFromEnvironment(),
   },
   plugins: [
-    tsconfigPaths(),
     tailwindcss(),
     tanstackStart(),
     nitro(),

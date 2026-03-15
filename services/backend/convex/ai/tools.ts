@@ -157,26 +157,10 @@ export const runCode = internalAction({
       throw new Error("Session ID required for approvals");
     }
 
-    // Compile the code first
-    const compilerResult = await ctx.runAction(internal.fs.operations.compileCode, {
-      revisionId,
-      code: toolArgs.code,
-    });
-
-    if (!compilerResult.success) {
-      // Compilation failed - add error result immediately
-      await ctx.runMutation(internal.ai.chat.addToolError, {
-        threadId,
-        toolCallId,
-        error: compilerResult.error ?? "Compilation failed",
-      });
-      return null;
-    }
-
-    // Create a job for execution
     const approvals = await ctx.runQuery(internal.approvals.listApprovals, { sessionId });
     await ctx.runMutation(internal.executor.createJob, {
-      code: compilerResult.code!,
+      code: toolArgs.code,
+      language: "typescript",
       threadId,
       toolCallId,
       revisionId,
