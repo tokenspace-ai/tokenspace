@@ -31,7 +31,6 @@ export const SKIP_PATTERNS = ["node_modules", ".git", "tsconfig.json"];
 /** Binary file extensions to encode as base64 */
 export const BINARY_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".ico", ".woff", ".woff2", ".ttf", ".pdf", ".zip"];
 
-export const EXECUTOR_TOKEN = "test-executor-token";
 const CREDENTIAL_ENCRYPTION_KEY_SEED = "integration-test-master-key-0001";
 export const CREDENTIAL_ENCRYPTION_KEY = Buffer.from(CREDENTIAL_ENCRYPTION_KEY_SEED, "utf8").toString("base64");
 export const TEST_ENV_CREDENTIAL_NAME = "TOKENSPACE_TEST_ENV_CREDENTIAL";
@@ -227,9 +226,8 @@ export function readFilesRecursively(
 export async function waitForJobCompletion(backend: ConvexBackend, jobId: string, timeoutMs = 30000): Promise<Job> {
   const startTime = Date.now();
   while (Date.now() - startTime < timeoutMs) {
-    const job = (await backend.runFunction(getFunctionName(api.executor.getJob), {
+    const job = (await backend.runFunction(getFunctionName(internal.executor.getJobInternal), {
       jobId,
-      executorToken: EXECUTOR_TOKEN,
     })) as Job | null;
     if (!job) {
       throw new Error(`Job ${jobId} not found`);
@@ -324,6 +322,7 @@ export class IntegrationTestHarness {
   private backend: ConvexBackend | null = null;
   private executorProcess: Subprocess | null = null;
   private context: TestContext | null = null;
+  private sharedExecutorId: string | null = null;
   private functionLogAbortController: AbortController | null = null;
   private functionLogWatcher: Promise<void> | null = null;
   private functionLogStream: fs.WriteStream | null = null;
@@ -387,11 +386,13 @@ export class IntegrationTestHarness {
 
     // Set required environment variables on the backend before deploy
     console.log("Setting environment variables...");
+    if (this.backend.backendUrl) {
+      await this.backend.setEnv("CONVEX_URL", this.backend.backendUrl);
+    }
     await this.backend.setEnv("WORKOS_CLIENT_ID", "test-client-id");
     await this.backend.setEnv("RESEND_API_KEY", "test-resend-api-key");
     await this.backend.setEnv("RESEND_FROM_EMAIL", "TokenSpace <onboarding@resend.dev>");
     await this.backend.setEnv("TOKENSPACE_APP_URL", "https://app.tokenspace.ai");
-    await this.backend.setEnv("TOKENSPACE_EXECUTOR_TOKEN", EXECUTOR_TOKEN);
     await this.backend.setEnv("TOKENSPACE_CREDENTIAL_ENCRYPTION_KEY", CREDENTIAL_ENCRYPTION_KEY);
     await this.backend.setEnv(TEST_ENV_CREDENTIAL_NAME, TEST_ENV_CREDENTIAL_VALUE);
     await this.backend.setEnv("TOKENSPACE_MOCK_LLM", "true");
@@ -420,25 +421,6 @@ export class IntegrationTestHarness {
         });
       }
     }
-
-    // Start the executor service in the background
-    console.log("Starting executor service...");
-    const executorLogFile = logdir ? Bun.file(path.join(logdir, "executor.log")) : undefined;
-    this.executorProcess = spawn({
-      cmd: ["bun", "run", "src/main.ts"],
-      cwd: EXECUTOR_DIR,
-      env: {
-        ...process.env,
-        CONVEX_URL: this.backend.backendUrl,
-        TOKENSPACE_EXECUTOR_TOKEN: EXECUTOR_TOKEN,
-      },
-      stdout: executorLogFile ?? "inherit",
-      stderr: executorLogFile ?? "inherit",
-    });
-
-    // Give the executor a moment to connect
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    console.log("Executor service started!");
   }
 
   /**
@@ -481,6 +463,7 @@ export class IntegrationTestHarness {
       }
       this.backend = null;
     }
+    this.sharedExecutorId = null;
   }
 
   /**
@@ -526,6 +509,8 @@ export class IntegrationTestHarness {
 
     const branchId = branch._id;
 
+    await this.ensureSharedExecutorForWorkspace(workspaceId);
+
     // Compile the workspace (using internal action to bypass auth)
     const revisionId = await enqueueAndWaitForRevision(this.backend, {
       workspaceId,
@@ -535,6 +520,13 @@ export class IntegrationTestHarness {
 
     this.context = { workspaceId, branchId, revisionId };
     return this.context;
+  }
+
+  async assignSharedExecutorToWorkspace(workspaceId: string): Promise<void> {
+    if (!this.backend) {
+      throw new Error("Backend not started. Call setup() first.");
+    }
+    await this.ensureSharedExecutorForWorkspace(workspaceId);
   }
 
   /**
@@ -555,6 +547,57 @@ export class IntegrationTestHarness {
       throw new Error("Context not available. Call seedWorkspace() first.");
     }
     return this.context;
+  }
+
+  private async ensureSharedExecutorForWorkspace(workspaceId: string): Promise<void> {
+    if (!this.backend) {
+      throw new Error("Backend not started. Call setup() first.");
+    }
+
+    if (!this.sharedExecutorId) {
+      const created = (await this.backend.runFunction(
+        getFunctionName(internal.executors.createExecutorForWorkspaceTest),
+        {
+          workspaceId,
+          name: "Integration Test Executor",
+        },
+      )) as {
+        executorId: string;
+        bootstrapToken: string;
+      };
+      this.sharedExecutorId = created.executorId;
+      await this.startExecutorService(created.bootstrapToken);
+      return;
+    }
+
+    await this.backend.runFunction(getFunctionName(internal.executors.setWorkspaceExecutorInternal), {
+      workspaceId,
+      executorId: this.sharedExecutorId,
+    });
+  }
+
+  private async startExecutorService(bootstrapToken: string): Promise<void> {
+    if (!this.backend) {
+      throw new Error("Backend not started. Call setup() first.");
+    }
+
+    console.log("Starting executor service...");
+    const logdir = process.env.TEST_LOGDIR;
+    const executorLogFile = logdir ? Bun.file(path.join(logdir, "executor.log")) : undefined;
+    this.executorProcess = spawn({
+      cmd: ["bun", "run", "src/main.ts"],
+      cwd: EXECUTOR_DIR,
+      env: {
+        ...process.env,
+        CONVEX_URL: this.backend.backendUrl,
+        TOKENSPACE_TOKEN: bootstrapToken,
+      },
+      stdout: executorLogFile ?? "inherit",
+      stderr: executorLogFile ?? "inherit",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    console.log("Executor service started!");
   }
 }
 

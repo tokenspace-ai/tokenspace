@@ -10,7 +10,8 @@ async function seedWorkspaceFromDir(
   name: string,
   workspaceDir: string,
 ): Promise<{ workspaceId: string; branchId: string }> {
-  const backend = getSharedHarness().getBackend();
+  const harness = getSharedHarness();
+  const backend = harness.getBackend();
   const exists = (await backend.runFunction(getFunctionName(internal.seed.workspaceExists), {
     slug,
   })) as boolean;
@@ -29,6 +30,8 @@ async function seedWorkspaceFromDir(
   const branch = (await backend.runFunction(getFunctionName(internal.vcs.getDefaultBranchInternal), {
     workspaceId: seeded.workspaceId,
   })) as { _id: string };
+
+  await harness.assignSharedExecutorToWorkspace(seeded.workspaceId);
 
   return {
     workspaceId: seeded.workspaceId,

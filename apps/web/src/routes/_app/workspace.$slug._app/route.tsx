@@ -211,6 +211,7 @@ function WorkspaceAppLayout() {
     <SidebarProvider>
       <AppSidebar
         workspaces={workspaces}
+        workspaceId={workspaceId}
         branches={branches}
         currentWorkspaceSlug={parsedSlug.workspaceSlug}
         currentBranchId={currentBranchId}

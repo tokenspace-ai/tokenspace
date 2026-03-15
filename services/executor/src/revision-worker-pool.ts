@@ -5,6 +5,7 @@ import { api } from "@tokenspace/backend/convex/_generated/api";
 import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
 import type { TokenspaceError } from "@tokenspace/sdk";
 import type { ConvexClient } from "convex/browser";
+import type { ExecutorInstanceTokenSource } from "./executor-session";
 import { ensureRevisionEnv } from "./revision-env";
 import type { ToolOutputResult } from "./tool-output";
 import { type ChildToParentMessage, encodeMessage } from "./worker-protocol";
@@ -157,6 +158,7 @@ class WorkerProcess {
 
   async exec(args: {
     jobId: JobId;
+    instanceToken: string;
     code: string;
     language: "typescript" | "bash";
     bundleUrl?: string | null;
@@ -203,6 +205,7 @@ class WorkerProcess {
           requestId,
           jobId,
           revisionId: this.revisionId,
+          instanceToken: args.instanceToken,
           language: args.language,
           code: args.code,
           bundleUrl: args.bundleUrl,
@@ -214,6 +217,17 @@ class WorkerProcess {
         }),
       );
     });
+  }
+
+  updateInstanceToken(instanceToken: string) {
+    if (!this.alive) return;
+    this.child.stdin.write(
+      encodeMessage({
+        type: "token_update",
+        requestId: `${this.workerId}:token:${randomId()}`,
+        instanceToken,
+      }),
+    );
   }
 
   markIdle(onIdleExpired: () => void) {
@@ -290,23 +304,32 @@ function randomId(): string {
 export class RevisionWorkerPool {
   private static instance: RevisionWorkerPool | null = null;
   private readonly convex: ConvexClient;
-  private readonly executorToken: string;
+  private readonly tokenSource: ExecutorInstanceTokenSource;
   private readonly config: PoolConfig;
   private readonly supervisorId: string;
   private readonly revisions = new Map<string, RevisionState>();
+  private readonly activeJobSubscriptions = new Map<
+    string,
+    { jobId: JobId; onUpdate: (job: any) => void; unsubscribe: () => void }
+  >();
+  private readonly detachTokenListener: () => void;
   private readonly revisionEnv = new Map<
     string,
     { bundleUrl: string; depsUrl: string | null; promise: Promise<{ bundlePath: string }> }
   >();
 
-  private constructor(args: { convex: ConvexClient; executorToken: string; config: PoolConfig }) {
+  private constructor(args: { convex: ConvexClient; tokenSource: ExecutorInstanceTokenSource; config: PoolConfig }) {
     this.convex = args.convex;
-    this.executorToken = args.executorToken;
+    this.tokenSource = args.tokenSource;
     this.config = args.config;
     this.supervisorId = randomUUID();
+    this.detachTokenListener = this.tokenSource.onTokenChange((instanceToken) => {
+      this.resubscribeActiveJobWatchers();
+      this.broadcastInstanceToken(instanceToken);
+    });
   }
 
-  static initialize(args: { convex: ConvexClient; executorToken: string }) {
+  static initialize(args: { convex: ConvexClient; tokenSource: ExecutorInstanceTokenSource }) {
     if (RevisionWorkerPool.instance) return;
     const jobLeaseMs = parsePositiveInt(process.env.TOKENSPACE_RUNTIME_JOB_LEASE_MS, 30_000);
     const heartbeatIntervalMs = parsePositiveInt(
@@ -321,7 +344,7 @@ export class RevisionWorkerPool {
     };
     RevisionWorkerPool.instance = new RevisionWorkerPool({
       convex: args.convex,
-      executorToken: args.executorToken,
+      tokenSource: args.tokenSource,
       config,
     });
   }
@@ -334,7 +357,10 @@ export class RevisionWorkerPool {
   }
 
   async enqueue(jobId: JobId): Promise<void> {
-    const job = await this.convex.query(api.executor.getJob, { jobId, executorToken: this.executorToken });
+    const job = await this.convex.query(api.executor.getJob, {
+      jobId,
+      instanceToken: this.tokenSource.getInstanceToken(),
+    });
     if (!job) return;
     const now = nowMs();
     const reclaimable =
@@ -408,6 +434,7 @@ export class RevisionWorkerPool {
     const workerId = `${state.revisionId}:${randomId()}`;
     const worker = new WorkerProcess(state.revisionId, workerId, this.config.workerIdleTtlMs);
     state.workers.add(worker);
+    worker.updateInstanceToken(this.tokenSource.getInstanceToken());
     await worker.init();
     return worker;
   }
@@ -441,7 +468,7 @@ export class RevisionWorkerPool {
         job: jobId,
         workerId: this.supervisorId,
         leaseMs: this.config.jobLeaseMs,
-        executorToken: this.executorToken,
+        instanceToken: this.tokenSource.getInstanceToken(),
       })) as StartJobResult;
     } catch {
       // Job may have been claimed/processed by another runtime instance.
@@ -498,18 +525,24 @@ export class RevisionWorkerPool {
     const leaseLostPromise = new Promise<never>((_, reject) => {
       rejectLeaseLost = reject;
     });
-    const unsubStop = this.convex.onUpdate(api.executor.getJob, { jobId, executorToken: this.executorToken }, (job) => {
-      if (!job) return;
-      if (job.stopRequestedAt && !stopRequested) {
-        stopRequested = true;
-        stopReason = job.stopReason ?? undefined;
-        worker.terminate();
-        rejectStop?.({
-          message: stopReason ?? "Job canceled",
-          data: { errorType: "CANCELED" },
-        });
-      }
-    });
+    const stopWatcher = {
+      jobId,
+      onUpdate: (job: any) => {
+        if (!job) return;
+        if (job.stopRequestedAt && !stopRequested) {
+          stopRequested = true;
+          stopReason = job.stopReason ?? undefined;
+          worker.terminate();
+          rejectStop?.({
+            message: stopReason ?? "Job canceled",
+            data: { errorType: "CANCELED" },
+          });
+        }
+      },
+      unsubscribe: () => {},
+    };
+    this.activeJobSubscriptions.set(String(jobId), stopWatcher);
+    this.subscribeToJobStopWatcher(stopWatcher);
 
     const heartbeatTimer = setInterval(
       () => {
@@ -518,7 +551,7 @@ export class RevisionWorkerPool {
             job: jobId,
             workerId: this.supervisorId,
             leaseMs: this.config.jobLeaseMs,
-            executorToken: this.executorToken,
+            instanceToken: this.tokenSource.getInstanceToken(),
           })
           .catch((error) => {
             leaseLost = true;
@@ -537,6 +570,7 @@ export class RevisionWorkerPool {
       const result = await Promise.race([
         worker.exec({
           jobId,
+          instanceToken: this.tokenSource.getInstanceToken(),
           code: details.code,
           language: details.language,
           bundleUrl: details.bundleUrl,
@@ -553,7 +587,7 @@ export class RevisionWorkerPool {
         job: jobId,
         result,
         workerId: this.supervisorId,
-        executorToken: this.executorToken,
+        instanceToken: this.tokenSource.getInstanceToken(),
       });
       console.log(`Job id=${jobId} completed in ${nowMs() - startTime}ms`);
     } catch (error) {
@@ -566,7 +600,7 @@ export class RevisionWorkerPool {
           await this.convex.mutation(api.executor.cancelJob, {
             job: jobId,
             workerId: this.supervisorId,
-            executorToken: this.executorToken,
+            instanceToken: this.tokenSource.getInstanceToken(),
             error: serialized,
           });
         } catch (e) {
@@ -578,7 +612,8 @@ export class RevisionWorkerPool {
       }
     }
     clearInterval(heartbeatTimer);
-    unsubStop();
+    stopWatcher.unsubscribe();
+    this.activeJobSubscriptions.delete(String(jobId));
   }
 
   private async failJob(jobId: JobId, error: SerializableJobError) {
@@ -586,11 +621,52 @@ export class RevisionWorkerPool {
       await this.convex.mutation(api.executor.failJob, {
         job: jobId,
         workerId: this.supervisorId,
-        executorToken: this.executorToken,
+        instanceToken: this.tokenSource.getInstanceToken(),
         error,
       });
     } catch (e) {
       process.stderr.write(`[executor] failed to failJob id=${jobId}: ${String(e)}\n`);
+    }
+  }
+
+  shutdown() {
+    this.detachTokenListener();
+    for (const subscription of this.activeJobSubscriptions.values()) {
+      subscription.unsubscribe();
+    }
+    this.activeJobSubscriptions.clear();
+    for (const state of this.revisions.values()) {
+      for (const worker of state.workers) {
+        worker.terminate();
+      }
+      state.workers.clear();
+      state.idleWorkers.length = 0;
+      state.queue.length = 0;
+    }
+    this.revisions.clear();
+    RevisionWorkerPool.instance = null;
+  }
+
+  private subscribeToJobStopWatcher(watcher: { jobId: JobId; onUpdate: (job: any) => void; unsubscribe: () => void }) {
+    watcher.unsubscribe();
+    watcher.unsubscribe = this.convex.onUpdate(
+      api.executor.getJob,
+      { jobId: watcher.jobId, instanceToken: this.tokenSource.getInstanceToken() },
+      watcher.onUpdate,
+    );
+  }
+
+  private resubscribeActiveJobWatchers() {
+    for (const watcher of this.activeJobSubscriptions.values()) {
+      this.subscribeToJobStopWatcher(watcher);
+    }
+  }
+
+  private broadcastInstanceToken(instanceToken: string) {
+    for (const state of this.revisions.values()) {
+      for (const worker of state.workers) {
+        worker.updateInstanceToken(instanceToken);
+      }
     }
   }
 }

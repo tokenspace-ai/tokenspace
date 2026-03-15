@@ -1,7 +1,9 @@
-import { api } from "@tokenspace/backend/convex/_generated/api";
-import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
+import { readFileSync } from "node:fs";
+import { hostname } from "node:os";
 import { ConvexClient } from "convex/browser";
+import { AssignedJobSubscriptions } from "./assigned-job-subscriptions";
 import { CompileJobRunner } from "./compile-job-runner";
+import { ExecutorSession } from "./executor-session";
 import { RevisionWorkerPool } from "./revision-worker-pool";
 
 function requireEnv(name: string): string {
@@ -12,52 +14,63 @@ function requireEnv(name: string): string {
   return value;
 }
 
+function readExecutorVersion(): string {
+  const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version?: string };
+  return pkg.version ?? "0.0.0";
+}
+
 async function main() {
-  const convexUrl = requireEnv("CONVEX_URL");
-  const executorToken = requireEnv("TOKENSPACE_EXECUTOR_TOKEN");
-  console.log(`Starting tokenspace executor with CONVEX_URL=${convexUrl}`);
+  const convexUrl = process.env.TOKENSPACE_API_URL || requireEnv("CONVEX_URL");
+  const bootstrapToken = requireEnv("TOKENSPACE_TOKEN");
+  const executorVersion = readExecutorVersion();
+  console.log(`Starting tokenspace executor with API URL=${convexUrl}`);
 
   const convex = new ConvexClient(convexUrl);
-  RevisionWorkerPool.initialize({ convex, executorToken });
-  const pool = RevisionWorkerPool.get();
-  const compileJobRunner = new CompileJobRunner(convex, executorToken);
-  const seenJobs = new Set<string>();
-  const seenCompileJobs = new Set<string>();
+  const session = new ExecutorSession({
+    convex,
+    bootstrapToken,
+    hostname: hostname(),
+    version: executorVersion,
+  });
+  await session.start();
 
-  const unsub = convex.onUpdate(api.executor.runnableJobs, { executorToken }, (jobs) => {
-    for (const job of jobs) {
-      if (!seenJobs.has(job)) {
-        seenJobs.add(job);
-        pool.enqueue(job as Id<"jobs">).finally(() => {
-          setTimeout(() => {
-            seenJobs.delete(job);
-          }, 30_000);
-        });
-      }
-    }
+  RevisionWorkerPool.initialize({ convex, tokenSource: session });
+  const pool = RevisionWorkerPool.get();
+  const compileJobRunner = new CompileJobRunner(convex, session);
+  const subscriptions = new AssignedJobSubscriptions({
+    convex,
+    tokenSource: session,
+    runtimePool: pool,
+    compileJobRunner,
+    logger: console,
   });
-  const unsubCompileJobs = convex.onUpdate(api.compileJobs.runnableCompileJobs, { executorToken }, (jobs) => {
-    for (const job of jobs) {
-      if (!seenCompileJobs.has(job)) {
-        seenCompileJobs.add(job);
-        compileJobRunner.enqueue(job as Id<"compileJobs">);
-        setTimeout(() => {
-          seenCompileJobs.delete(job);
-        }, 30_000);
-      }
-    }
+  subscriptions.start();
+
+  const fatalPromise = new Promise<never>((_, reject) => {
+    session.onFatal((error) => {
+      reject(error);
+    });
   });
-  await waitForSignal();
-  console.log("Shutting down...");
-  unsub();
-  unsubCompileJobs();
+
+  try {
+    await Promise.race([waitForSignal(), fatalPromise]);
+  } finally {
+    console.log("Shutting down...");
+    subscriptions.stop();
+    session.stop();
+    pool.shutdown();
+  }
 }
 
 async function waitForSignal() {
   return new Promise((resolve) => {
-    process.on("SIGINT", () => {
+    const finish = () => {
+      process.off("SIGINT", finish);
+      process.off("SIGTERM", finish);
       resolve(true);
-    });
+    };
+    process.on("SIGINT", finish);
+    process.on("SIGTERM", finish);
   });
 }
 

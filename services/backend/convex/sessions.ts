@@ -11,6 +11,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery, query } from "./_generated/server";
 import { requireSessionOwnership } from "./authz";
+import { clearSessionExecutorAssignment } from "./executorRouting";
 
 /**
  * Create a new session for a thread
@@ -104,6 +105,10 @@ export const deleteSession = internalMutation({
     sessionId: v.id("sessions"),
   },
   handler: async (ctx, args) => {
+    await clearSessionExecutorAssignment(ctx, {
+      sessionId: args.sessionId,
+    });
+
     // Delete all overlay files for this session
     const overlayFiles = await ctx.db
       .query("sessionOverlayFiles")

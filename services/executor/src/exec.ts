@@ -11,7 +11,9 @@ import { ConvexFs } from "@tokenspace/session-fs";
 import type { ConvexClient } from "convex/browser";
 import { InMemoryFs } from "just-bash";
 
-export type ExecutionOptions = Omit<RuntimeExecutionOptions, "credentialStore" | "fileSystem">;
+export type ExecutionOptions = Omit<RuntimeExecutionOptions, "credentialStore" | "fileSystem"> & {
+  getInstanceToken?: () => string | undefined;
+};
 
 type CredentialMissingPayload = {
   errorType: "CREDENTIAL_MISSING";
@@ -94,12 +96,12 @@ function toCredentialDefForError(payload: CredentialMissingPayload): any {
   };
 }
 
-function createCredentialStore(convex: ConvexClient, options?: ExecutionOptions): CredentialStore {
+export function createCredentialStore(convex: ConvexClient, options?: ExecutionOptions): CredentialStore {
   const jobId = options?.jobId ?? null;
-  const executorToken = process.env.TOKENSPACE_EXECUTOR_TOKEN?.trim();
 
   return {
     load: (async (credentialId: string) => {
+      const instanceToken = options?.getInstanceToken?.();
       if (!jobId) {
         throw new TokenspaceError(
           "Credential resolution is unavailable for this execution",
@@ -108,11 +110,11 @@ function createCredentialStore(convex: ConvexClient, options?: ExecutionOptions)
           { errorType: "CREDENTIAL_STORE_NOT_INITIALIZED" },
         );
       }
-      if (!executorToken) {
+      if (!instanceToken) {
         throw new TokenspaceError(
           "Credential resolution is unavailable for this execution",
           undefined,
-          "Executor misconfigured: TOKENSPACE_EXECUTOR_TOKEN is not set",
+          "Executor misconfigured: instance token is not set",
           { errorType: "CREDENTIAL_STORE_NOT_INITIALIZED" },
         );
       }
@@ -121,7 +123,7 @@ function createCredentialStore(convex: ConvexClient, options?: ExecutionOptions)
         const resolved = (await convex.query(api.executor.resolveCredentialForJob, {
           jobId: jobId as Id<"jobs">,
           credentialId,
-          executorToken,
+          instanceToken,
         })) as unknown;
         return resolved === null ? undefined : resolved;
       } catch (error) {
@@ -139,20 +141,20 @@ function createCredentialStore(convex: ConvexClient, options?: ExecutionOptions)
   };
 }
 
-function createUserStore(convex: ConvexClient, options?: ExecutionOptions): UserStore {
+export function createUserStore(convex: ConvexClient, options?: ExecutionOptions): UserStore {
   const jobId = options?.jobId ?? null;
-  const executorToken = process.env.TOKENSPACE_EXECUTOR_TOKEN?.trim();
 
   function buildInitializationError(details: string): UserInfoUnavailableError {
     return new UserInfoUnavailableError("User info is unavailable for this execution", "not_initialized", details);
   }
 
   async function runResolver<T>(call: () => Promise<T>): Promise<T> {
+    const instanceToken = options?.getInstanceToken?.();
     if (!jobId) {
       throw buildInitializationError("Job ID is required to resolve user info");
     }
-    if (!executorToken) {
-      throw buildInitializationError("Executor misconfigured: TOKENSPACE_EXECUTOR_TOKEN is not set");
+    if (!instanceToken) {
+      throw buildInitializationError("Executor misconfigured: instance token is not set");
     }
     try {
       return await call();
@@ -172,16 +174,18 @@ function createUserStore(convex: ConvexClient, options?: ExecutionOptions): User
   return {
     getCurrentUserInfo: async () =>
       await runResolver(async () => {
+        const instanceToken = options?.getInstanceToken?.();
         return (await convex.action(api.executor.resolveCurrentUserInfoForJob, {
           jobId: jobId as Id<"jobs">,
-          executorToken: executorToken!,
+          instanceToken: instanceToken!,
         })) as Awaited<ReturnType<UserStore["getCurrentUserInfo"]>>;
       }),
     getInfo: async (args: UserLookup) =>
       await runResolver(async () => {
+        const instanceToken = options?.getInstanceToken?.();
         return (await convex.action(api.executor.resolveUserInfoForJob, {
           jobId: jobId as Id<"jobs">,
-          executorToken: executorToken!,
+          instanceToken: instanceToken!,
           ...args,
         })) as Awaited<ReturnType<UserStore["getInfo"]>>;
       }),

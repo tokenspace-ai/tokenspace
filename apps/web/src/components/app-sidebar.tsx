@@ -1,6 +1,16 @@
 import { Link, useParams } from "@tanstack/react-router";
+import { api } from "@tokenspace/backend/convex/_generated/api";
 import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
-import { CogIcon, HomeIcon, MessageSquare, MessageSquareIcon, PlusIcon, TerminalSquareIcon } from "lucide-react";
+import { useQuery } from "convex/react";
+import {
+  CogIcon,
+  HomeIcon,
+  MessageSquare,
+  MessageSquareIcon,
+  PlusIcon,
+  ServerIcon,
+  TerminalSquareIcon,
+} from "lucide-react";
 import { useState } from "react";
 import {
   ThreadList,
@@ -27,12 +37,15 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
   SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { deriveWorkspaceExecutorState } from "@/components/workspace-settings/executor-status";
+import { cn } from "@/lib/utils";
 
 export type ChatStatus =
   | "streaming"
@@ -65,6 +78,7 @@ function useCurrentAppRoute(): AppNavItem | undefined {
 
 interface AppSidebarProps {
   workspaces: Workspace[];
+  workspaceId: Id<"workspaces">;
   branches: Branch[];
   currentWorkspaceSlug?: string;
   currentBranchId?: string;
@@ -94,6 +108,7 @@ interface AppSidebarProps {
 
 export function AppSidebar({
   workspaces,
+  workspaceId,
   branches,
   currentWorkspaceSlug,
   currentBranchId,
@@ -120,6 +135,10 @@ export function AppSidebar({
   const collapsed = state === "collapsed";
   const currentRoute = useCurrentAppRoute();
   const [threadsPopoverOpen, setThreadsPopoverOpen] = useState(false);
+  const assignedExecutorStatus = useQuery(api.executors.getAssignedExecutorStatus, { workspaceId });
+  const executorState =
+    assignedExecutorStatus === undefined ? null : deriveWorkspaceExecutorState(assignedExecutorStatus);
+  const executorLabel = assignedExecutorStatus?.executor.name ?? "Unassigned";
 
   return (
     <Sidebar variant="sidebar" collapsible="icon" className="border-r">
@@ -261,6 +280,19 @@ export function AppSidebar({
                 <span>Settings</span>
               </Link>
             </SidebarMenuButton>
+          </SidebarMenuItem>
+
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              asChild
+              tooltip={executorState ? `${executorLabel} (${executorState.label})` : "Executor status"}
+            >
+              <Link to="/workspace/$slug/admin/executor" params={{ slug: slug ?? "" }}>
+                <ServerIcon className={cn("size-4", executorState?.iconClassName)} />
+                <span>{executorLabel}</span>
+              </Link>
+            </SidebarMenuButton>
+            {executorState ? <SidebarMenuBadge>{executorState.label}</SidebarMenuBadge> : null}
           </SidebarMenuItem>
         </SidebarMenu>
         <SidebarSeparator />

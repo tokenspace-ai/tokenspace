@@ -28,7 +28,8 @@ function createWorkspaceSlug(): string {
 }
 
 async function seedCredentialWorkspace(slug: string): Promise<SeededWorkspace> {
-  const backend = getSharedHarness().getBackend();
+  const harness = getSharedHarness();
+  const backend = harness.getBackend();
   const workspaceDir = await mkdtemp(path.join(tmpdir(), "tokenspace-credentials-workspace-"));
 
   try {
@@ -216,6 +217,8 @@ export const readSessionFile = action(
     const branch = (await backend.runFunction(getFunctionName(internal.vcs.getDefaultBranchInternal), {
       workspaceId: seeded.workspaceId,
     })) as { _id: string };
+
+    await harness.assignSharedExecutorToWorkspace(seeded.workspaceId);
 
     const revisionId = await enqueueAndWaitForRevision(backend, {
       workspaceId: seeded.workspaceId,

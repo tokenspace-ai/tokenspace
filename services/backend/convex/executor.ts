@@ -12,6 +12,16 @@ import {
   query,
 } from "./_generated/server";
 import { buildMissingCredentialPayload, WORKSPACE_CREDENTIAL_SUBJECT } from "./credentials";
+import { verifyExecutorInstanceToken } from "./executorAuth";
+import {
+  countNonterminalAssignments,
+  moveSessionExecutorAssignment,
+  pickPreferredExecutorInstance,
+  requireExecutorQueueAccess,
+  resolveEffectiveAssignedInstanceId,
+  scheduleJobToExecutorInstance,
+} from "./executorRouting";
+import { assertWorkspaceAssignedToExecutor } from "./executors";
 import type { UserInfo } from "./users";
 import { resolveCurrentUserInfo, resolveVisibleUserByEmail, resolveVisibleUserById } from "./users";
 
@@ -20,24 +30,25 @@ const MIN_JOB_TIMEOUT_MS = 1_000;
 const MAX_JOB_TIMEOUT_MS = 60 * 60_000;
 const MAX_JOB_OUTPUT_CHARS = 20_000;
 
-function assertExecutorToken(executorToken: string): void {
-  const expected = process.env.TOKENSPACE_EXECUTOR_TOKEN;
-  if (!expected || executorToken !== expected) {
-    throw new Error("Unauthorized");
-  }
-}
-
 type PublicCtx = QueryCtx | MutationCtx;
 type InternalCtx = QueryCtx | MutationCtx | ActionCtx;
 
-async function requireUserOrExecutorToken(ctx: PublicCtx, executorToken?: string): Promise<{ userId?: string }> {
+async function requireUserOrExecutorAccess(
+  ctx: PublicCtx,
+  instanceToken?: string,
+): Promise<
+  { userId: string } | { instanceToken: string; executorId: Id<"executors">; instanceId: Id<"executorInstances"> }
+> {
   const user = await ctx.auth.getUserIdentity();
   if (user) {
     return { userId: user.subject };
   }
-  if (executorToken) {
-    assertExecutorToken(executorToken);
-    return {};
+  if (instanceToken) {
+    const verified = await verifyExecutorInstanceToken(ctx, instanceToken, Date.now());
+    if (!verified.instanceId) {
+      throw new Error("Unauthorized");
+    }
+    return { instanceToken, executorId: verified.executorId, instanceId: verified.instanceId };
   }
   throw new Error("Unauthorized");
 }
@@ -173,6 +184,167 @@ async function getJobRevisionOrThrow(ctx: InternalCtx, job: Doc<"jobs">): Promis
   return revision;
 }
 
+async function requireExecutorAccessToJob(
+  ctx: PublicCtx,
+  args: { instanceToken: string; job: Doc<"jobs">; now?: number },
+) {
+  return await requireExecutorQueueAccess(ctx, {
+    instanceToken: args.instanceToken,
+    workspaceId: args.job.workspaceId,
+    targetExecutorId: args.job.targetExecutorId,
+    assignedInstanceId: args.job.assignedInstanceId,
+    queueKind: "runtime",
+    sessionId: args.job.sessionId,
+    now: args.now,
+  });
+}
+
+type RuntimeRunnableRoutingContext = {
+  instanceById: Map<Id<"executorInstances">, Doc<"executorInstances">>;
+  loadByInstanceId: Map<Id<"executorInstances">, number>;
+  workspaceById: Map<Id<"workspaces">, Doc<"workspaces"> | null>;
+  sessionStateById: Map<
+    Id<"sessions">,
+    { workspaceId: Id<"workspaces"> | null; preferredInstanceId?: Id<"executorInstances"> }
+  >;
+};
+
+function collectUniqueIds<T extends string>(ids: Array<T | null | undefined>): T[] {
+  const seen = new Set<string>();
+  const unique: T[] = [];
+  for (const id of ids) {
+    if (!id || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    unique.push(id);
+  }
+  return unique;
+}
+
+async function buildRuntimeRunnableRoutingContext(
+  ctx: PublicCtx,
+  args: {
+    executorId: Id<"executors">;
+    candidateJobs: Doc<"jobs">[];
+    executorPending: Doc<"jobs">[];
+    executorRunning: Doc<"jobs">[];
+  },
+): Promise<RuntimeRunnableRoutingContext> {
+  type SessionRunnableState =
+    RuntimeRunnableRoutingContext["sessionStateById"] extends Map<Id<"sessions">, infer TValue> ? TValue : never;
+  const workspaceIds = collectUniqueIds(args.candidateJobs.map((job) => job.workspaceId));
+  const sessionIds = collectUniqueIds(args.candidateJobs.map((job) => job.sessionId));
+
+  const [instances, workspaceEntries, sessionEntries] = await Promise.all([
+    ctx.db
+      .query("executorInstances")
+      .withIndex("by_executor", (q) => q.eq("executorId", args.executorId))
+      .collect(),
+    Promise.all(
+      workspaceIds.map(async (workspaceId) => {
+        return [workspaceId, await ctx.db.get(workspaceId)] as const;
+      }),
+    ),
+    Promise.all(
+      sessionIds.map(async (sessionId) => {
+        const session = await ctx.db.get(sessionId);
+        if (!session) {
+          return [
+            sessionId,
+            { workspaceId: null, preferredInstanceId: undefined } satisfies SessionRunnableState,
+          ] as const;
+        }
+        const [revision, assignment] = await Promise.all([
+          ctx.db.get(session.revisionId),
+          ctx.db
+            .query("sessionExecutorAssignments")
+            .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
+            .first(),
+        ]);
+        return [
+          sessionId,
+          {
+            workspaceId: revision?.workspaceId ?? null,
+            preferredInstanceId: assignment?.executorId === args.executorId ? assignment.assignedInstanceId : undefined,
+          } satisfies SessionRunnableState,
+        ] as const;
+      }),
+    ),
+  ]);
+
+  return {
+    instanceById: new Map(instances.map((instance) => [instance._id, instance])),
+    loadByInstanceId: countNonterminalAssignments([...args.executorPending, ...args.executorRunning]),
+    workspaceById: new Map(workspaceEntries),
+    sessionStateById: new Map(sessionEntries),
+  };
+}
+
+function resolveRunnableRuntimeAssignedInstanceId(args: {
+  job: Doc<"jobs">;
+  executorId: Id<"executors">;
+  routingContext: RuntimeRunnableRoutingContext;
+  now: number;
+}): Id<"executorInstances"> | null {
+  if (!args.job.workspaceId || !args.job.targetExecutorId || args.job.targetExecutorId !== args.executorId) {
+    return null;
+  }
+
+  const workspace = args.routingContext.workspaceById.get(args.job.workspaceId);
+  if (!workspace || workspace.executorId !== args.executorId) {
+    return null;
+  }
+
+  let preferredInstanceId: Id<"executorInstances"> | undefined;
+  if (args.job.sessionId) {
+    const sessionState = args.routingContext.sessionStateById.get(args.job.sessionId);
+    if (!sessionState || sessionState.workspaceId !== args.job.workspaceId) {
+      return null;
+    }
+    preferredInstanceId = sessionState.preferredInstanceId;
+  }
+
+  const assigned = args.job.assignedInstanceId
+    ? args.routingContext.instanceById.get(args.job.assignedInstanceId)
+    : null;
+  if (assigned && assigned.status === "online" && assigned.expiresAt >= args.now) {
+    return assigned._id;
+  }
+
+  return (
+    pickPreferredExecutorInstance({
+      instances: Array.from(args.routingContext.instanceById.values()),
+      queueKind: "runtime",
+      loadByInstanceId: args.routingContext.loadByInstanceId,
+      preferredInstanceId,
+      honorPreferredCapacity: args.job.sessionId !== undefined,
+      now: args.now,
+    })?._id ?? null
+  );
+}
+
+async function failToolBackedJobImmediately(
+  ctx: MutationCtx,
+  job: Pick<Doc<"jobs">, "_id" | "threadId" | "toolCallId"> & {
+    error: {
+      message: string;
+      stack?: string;
+      details?: string;
+      data?: Record<string, unknown>;
+    };
+  },
+): Promise<void> {
+  if (!job.threadId || !job.toolCallId) {
+    return;
+  }
+  await ctx.runMutation(internal.ai.chat.addToolError, {
+    threadId: job.threadId,
+    toolCallId: job.toolCallId,
+    error: formatJobError(job.error),
+  });
+}
+
 export async function resolveJobCallerUserId(ctx: InternalCtx, job: Doc<"jobs">): Promise<string | null> {
   if (job.sessionId) {
     const session =
@@ -272,13 +444,15 @@ export function formatCredentialMissingErrorForTool(error: {
 
 export const pendingJobs = query({
   args: {
-    executorToken: v.string(),
+    instanceToken: v.string(),
   },
   handler: async (ctx, args) => {
-    assertExecutorToken(args.executorToken);
+    const verified = await verifyExecutorInstanceToken(ctx, args.instanceToken);
     const jobs = await ctx.db
       .query("jobs")
-      .withIndex("by_status", (q) => q.eq("status", "pending"))
+      .withIndex("by_assigned_instance_status", (q) =>
+        q.eq("assignedInstanceId", verified.instanceId).eq("status", "pending"),
+      )
       .collect();
 
     return jobs.map((job) => job._id);
@@ -287,42 +461,88 @@ export const pendingJobs = query({
 
 export const runnableJobs = query({
   args: {
-    executorToken: v.string(),
+    instanceToken: v.string(),
   },
   handler: async (ctx, args) => {
-    assertExecutorToken(args.executorToken);
     const now = Date.now();
-    const pending = await ctx.db
-      .query("jobs")
-      .withIndex("by_status", (q) => q.eq("status", "pending"))
-      .collect();
+    const verified = await verifyExecutorInstanceToken(ctx, args.instanceToken, now);
+    const [assignedPending, assignedRunning, executorPending, executorRunning] = await Promise.all([
+      ctx.db
+        .query("jobs")
+        .withIndex("by_assigned_instance_status", (q) =>
+          q.eq("assignedInstanceId", verified.instanceId).eq("status", "pending"),
+        )
+        .collect(),
+      ctx.db
+        .query("jobs")
+        .withIndex("by_assigned_instance_status", (q) =>
+          q.eq("assignedInstanceId", verified.instanceId).eq("status", "running"),
+        )
+        .collect(),
+      ctx.db
+        .query("jobs")
+        .withIndex("by_target_executor_status", (q) =>
+          q.eq("targetExecutorId", verified.executorId).eq("status", "pending"),
+        )
+        .collect(),
+      ctx.db
+        .query("jobs")
+        .withIndex("by_target_executor_status", (q) =>
+          q.eq("targetExecutorId", verified.executorId).eq("status", "running"),
+        )
+        .collect(),
+    ]);
+    const candidateJobs = Array.from(
+      new Map(
+        [...assignedPending, ...assignedRunning, ...executorPending, ...executorRunning].map((job) => [
+          String(job._id),
+          job,
+        ]),
+      ).values(),
+    );
+    const routingContext = await buildRuntimeRunnableRoutingContext(ctx, {
+      executorId: verified.executorId,
+      candidateJobs,
+      executorPending,
+      executorRunning,
+    });
 
-    const reclaimableRunning = await ctx.db
-      .query("jobs")
-      .withIndex("by_status", (q) => q.eq("status", "running"))
-      .filter((q) =>
-        q.or(
-          q.eq(q.field("leaseExpiresAt"), undefined),
-          // Convex query builder doesn't guarantee lte exists; approximate with < now+1.
-          q.lt(q.field("leaseExpiresAt"), now + 1),
-        ),
-      )
-      .collect();
+    const runnable = new Map<string, Id<"jobs">>();
+    for (const job of candidateJobs) {
+      const effectiveAssignedInstanceId = resolveRunnableRuntimeAssignedInstanceId({
+        job,
+        executorId: verified.executorId,
+        routingContext,
+        now,
+      });
+      if (effectiveAssignedInstanceId !== verified.instanceId) {
+        continue;
+      }
+      const reclaimable = job.status === "pending" || job.leaseExpiresAt == null || job.leaseExpiresAt < now;
+      if (reclaimable) {
+        runnable.set(String(job._id), job._id);
+      }
+    }
 
-    return [...pending, ...reclaimableRunning].map((job) => job._id);
+    return Array.from(runnable.values());
   },
 });
 
 export const getJob = query({
   args: {
     jobId: v.id("jobs"),
-    executorToken: v.optional(v.string()),
+    instanceToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const access = await requireUserOrExecutorToken(ctx, args.executorToken);
+    const access = await requireUserOrExecutorAccess(ctx, args.instanceToken);
     const job = await ctx.db.get(args.jobId);
-    if (job && access.userId) {
+    if (job && "userId" in access && access.userId) {
       await assertUserCanAccessJob(ctx, access.userId, job);
+    } else if (job && "instanceToken" in access) {
+      await requireExecutorAccessToJob(ctx, {
+        instanceToken: access.instanceToken,
+        job,
+      });
     }
     return job;
   },
@@ -341,17 +561,24 @@ export const getJobByToolCallId = query({
   args: {
     threadId: v.string(),
     toolCallId: v.string(),
-    executorToken: v.optional(v.string()),
+    instanceToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const access = await requireUserOrExecutorToken(ctx, args.executorToken);
-    if (access.userId) {
+    const access = await requireUserOrExecutorAccess(ctx, args.instanceToken);
+    if ("userId" in access && access.userId) {
       await assertUserOwnsThread(ctx, access.userId, args.threadId);
     }
-    return await ctx.db
+    const job = await ctx.db
       .query("jobs")
       .withIndex("by_tool_call_id", (q) => q.eq("threadId", args.threadId).eq("toolCallId", args.toolCallId))
       .first();
+    if (job && "instanceToken" in access) {
+      await requireExecutorAccessToJob(ctx, {
+        instanceToken: access.instanceToken,
+        job,
+      });
+    }
+    return job;
   },
 });
 
@@ -359,7 +586,7 @@ export const resolveCredentialForJob = query({
   args: {
     jobId: v.id("jobs"),
     credentialId: v.string(),
-    executorToken: v.string(),
+    instanceToken: v.string(),
   },
   handler: async (
     ctx,
@@ -367,11 +594,14 @@ export const resolveCredentialForJob = query({
   ): Promise<
     string | { accessToken: string; tokenType?: string; expiresAt?: number; scope?: string[] } | undefined
   > => {
-    assertExecutorToken(args.executorToken);
     const job = await ctx.db.get(args.jobId);
     if (!job) {
       throw new Error("Job not found");
     }
+    await requireExecutorAccessToJob(ctx, {
+      instanceToken: args.instanceToken,
+      job,
+    });
     if (!job.revisionId) {
       throw new Error("Job has no revision");
     }
@@ -498,11 +728,21 @@ export const resolveCredentialForJob = query({
 export const resolveCurrentUserInfoForJob = action({
   args: {
     jobId: v.id("jobs"),
-    executorToken: v.string(),
+    instanceToken: v.string(),
   },
   handler: async (ctx, args): Promise<UserInfo> => {
-    assertExecutorToken(args.executorToken);
     const job = await getJobRecordOrThrow(ctx, args.jobId);
+    const verified = await verifyExecutorInstanceToken(ctx, args.instanceToken);
+    if (!job.workspaceId || !job.targetExecutorId || !job.assignedInstanceId) {
+      throw new Error("Job is missing executor assignment");
+    }
+    if (verified.executorId !== job.targetExecutorId || verified.instanceId !== job.assignedInstanceId) {
+      throw new Error("Job is assigned to a different executor instance");
+    }
+    await assertWorkspaceAssignedToExecutor(ctx, {
+      workspaceId: job.workspaceId,
+      executorId: job.targetExecutorId,
+    });
     const callerUserId = await resolveJobCallerUserId(ctx, job);
     if (!callerUserId) {
       throw new ConvexError(
@@ -521,12 +761,11 @@ export const resolveCurrentUserInfoForJob = action({
 export const resolveUserInfoForJob = action({
   args: {
     jobId: v.id("jobs"),
-    executorToken: v.string(),
+    instanceToken: v.string(),
     id: v.optional(v.string()),
     email: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<UserInfo | null> => {
-    assertExecutorToken(args.executorToken);
     const hasId = typeof args.id === "string" && args.id.trim().length > 0;
     const hasEmail = typeof args.email === "string" && args.email.trim().length > 0;
     if (hasId === hasEmail) {
@@ -534,6 +773,17 @@ export const resolveUserInfoForJob = action({
     }
 
     const job = await getJobRecordOrThrow(ctx, args.jobId);
+    const verified = await verifyExecutorInstanceToken(ctx, args.instanceToken);
+    if (!job.workspaceId || !job.targetExecutorId || !job.assignedInstanceId) {
+      throw new Error("Job is missing executor assignment");
+    }
+    if (verified.executorId !== job.targetExecutorId || verified.instanceId !== job.assignedInstanceId) {
+      throw new Error("Job is assigned to a different executor instance");
+    }
+    await assertWorkspaceAssignedToExecutor(ctx, {
+      workspaceId: job.workspaceId,
+      executorId: job.targetExecutorId,
+    });
     const revision = await getJobRevisionOrThrow(ctx, job);
     const callerUserId = await resolveJobCallerUserId(ctx, job);
     if (!callerUserId) {
@@ -562,16 +812,21 @@ export const requestStopJob = mutation({
   args: {
     jobId: v.id("jobs"),
     reason: v.optional(v.string()),
-    executorToken: v.optional(v.string()),
+    instanceToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const access = await requireUserOrExecutorToken(ctx, args.executorToken);
+    const access = await requireUserOrExecutorAccess(ctx, args.instanceToken);
     const job = await ctx.db.get(args.jobId);
     if (!job) {
       throw new Error("Job not found");
     }
-    if (access.userId) {
+    if ("userId" in access && access.userId) {
       await assertUserCanAccessJob(ctx, access.userId, job);
+    } else if ("instanceToken" in access) {
+      await requireExecutorAccessToJob(ctx, {
+        instanceToken: access.instanceToken,
+        job,
+      });
     }
 
     if (job.status === "completed" || job.status === "failed" || job.status === "canceled") {
@@ -591,28 +846,91 @@ export const requestStopJob = mutation({
   },
 });
 
+export const requestStopJobInternal = internalMutation({
+  args: {
+    jobId: v.id("jobs"),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (!job) {
+      throw new Error("Job not found");
+    }
+    if (job.status === "completed" || job.status === "failed" || job.status === "canceled") {
+      return job;
+    }
+    if (job.stopRequestedAt) {
+      return job;
+    }
+
+    await ctx.db.patch(args.jobId, {
+      stopRequestedAt: Date.now(),
+      stopReason: args.reason,
+    });
+
+    return await ctx.db.get(args.jobId);
+  },
+});
+
 export const claimJob = mutation({
   args: {
     job: v.id("jobs"),
     workerId: v.string(),
     leaseMs: v.number(),
-    executorToken: v.string(),
+    instanceToken: v.string(),
   },
   handler: async (ctx, args) => {
-    assertExecutorToken(args.executorToken);
+    const now = Date.now();
+    const verified = await verifyExecutorInstanceToken(ctx, args.instanceToken, now);
     const job = await ctx.db.get(args.job);
 
     if (job == null) {
       throw new Error("Job not found");
+    }
+    if (!job.workspaceId || !job.targetExecutorId) {
+      throw new Error("Job is missing executor assignment");
+    }
+    if (job.targetExecutorId !== verified.executorId) {
+      throw new Error("Job is assigned to a different executor");
     }
 
     if (job.status === "completed" || job.status === "failed" || job.status === "canceled") {
       throw new Error("Job is not claimable");
     }
 
+    const effectiveAssignedInstanceId = await resolveEffectiveAssignedInstanceId(ctx, {
+      workspaceId: job.workspaceId,
+      targetExecutorId: job.targetExecutorId,
+      assignedInstanceId: job.assignedInstanceId,
+      queueKind: "runtime",
+      sessionId: job.sessionId,
+      now,
+    });
+    if (!effectiveAssignedInstanceId) {
+      throw new Error("No healthy executor instance is available for this job");
+    }
+    if (effectiveAssignedInstanceId !== verified.instanceId) {
+      throw new Error("Job is assigned to a different executor instance");
+    }
+    if (job.assignedInstanceId !== effectiveAssignedInstanceId) {
+      await ctx.db.patch(args.job, {
+        assignedInstanceId: effectiveAssignedInstanceId,
+        assignmentUpdatedAt: now,
+      });
+      if (job.sessionId) {
+        await moveSessionExecutorAssignment(ctx, {
+          sessionId: job.sessionId,
+          workspaceId: job.workspaceId,
+          executorId: job.targetExecutorId,
+          assignedInstanceId: effectiveAssignedInstanceId,
+          now,
+        });
+      }
+    }
+
     // Handle cancellation request before claiming.
     if (job.stopRequestedAt) {
-      const completedAt = Date.now();
+      const completedAt = now;
       const error = {
         message: job.stopReason ?? "Job canceled",
         data: { errorType: "CANCELED" },
@@ -635,7 +953,6 @@ export const claimJob = mutation({
       };
     }
 
-    const now = Date.now();
     const leaseExpiresAt = now + Math.max(1_000, Math.min(args.leaseMs, 10 * 60_000));
     const heartbeatAt = now;
     const timeoutMs = clampTimeoutMs(job.timeoutMs);
@@ -698,15 +1015,18 @@ export const heartbeatJob = mutation({
     job: v.id("jobs"),
     workerId: v.string(),
     leaseMs: v.number(),
-    executorToken: v.string(),
+    instanceToken: v.string(),
   },
   handler: async (ctx, args) => {
-    assertExecutorToken(args.executorToken);
     const job = await ctx.db.get(args.job);
 
     if (job == null) {
       throw new Error("Job not found");
     }
+    await requireExecutorAccessToJob(ctx, {
+      instanceToken: args.instanceToken,
+      job,
+    });
 
     if (job.status !== "running") {
       throw new Error("Job is not running");
@@ -743,37 +1063,73 @@ export const createJob = internalMutation({
     approvals: v.optional(v.array(serializableApprovalValidator)),
   },
   handler: async (ctx, args) => {
+    const revision = await ctx.db.get(args.revisionId);
+    if (!revision) {
+      throw new Error("Revision not found");
+    }
+    const now = Date.now();
     const timeoutMs = clampTimeoutMs(args.timeoutMs);
-    const job = await ctx.db.insert("jobs", {
+    const scheduled = await scheduleJobToExecutorInstance(ctx, {
+      workspaceId: revision.workspaceId,
+      queueKind: "runtime",
+      sessionId: args.sessionId,
+      now,
+    });
+    const baseJob = {
       code: args.code,
       language: args.language ?? "typescript",
-      status: "pending",
       threadId: args.threadId,
       toolCallId: args.toolCallId,
       promptMessageId: args.promptMessageId,
+      workspaceId: revision.workspaceId,
       revisionId: args.revisionId,
+      targetExecutorId: scheduled.targetExecutorId,
+      assignedInstanceId: scheduled.kind === "assigned" ? scheduled.assignedInstanceId : undefined,
+      assignmentUpdatedAt: scheduled.assignmentUpdatedAt,
       sessionId: args.sessionId,
       cwd: args.cwd,
       timeoutMs,
       approvals: args.approvals,
-    });
+    };
 
-    return job;
+    if (scheduled.kind === "unavailable") {
+      const job = await ctx.db.insert("jobs", {
+        ...baseJob,
+        status: "failed",
+        error: scheduled.error,
+        completedAt: now,
+      });
+      await failToolBackedJobImmediately(ctx, {
+        _id: job,
+        threadId: args.threadId,
+        toolCallId: args.toolCallId,
+        error: scheduled.error,
+      });
+      return job;
+    }
+
+    return await ctx.db.insert("jobs", {
+      ...baseJob,
+      status: "pending",
+    });
   },
 });
 
 export const startJob = mutation({
   args: {
     job: v.id("jobs"),
-    executorToken: v.string(),
+    instanceToken: v.string(),
   },
   handler: async (ctx, args) => {
-    assertExecutorToken(args.executorToken);
     const job = await ctx.db.get(args.job);
 
     if (job == null) {
       throw new Error("Job not found");
     }
+    await requireExecutorAccessToJob(ctx, {
+      instanceToken: args.instanceToken,
+      job,
+    });
 
     if (job.status !== "pending") {
       throw new Error("Job is not pending");
@@ -848,15 +1204,18 @@ export const completeJob = mutation({
     output: v.optional(v.string()),
     result: v.optional(v.any()),
     workerId: v.string(),
-    executorToken: v.string(),
+    instanceToken: v.string(),
   },
   handler: async (ctx, args) => {
-    assertExecutorToken(args.executorToken);
     const job = await ctx.db.get(args.job);
 
     if (job == null) {
       throw new Error("Job not found");
     }
+    await requireExecutorAccessToJob(ctx, {
+      instanceToken: args.instanceToken,
+      job,
+    });
 
     if (job.status !== "running") {
       throw new Error("Job is not running");
@@ -904,7 +1263,7 @@ export const cancelJob = mutation({
   args: {
     job: v.id("jobs"),
     workerId: v.optional(v.string()),
-    executorToken: v.string(),
+    instanceToken: v.string(),
     error: v.optional(
       v.object({
         message: v.string(),
@@ -915,12 +1274,15 @@ export const cancelJob = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    assertExecutorToken(args.executorToken);
     const job = await ctx.db.get(args.job);
 
     if (job == null) {
       throw new Error("Job not found");
     }
+    await requireExecutorAccessToJob(ctx, {
+      instanceToken: args.instanceToken,
+      job,
+    });
 
     if (job.status !== "running" && job.status !== "pending") {
       throw new Error("Job is not cancelable");
@@ -960,7 +1322,7 @@ export const failJob = mutation({
   args: {
     job: v.id("jobs"),
     workerId: v.string(),
-    executorToken: v.string(),
+    instanceToken: v.string(),
     error: v.object({
       message: v.string(),
       stack: v.optional(v.string()),
@@ -969,12 +1331,15 @@ export const failJob = mutation({
     }),
   },
   handler: async (ctx, args) => {
-    assertExecutorToken(args.executorToken);
     const job = await ctx.db.get(args.job);
 
     if (job == null) {
       throw new Error("Job not found");
     }
+    await requireExecutorAccessToJob(ctx, {
+      instanceToken: args.instanceToken,
+      job,
+    });
 
     if (job.status !== "running") {
       throw new Error("Job is not running");

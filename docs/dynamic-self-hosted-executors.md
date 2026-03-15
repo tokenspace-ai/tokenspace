@@ -192,6 +192,8 @@ Recommended framing:
 
 ## Recommended Authentication Direction
 
+Detailed decision note: [Executor Auth Model Research](./executor-auth-model-research.md)
+
 ### Recommendation: database-backed executor credentials first, while explicitly researching JWTs
 
 There are two broad choices:
@@ -319,7 +321,7 @@ Example startup shape:
 ```bash
 docker run \
   -e CONVEX_URL="..." \
-  -e TOKENSPACE_EXECUTOR_BOOTSTRAP_TOKEN="..." \
+  -e TOKENSPACE_TOKEN="..." \
   ghcr.io/tokenspace/executor:latest
 ```
 

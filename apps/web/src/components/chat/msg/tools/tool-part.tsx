@@ -1,11 +1,17 @@
+import { Link } from "@tanstack/react-router";
 import { api } from "@tokenspace/backend/convex/_generated/api";
 import type { ToolUIPart } from "ai";
 import { useQuery } from "convex/react";
-import { BotIcon, FileIcon, FileSearchIcon, TerminalIcon, TvMinimalPlayIcon } from "lucide-react";
+import { AlertCircleIcon, BotIcon, FileIcon, FileSearchIcon, TerminalIcon, TvMinimalPlayIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { CredentialResolutionDialog } from "@/components/credentials/credential-resolution-dialog";
 import { Button } from "@/components/ui/button";
 import { credentialMissingHint, parseCredentialMissingPayload } from "@/lib/credential-missing";
+import {
+  executorUnavailableHint,
+  executorUnavailableTitle,
+  parseExecutorUnavailablePayload,
+} from "@/lib/executor-unavailable";
 import { useChatSidebarOptional } from "../../chat-sidebar";
 import { ToolCallDisplay } from "./tool-call-display";
 import type { AgentTools } from "./types";
@@ -19,6 +25,7 @@ export function ToolPart({ part }: { part: ToolUIPart<AgentTools>; isLastMessage
     shouldFetchJobError && sidebar?.threadId ? { threadId: sidebar.threadId, toolCallId: part.toolCallId } : "skip",
   );
   const credentialMissing = useMemo(() => parseCredentialMissingPayload(job?.error?.data), [job?.error?.data]);
+  const executorUnavailable = useMemo(() => parseExecutorUnavailablePayload(job?.error?.data), [job?.error?.data]);
   const needsCredentialContext = Boolean(credentialMissing) || credentialDialogOpen;
   const sessionInfo = useQuery(
     api.sessions.getSessionInfo,
@@ -65,6 +72,29 @@ export function ToolPart({ part }: { part: ToolUIPart<AgentTools>; isLastMessage
   return (
     <>
       <ToolCallDisplay icon={getToolIcon(part)!} text={getToolLabel(part)} part={part} />
+      {executorUnavailable ? (
+        <div className="ml-6 mt-1 mb-2 rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs">
+          <p className="flex items-center gap-1 font-medium text-red-500">
+            <AlertCircleIcon className="size-3.5" />
+            {executorUnavailableTitle(executorUnavailable)}
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            {executorUnavailableHint(executorUnavailable, {
+              workspaceSlug: sidebar?.workspaceSlug,
+              retryLabel: "re-run",
+            })}
+          </p>
+          {sidebar?.workspaceSlug ? (
+            <Link
+              to="/workspace/$slug/admin/executor"
+              params={{ slug: sidebar.workspaceSlug }}
+              className="mt-2 inline-flex text-xs font-medium text-red-500 underline underline-offset-4"
+            >
+              Open Executor settings
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
       {credentialMissing ? (
         <div className="ml-6 mt-1 mb-2 rounded-md border border-orange-500/20 bg-orange-500/10 px-3 py-2 text-xs">
           <p className="font-medium text-orange-500">

@@ -14,6 +14,11 @@ import {
   credentialMissingHint,
   parseCredentialMissingPayload,
 } from "@/lib/credential-missing";
+import {
+  buildExecutorSettingsPath,
+  executorUnavailableHint,
+  parseExecutorUnavailablePayload,
+} from "@/lib/executor-unavailable";
 import { LiteTerminal } from "./lite-terminal";
 
 // CSS styles for the terminal
@@ -465,6 +470,7 @@ export function SessionTerminal({ sessionId, revisionId, workspaceSlug, classNam
       const req = Array.isArray(approval) ? approval[0] : approval;
       const action = req && typeof req === "object" ? (req as any).action : null;
       const credentialMissing = parseCredentialMissingPayload(errorData);
+      const executorUnavailable = parseExecutorUnavailablePayload(errorData);
 
       if (isApprovalRequired && typeof action === "string" && action) {
         terminal.writeln(`\x1b[33mApproval required: ${action}\x1b[0m`);
@@ -506,6 +512,17 @@ export function SessionTerminal({ sessionId, revisionId, workspaceSlug, classNam
         }
         setCredentialMissingPayload(credentialMissing);
         setCredentialDialogOpen(true);
+      } else if (executorUnavailable) {
+        terminal.writeln(`\x1b[31m${job.job.error?.message ?? "Executor unavailable"}\x1b[0m`);
+        terminal.writeln(
+          `\x1b[2m${executorUnavailableHint(executorUnavailable, {
+            workspaceSlug,
+            retryLabel: "re-run",
+          })}\x1b[0m`,
+        );
+        if (workspaceSlug) {
+          terminal.writeln(`\x1b[2mPath: ${buildExecutorSettingsPath(workspaceSlug)}\x1b[0m`);
+        }
       } else if (job.job.error?.message) {
         terminal.writeln(`\x1b[31m${job.job.error.message}\x1b[0m`);
       }
