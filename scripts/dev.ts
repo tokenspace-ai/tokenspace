@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import type { ConvexLogger } from "@tokenspace/convex-local-dev";
 import type { Subprocess } from "bun";
@@ -162,7 +162,7 @@ async function runCommand(
     prefix,
     logWriter,
     quiet,
-    readyPattern ? { pattern: readyPattern, onMatch: readyResolve! } : undefined,
+    readyResolve ? { pattern: readyPattern!, onMatch: readyResolve } : undefined,
   );
   pipeOutput(proc.stderr, prefix, logWriter, false);
 
@@ -249,6 +249,22 @@ async function stopExistingProcess(): Promise<boolean> {
 
   console.log(c.yellow("No running dev server found."));
   return false;
+}
+
+function countLibWatchers(): number {
+  const workspaceDirs = ["packages", "services", "apps"];
+  let count = 0;
+  for (const dir of workspaceDirs) {
+    if (!existsSync(dir)) continue;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const pkgPath = `${dir}/${entry.name}/package.json`;
+      if (!existsSync(pkgPath)) continue;
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { scripts?: Record<string, string> };
+      if (pkg.scripts?.["dev:lib"]) count++;
+    }
+  }
+  return count;
 }
 
 const levelColors = {
@@ -431,16 +447,16 @@ async function main() {
 
     const ports = extractPortsFromEnvironment();
 
-    const LIB_WATCHER_COUNT = 6;
+    const libWatcherCount = countLibWatchers();
     const LIB_SETTLE_TIMEOUT_MS = 120_000;
 
     const libsPrefix = c.blue("libs".padEnd(LOG_PREFIX_LENGTH, " "));
-    console.log(`${libsPrefix} Starting ${LIB_WATCHER_COUNT} library watchers...`);
+    console.log(`${libsPrefix} Starting ${libWatcherCount} library watchers...`);
 
     const libsReady = runCommand("libs", c.blue, ["bunx", "turbo", "dev:lib"], {
       quiet: true,
       readyPattern: /Watching for file changes/,
-      readyCount: LIB_WATCHER_COUNT,
+      readyCount: libWatcherCount,
     });
 
     const libsSettled = await Promise.race([
