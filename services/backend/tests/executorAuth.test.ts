@@ -38,7 +38,7 @@ describe("executorAuth", () => {
 
   it("builds setup payload with snippets and defaults", async () => {
     const bootstrapToken = (await createOpaqueToken()).token;
-    const setup = buildExecutorSetupPayload(bootstrapToken);
+    const setup = buildExecutorSetupPayload(bootstrapToken, "https://example.convex.cloud");
 
     expect(setup.bootstrapTokenEnvVar).toBe(EXECUTOR_BOOTSTRAP_ENV_VAR);
     expect(setup.convexUrlEnvVar).toBe(EXECUTOR_CONVEX_URL_ENV_VAR);
@@ -49,6 +49,10 @@ describe("executorAuth", () => {
     expect(setup.snippets.docker).toContain(EXECUTOR_BOOTSTRAP_ENV_VAR);
     expect(setup.snippets.docker).toContain(bootstrapToken);
     expect(setup.snippets.raw).toContain(EXECUTOR_CONVEX_URL_ENV_VAR);
+    expect(setup.snippets.docker).toContain("https://example.convex.cloud");
+    expect(setup.snippets.raw).toContain("https://example.convex.cloud");
+    expect(setup.snippets.docker).not.toContain("<your-convex-url>");
+    expect(setup.snippets.raw).not.toContain("<your-convex-url>");
   });
 
   it("verifies bootstrap tokens against executor state", async () => {

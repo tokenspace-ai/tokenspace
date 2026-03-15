@@ -421,7 +421,7 @@ async function main() {
     });
     runCommand("executor", c.yellow, ["bun", "run", "dev"], {
       cwd: "services/executor",
-      env: { TOKENSPACE_EXECUTOR_BOOTSTRAP_TOKEN: bootstrapToken },
+      env: { TOKENSPACE_TOKEN: bootstrapToken, TOKENSPACE_API_URL: process.env.CONVEX_URL! },
     });
 
     // Open URLs in browser if requested

@@ -321,7 +321,7 @@ Example startup shape:
 ```bash
 docker run \
   -e CONVEX_URL="..." \
-  -e TOKENSPACE_EXECUTOR_BOOTSTRAP_TOKEN="..." \
+  -e TOKENSPACE_TOKEN="..." \
   ghcr.io/tokenspace/executor:latest
 ```
 

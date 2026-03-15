@@ -179,7 +179,7 @@ Recommended flow:
 
 1. Admin creates executor.
 2. Backend creates executor row plus hashed bootstrap secret.
-3. Executor starts with `TOKENSPACE_EXECUTOR_BOOTSTRAP_TOKEN`.
+3. Executor starts with `TOKENSPACE_TOKEN`.
 4. Executor calls `registerExecutorInstance`.
 5. Backend validates bootstrap secret, executor status, and token version.
 6. Backend inserts or updates the `executorInstances` row.

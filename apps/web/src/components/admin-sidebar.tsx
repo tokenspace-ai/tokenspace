@@ -5,6 +5,7 @@ import {
   Code2,
   FolderOpen,
   KeyRoundIcon,
+  ServerIcon,
   SettingsIcon,
   UsersIcon,
 } from "lucide-react";
@@ -31,7 +32,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-type AdminNavItem = "editor" | "revision-files" | "settings" | "credentials" | "members" | "models";
+type AdminNavItem = "editor" | "revision-files" | "settings" | "credentials" | "members" | "models" | "executor";
 
 type AdminNavItemConfig = {
   id: AdminNavItem;
@@ -43,7 +44,8 @@ type AdminNavItemConfig = {
     | "/workspace/$slug/admin/settings"
     | "/workspace/$slug/admin/credentials"
     | "/workspace/$slug/admin/members"
-    | "/workspace/$slug/admin/models";
+    | "/workspace/$slug/admin/models"
+    | "/workspace/$slug/admin/executor";
 };
 
 const workspaceNavItems: AdminNavItemConfig[] = [
@@ -53,6 +55,7 @@ const workspaceNavItems: AdminNavItemConfig[] = [
 
 const settingsNavItems: AdminNavItemConfig[] = [
   { id: "settings", label: "General", icon: SettingsIcon, to: "/workspace/$slug/admin/settings" },
+  { id: "executor", label: "Execution Environment", icon: ServerIcon, to: "/workspace/$slug/admin/executor" },
   { id: "credentials", label: "Credentials", icon: KeyRoundIcon, to: "/workspace/$slug/admin/credentials" },
   { id: "members", label: "Members", icon: UsersIcon, to: "/workspace/$slug/admin/members" },
   { id: "models", label: "Models", icon: BrainCircuitIcon, to: "/workspace/$slug/admin/models" },
@@ -65,6 +68,7 @@ function useCurrentAdminRoute(): AdminNavItem | undefined {
   if (pathname.includes("/admin/revision-files")) return "revision-files";
   if (pathname.includes("/admin/members")) return "members";
   if (pathname.includes("/admin/settings")) return "settings";
+  if (pathname.includes("/admin/executor")) return "executor";
   if (pathname.includes("/admin/credentials")) return "credentials";
   if (pathname.includes("/admin/models")) return "models";
   return undefined;

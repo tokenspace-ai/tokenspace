@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { api } from "@tokenspace/backend/convex/_generated/api";
 import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
@@ -27,6 +27,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { credentialMissingHint, parseCredentialMissingPayload } from "@/lib/credential-missing";
+import {
+  executorUnavailableHint,
+  executorUnavailableTitle,
+  parseExecutorUnavailablePayload,
+} from "@/lib/executor-unavailable";
 import { cn } from "@/lib/utils";
 
 type PlaygroundSearchParams = {
@@ -949,9 +954,11 @@ function OutputPanel({
     };
   }, [error?.data]);
   const credentialMissing = useMemo(() => parseCredentialMissingPayload(error?.data), [error?.data]);
+  const executorUnavailable = useMemo(() => parseExecutorUnavailablePayload(error?.data), [error?.data]);
 
   const isApprovalRequired = Boolean(jobDoc?.status === "failed" && approvalRequirement);
   const isCredentialMissing = Boolean(jobDoc?.status === "failed" && credentialMissing);
+  const isExecutorUnavailable = Boolean(jobDoc?.status === "failed" && executorUnavailable);
   const [credentialDialogOpen, setCredentialDialogOpen] = useState(false);
 
   const createPlaygroundApprovalRequest = useMutation(api.playground.createPlaygroundApprovalRequest);
@@ -1049,7 +1056,9 @@ function OutputPanel({
     ? "Approval Required"
     : isCredentialMissing
       ? "Credential Missing"
-      : status.charAt(0).toUpperCase() + status.slice(1);
+      : isExecutorUnavailable
+        ? "Executor Unavailable"
+        : status.charAt(0).toUpperCase() + status.slice(1);
 
   return (
     <div className="space-y-3">
@@ -1163,8 +1172,33 @@ function OutputPanel({
         </div>
       )}
 
+      {status === "failed" && executorUnavailable && !approvalRequirement && !credentialMissing && (
+        <div className="space-y-2">
+          <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4">
+            <div className="flex items-center gap-2">
+              <AlertCircleIcon className="size-4 text-red-400" />
+              <p className="text-sm font-medium text-red-400">{executorUnavailableTitle(executorUnavailable)}</p>
+            </div>
+            <p className="mt-2 text-sm text-foreground">{error?.message}</p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {executorUnavailableHint(executorUnavailable, {
+                workspaceSlug,
+                retryLabel: "click Run again",
+              })}
+            </p>
+            <Link
+              to="/workspace/$slug/admin/executor"
+              params={{ slug: workspaceSlug }}
+              className="mt-3 inline-flex text-xs font-medium text-red-400 underline underline-offset-4"
+            >
+              Open Executor settings
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Error output */}
-      {status === "failed" && error && !approvalRequirement && !credentialMissing && (
+      {status === "failed" && error && !approvalRequirement && !credentialMissing && !executorUnavailable && (
         <div className="space-y-2">
           <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4">
             <pre className="whitespace-pre-wrap font-mono text-sm text-red-400">{error.message}</pre>

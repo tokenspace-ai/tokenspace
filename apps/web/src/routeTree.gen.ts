@@ -25,6 +25,7 @@ import { Route as AppWorkspaceSlugAdminSettingsRouteImport } from './routes/_app
 import { Route as AppWorkspaceSlugAdminRevisionFilesRouteImport } from './routes/_app/workspace.$slug.admin/revision-files'
 import { Route as AppWorkspaceSlugAdminModelsRouteImport } from './routes/_app/workspace.$slug.admin/models'
 import { Route as AppWorkspaceSlugAdminMembersRouteImport } from './routes/_app/workspace.$slug.admin/members'
+import { Route as AppWorkspaceSlugAdminExecutorRouteImport } from './routes/_app/workspace.$slug.admin/executor'
 import { Route as AppWorkspaceSlugAdminEditorRouteImport } from './routes/_app/workspace.$slug.admin/editor'
 import { Route as AppWorkspaceSlugAdminCredentialsRouteImport } from './routes/_app/workspace.$slug.admin/credentials'
 import { Route as AppWorkspaceSlugAppPlaygroundRouteImport } from './routes/_app/workspace.$slug._app/playground'
@@ -116,6 +117,12 @@ const AppWorkspaceSlugAdminMembersRoute =
     path: '/members',
     getParentRoute: () => AppWorkspaceSlugAdminRouteRoute,
   } as any)
+const AppWorkspaceSlugAdminExecutorRoute =
+  AppWorkspaceSlugAdminExecutorRouteImport.update({
+    id: '/executor',
+    path: '/executor',
+    getParentRoute: () => AppWorkspaceSlugAdminRouteRoute,
+  } as any)
 const AppWorkspaceSlugAdminEditorRoute =
   AppWorkspaceSlugAdminEditorRouteImport.update({
     id: '/editor',
@@ -160,6 +167,7 @@ export interface FileRoutesByFullPath {
   '/workspace/$slug/playground': typeof AppWorkspaceSlugAppPlaygroundRoute
   '/workspace/$slug/admin/credentials': typeof AppWorkspaceSlugAdminCredentialsRoute
   '/workspace/$slug/admin/editor': typeof AppWorkspaceSlugAdminEditorRoute
+  '/workspace/$slug/admin/executor': typeof AppWorkspaceSlugAdminExecutorRoute
   '/workspace/$slug/admin/members': typeof AppWorkspaceSlugAdminMembersRoute
   '/workspace/$slug/admin/models': typeof AppWorkspaceSlugAdminModelsRoute
   '/workspace/$slug/admin/revision-files': typeof AppWorkspaceSlugAdminRevisionFilesRoute
@@ -181,6 +189,7 @@ export interface FileRoutesByTo {
   '/workspace/$slug/playground': typeof AppWorkspaceSlugAppPlaygroundRoute
   '/workspace/$slug/admin/credentials': typeof AppWorkspaceSlugAdminCredentialsRoute
   '/workspace/$slug/admin/editor': typeof AppWorkspaceSlugAdminEditorRoute
+  '/workspace/$slug/admin/executor': typeof AppWorkspaceSlugAdminExecutorRoute
   '/workspace/$slug/admin/members': typeof AppWorkspaceSlugAdminMembersRoute
   '/workspace/$slug/admin/models': typeof AppWorkspaceSlugAdminModelsRoute
   '/workspace/$slug/admin/revision-files': typeof AppWorkspaceSlugAdminRevisionFilesRoute
@@ -204,6 +213,7 @@ export interface FileRoutesById {
   '/_app/workspace/$slug/_app/playground': typeof AppWorkspaceSlugAppPlaygroundRoute
   '/_app/workspace/$slug/admin/credentials': typeof AppWorkspaceSlugAdminCredentialsRoute
   '/_app/workspace/$slug/admin/editor': typeof AppWorkspaceSlugAdminEditorRoute
+  '/_app/workspace/$slug/admin/executor': typeof AppWorkspaceSlugAdminExecutorRoute
   '/_app/workspace/$slug/admin/members': typeof AppWorkspaceSlugAdminMembersRoute
   '/_app/workspace/$slug/admin/models': typeof AppWorkspaceSlugAdminModelsRoute
   '/_app/workspace/$slug/admin/revision-files': typeof AppWorkspaceSlugAdminRevisionFilesRoute
@@ -227,6 +237,7 @@ export interface FileRouteTypes {
     | '/workspace/$slug/playground'
     | '/workspace/$slug/admin/credentials'
     | '/workspace/$slug/admin/editor'
+    | '/workspace/$slug/admin/executor'
     | '/workspace/$slug/admin/members'
     | '/workspace/$slug/admin/models'
     | '/workspace/$slug/admin/revision-files'
@@ -248,6 +259,7 @@ export interface FileRouteTypes {
     | '/workspace/$slug/playground'
     | '/workspace/$slug/admin/credentials'
     | '/workspace/$slug/admin/editor'
+    | '/workspace/$slug/admin/executor'
     | '/workspace/$slug/admin/members'
     | '/workspace/$slug/admin/models'
     | '/workspace/$slug/admin/revision-files'
@@ -270,6 +282,7 @@ export interface FileRouteTypes {
     | '/_app/workspace/$slug/_app/playground'
     | '/_app/workspace/$slug/admin/credentials'
     | '/_app/workspace/$slug/admin/editor'
+    | '/_app/workspace/$slug/admin/executor'
     | '/_app/workspace/$slug/admin/members'
     | '/_app/workspace/$slug/admin/models'
     | '/_app/workspace/$slug/admin/revision-files'
@@ -402,6 +415,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceSlugAdminMembersRouteImport
       parentRoute: typeof AppWorkspaceSlugAdminRouteRoute
     }
+    '/_app/workspace/$slug/admin/executor': {
+      id: '/_app/workspace/$slug/admin/executor'
+      path: '/executor'
+      fullPath: '/workspace/$slug/admin/executor'
+      preLoaderRoute: typeof AppWorkspaceSlugAdminExecutorRouteImport
+      parentRoute: typeof AppWorkspaceSlugAdminRouteRoute
+    }
     '/_app/workspace/$slug/admin/editor': {
       id: '/_app/workspace/$slug/admin/editor'
       path: '/editor'
@@ -463,6 +483,7 @@ const AppWorkspaceSlugAppRouteRouteWithChildren =
 interface AppWorkspaceSlugAdminRouteRouteChildren {
   AppWorkspaceSlugAdminCredentialsRoute: typeof AppWorkspaceSlugAdminCredentialsRoute
   AppWorkspaceSlugAdminEditorRoute: typeof AppWorkspaceSlugAdminEditorRoute
+  AppWorkspaceSlugAdminExecutorRoute: typeof AppWorkspaceSlugAdminExecutorRoute
   AppWorkspaceSlugAdminMembersRoute: typeof AppWorkspaceSlugAdminMembersRoute
   AppWorkspaceSlugAdminModelsRoute: typeof AppWorkspaceSlugAdminModelsRoute
   AppWorkspaceSlugAdminRevisionFilesRoute: typeof AppWorkspaceSlugAdminRevisionFilesRoute
@@ -474,6 +495,7 @@ const AppWorkspaceSlugAdminRouteRouteChildren: AppWorkspaceSlugAdminRouteRouteCh
     AppWorkspaceSlugAdminCredentialsRoute:
       AppWorkspaceSlugAdminCredentialsRoute,
     AppWorkspaceSlugAdminEditorRoute: AppWorkspaceSlugAdminEditorRoute,
+    AppWorkspaceSlugAdminExecutorRoute: AppWorkspaceSlugAdminExecutorRoute,
     AppWorkspaceSlugAdminMembersRoute: AppWorkspaceSlugAdminMembersRoute,
     AppWorkspaceSlugAdminModelsRoute: AppWorkspaceSlugAdminModelsRoute,
     AppWorkspaceSlugAdminRevisionFilesRoute:

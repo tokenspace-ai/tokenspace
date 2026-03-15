@@ -9,8 +9,8 @@ const TOKEN_SELECTOR_BYTES = 12;
 const TOKEN_SECRET_BYTES = 32;
 
 export const EXECUTOR_IMAGE = "ghcr.io/tokenspace/executor:latest";
-export const EXECUTOR_BOOTSTRAP_ENV_VAR = "TOKENSPACE_EXECUTOR_BOOTSTRAP_TOKEN";
-export const EXECUTOR_CONVEX_URL_ENV_VAR = "CONVEX_URL";
+export const EXECUTOR_BOOTSTRAP_ENV_VAR = "TOKENSPACE_TOKEN";
+export const EXECUTOR_CONVEX_URL_ENV_VAR = "TOKENSPACE_API_URL";
 export const EXECUTOR_HEARTBEAT_INTERVAL_MS = 30_000;
 export const EXECUTOR_HEARTBEAT_TIMEOUT_MS = 90_000;
 export const EXECUTOR_INSTANCE_TOKEN_TTL_MS = 15 * 60_000;
@@ -160,7 +160,7 @@ export function shouldRotateInstanceToken(expiresAt: number, now: number = Date.
   return expiresAt - now <= EXECUTOR_INSTANCE_TOKEN_REFRESH_WINDOW_MS;
 }
 
-export function buildExecutorSetupPayload(bootstrapToken: string): ExecutorSetupPayload {
+export function buildExecutorSetupPayload(bootstrapToken: string, convexUrl: string): ExecutorSetupPayload {
   return {
     image: EXECUTOR_IMAGE,
     requiredEnvVars: [EXECUTOR_CONVEX_URL_ENV_VAR, EXECUTOR_BOOTSTRAP_ENV_VAR],
@@ -173,12 +173,12 @@ export function buildExecutorSetupPayload(bootstrapToken: string): ExecutorSetup
     snippets: {
       docker: [
         "docker run \\",
-        `  -e ${EXECUTOR_CONVEX_URL_ENV_VAR}="<your-convex-url>" \\`,
+        `  -e ${EXECUTOR_CONVEX_URL_ENV_VAR}="${convexUrl}" \\`,
         `  -e ${EXECUTOR_BOOTSTRAP_ENV_VAR}="${bootstrapToken}" \\`,
         `  ${EXECUTOR_IMAGE}`,
       ].join("\n"),
       raw: [
-        `export ${EXECUTOR_CONVEX_URL_ENV_VAR}="<your-convex-url>"`,
+        `export ${EXECUTOR_CONVEX_URL_ENV_VAR}="${convexUrl}"`,
         `export ${EXECUTOR_BOOTSTRAP_ENV_VAR}="${bootstrapToken}"`,
         "bun run ./services/executor/src/main.ts",
       ].join("\n"),

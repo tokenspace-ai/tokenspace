@@ -36,6 +36,14 @@ type ExecutorWriteCtx = MutationCtx;
 export const LOCAL_DEV_EXECUTOR_NAME = "Local Dev Executor";
 export const LOCAL_DEV_EXECUTOR_CREATED_BY = "dev-seed";
 
+function getConvexUrl(): string {
+  const url = process.env.CONVEX_URL?.trim();
+  if (!url) {
+    throw new Error("Server misconfigured: CONVEX_URL is not set");
+  }
+  return url;
+}
+
 type ExecutorManagerIdentity = Pick<UserIdentity, "subject"> & { role?: string | null };
 
 function normalizeExecutorName(name: string): string {
@@ -507,7 +515,7 @@ export const createExecutor = mutation({
     return {
       executor: await buildExecutorSummaryForUser(user, executor, [], now),
       bootstrapToken: bootstrap.token,
-      setup: buildExecutorSetupPayload(bootstrap.token),
+      setup: buildExecutorSetupPayload(bootstrap.token, getConvexUrl()),
     };
   },
 });
@@ -544,7 +552,7 @@ export const createExecutorForWorkspaceTest = internalMutation({
       workspaceId: args.workspaceId,
       executorId,
       bootstrapToken: bootstrap.token,
-      setup: buildExecutorSetupPayload(bootstrap.token),
+      setup: buildExecutorSetupPayload(bootstrap.token, getConvexUrl()),
     };
   },
 });
@@ -647,7 +655,7 @@ export const rotateExecutorBootstrapToken = mutation({
     return {
       executor: await buildExecutorSummaryForUser(user, updated, updatedInstances, now),
       bootstrapToken: bootstrap.token,
-      setup: buildExecutorSetupPayload(bootstrap.token),
+      setup: buildExecutorSetupPayload(bootstrap.token, getConvexUrl()),
     };
   },
 });
