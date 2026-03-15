@@ -34,7 +34,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "build:types": "tsc -p tsconfig.build.json --emitDeclarationOnly",
-    "prepack": "bun run clean && bun run build"
+    "prepack": "bun run clean && bun run build",
+    "dev:lib": "tsc -w --preserveWatchOutput -p tsconfig.build.json"
   },
   "publishConfig": {
     "access": "public"

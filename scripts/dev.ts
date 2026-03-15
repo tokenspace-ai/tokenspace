@@ -504,6 +504,7 @@ async function main() {
     }
 
     // Start the dev servers
+    runCommand("libs", c.blue, ["bunx", "turbo", "dev:lib"], {});
     runCommand("webapp", c.cyan, ["bun", "run", "dev"], {
       cwd: "apps/web",
       env: { VITE_CONVEX_URL: process.env.CONVEX_URL! },

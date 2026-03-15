@@ -31,7 +31,8 @@
     "build:types": "tsc -p tsconfig.build.json --emitDeclarationOnly",
     "prepack": "bun run clean && bun run build",
     "codegen": "bun run scripts/build.ts && cd ../.. && bun fix packages/types/",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev:lib": "tsc -w --preserveWatchOutput -p tsconfig.build.json"
   },
   "publishConfig": {
     "access": "public"
