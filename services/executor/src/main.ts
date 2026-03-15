@@ -22,7 +22,7 @@ const program = new Command()
   .action(async (opts: { api?: string; token?: string }) => {
     const convexUrl = opts.api || process.env.TOKENSPACE_API_URL || process.env.CONVEX_URL;
     if (!convexUrl) {
-      return program.error("API URL is required (--api or TOKENSPACE_API_URL)");
+      return program.error("API URL is required (--api, TOKENSPACE_API_URL, or CONVEX_URL)");
     }
 
     const bootstrapToken = opts.token || process.env.TOKENSPACE_TOKEN;
@@ -69,6 +69,7 @@ const program = new Command()
       subscriptions.stop();
       session.stop();
       pool.shutdown();
+      await convex.close();
     }
   });
 

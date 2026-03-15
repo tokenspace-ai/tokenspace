@@ -61,6 +61,9 @@ FROM oven/bun:1.3-slim AS production
 
 WORKDIR /app
 
+RUN addgroup --system --gid 1001 executor && \
+    adduser --system --uid 1001 --gid 1001 executor
+
 # Copy workspace root manifests & lockfile
 COPY package.json bun.lock ./
 
@@ -101,5 +104,7 @@ COPY --from=build /app/services/executor/package.json services/executor/
 ENV NODE_ENV=production
 
 WORKDIR /work
+RUN chown -R executor:executor /work
+USER executor
 
 ENTRYPOINT ["bun", "run", "/app/services/executor/dist/main.js"]
