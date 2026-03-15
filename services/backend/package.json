@@ -1,8 +1,38 @@
 {
   "name": "@tokenspace/backend",
-  "private": true,
-  "version": "1.0.0",
+  "version": "0.2.2",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tokenspace-ai/tokenspace.git",
+    "directory": "services/backend"
+  },
+  "homepage": "https://github.com/tokenspace-ai/tokenspace/tree/main/services/backend#readme",
+  "bugs": {
+    "url": "https://github.com/tokenspace-ai/tokenspace/issues"
+  },
+  "type": "module",
+  "exports": {
+    "./convex/_generated/api": {
+      "types": "./convex/_generated/api.d.ts",
+      "default": "./convex/_generated/api.js"
+    },
+    "./convex/_generated/dataModel": {
+      "types": "./convex/_generated/dataModel.d.ts"
+    },
+    "./convex/_generated/server": {
+      "types": "./convex/_generated/server.d.ts",
+      "default": "./convex/_generated/server.js"
+    }
+  },
+  "files": [
+    "convex/_generated",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "dev": "convex dev",
     "codegen": "bun run codegen.ts",
@@ -13,26 +43,23 @@
   "author": "",
   "description": "",
   "devDependencies": {
-    "@types/node": "^25.5.0",
-    "typescript": "^5.9.2",
-    "@tokenspace/config": "workspace:*",
-    "@tokenspace/convex-local-dev": "workspace:*"
-  },
-  "dependencies": {
     "@ai-sdk/anthropic": "^3.0.58",
     "@ai-sdk/google": "^3.0.43",
     "@ai-sdk/google-vertex": "^4.0.80",
     "@ai-sdk/openai": "^3.0.41",
     "@convex-dev/resend": "^0.2.3",
-    "@tokenspace/compiler": "workspace:*",
+    "@tokenspace/compiler": "^0.2.2",
     "@tokenspace/convex-durable-agents": "workspace:*",
-    "@tokenspace/system-content": "workspace:*",
-    "@tokenspace/types": "workspace:*",
+    "@tokenspace/convex-local-dev": "workspace:*",
+    "@tokenspace/system-content": "^0.2.2",
+    "@tokenspace/types": "^0.2.2",
+    "@types/node": "^25.5.0",
     "@workos-inc/node": "^8.9.0",
     "ai": "^6.0.116",
-    "convex": "catalog:",
+    "convex": "^1.33.0",
     "esbuild-wasm": "0.27.4",
     "just-bash": "^2.13.0",
+    "typescript": "^5.9.2",
     "yaml": "^2.8.2",
     "zod": "^4.3.5"
   }

@@ -1,5 +1,13 @@
 # tokenspace
 
+## 0.2.2
+
+### Patch Changes
+
+- c19944e: Update dependencies and improve builtin discovery guidance
+- Updated dependencies [c19944e]
+  - @tokenspace/compiler@0.2.2
+
 ## 0.2.1
 
 ### Patch Changes

@@ -1,24 +1,50 @@
 {
   "name": "@tokenspace/executor",
-  "private": true,
-  "version": "0.1.0",
+  "version": "0.2.2",
   "license": "Apache-2.0",
-  "main": "./src/main.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tokenspace-ai/tokenspace.git",
+    "directory": "services/executor"
+  },
+  "homepage": "https://github.com/tokenspace-ai/tokenspace/tree/main/services/executor#readme",
+  "bugs": {
+    "url": "https://github.com/tokenspace-ai/tokenspace/issues"
+  },
+  "type": "module",
+  "main": "./dist/main.js",
+  "bin": {
+    "tokenspace-executor": "./dist/main.js"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
+    "clean": "rm -rf dist",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "bun run clean && bun run build",
     "dev": "bun run --watch --no-clear-screen src/main.ts",
     "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "bun": ">=1.3.9"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "devDependencies": {
     "@types/bun": "^1.3.10",
     "typescript": "^5.9.2"
   },
   "dependencies": {
-    "@tokenspace/backend": "workspace:*",
-    "@tokenspace/compiler": "workspace:*",
-    "@tokenspace/config": "workspace:*",
-    "@tokenspace/sdk": "workspace:*",
-    "@tokenspace/runtime-core": "workspace:*",
-    "@tokenspace/session-fs": "workspace:*",
+    "@tokenspace/backend": "^0.2.2",
+    "@tokenspace/compiler": "^0.2.2",
+    "@tokenspace/sdk": "^0.2.2",
+    "@tokenspace/runtime-core": "^0.2.2",
+    "@tokenspace/session-fs": "^0.2.2",
+    "commander": "^14.0.3",
     "convex": "^1.33.0",
     "just-bash": "^2.13.0",
     "zod": "^4.3.5"

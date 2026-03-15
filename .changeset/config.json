@@ -10,7 +10,10 @@
       "@tokenspace/runtime-core",
       "@tokenspace/local-mcp",
       "@tokenspace/types",
-      "@tokenspace/system-content"
+      "@tokenspace/system-content",
+      "@tokenspace/executor",
+      "@tokenspace/backend",
+      "@tokenspace/session-fs"
     ]
   ],
   "linked": [],

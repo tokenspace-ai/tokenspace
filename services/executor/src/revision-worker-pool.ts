@@ -1,5 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { api } from "@tokenspace/backend/convex/_generated/api";
 import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
@@ -85,7 +86,8 @@ class WorkerProcess {
     this.idleTtlMs = idleTtlMs;
 
     const bun = process.execPath;
-    const workerPath = join(import.meta.dir, "worker.ts");
+    const jsPath = join(import.meta.dir, "worker.js");
+    const workerPath = existsSync(jsPath) ? jsPath : join(import.meta.dir, "worker.ts");
 
     this.child = spawn(bun, ["run", workerPath], {
       stdio: ["pipe", "pipe", "pipe"],

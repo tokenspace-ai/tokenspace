@@ -1,5 +1,15 @@
 # @tokenspace/compiler
 
+## 0.2.2
+
+### Patch Changes
+
+- c19944e: Add server-only users runtime API and update dependencies
+- Updated dependencies [c19944e]
+- Updated dependencies [c19944e]
+  - @tokenspace/system-content@0.2.2
+  - @tokenspace/types@0.2.2
+
 ## 0.2.1
 
 ### Patch Changes

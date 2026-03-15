@@ -59,6 +59,24 @@ export const PUBLIC_PACKAGES: PublicPackageSpec[] = [
     requiredFiles: ["dist/index.js", "dist/index.d.ts", "LICENSE", "README.md"],
     smokeCheck: "library",
   },
+  {
+    dir: "services/executor",
+    name: "@tokenspace/executor",
+    requiredFiles: ["dist/main.js", "LICENSE", "README.md"],
+    smokeCheck: "cli",
+  },
+  {
+    dir: "services/backend",
+    name: "@tokenspace/backend",
+    requiredFiles: ["convex/_generated/api.js", "convex/_generated/api.d.ts", "convex/_generated/dataModel.d.ts"],
+    allowedPrefixes: ["convex/"],
+  },
+  {
+    dir: "packages/session-fs",
+    name: "@tokenspace/session-fs",
+    requiredFiles: ["dist/index.js", "dist/index.d.ts"],
+    smokeCheck: "library",
+  },
 ];
 
 export const PUBLIC_PACKAGE_DIRS = new Set(PUBLIC_PACKAGES.map((pkg) => pkg.dir));

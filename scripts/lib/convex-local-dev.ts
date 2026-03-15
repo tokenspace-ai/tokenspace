@@ -9,6 +9,8 @@ import {
   watchFunctionLogs,
 } from "@tokenspace/convex-local-dev";
 
+const BACKEND_DIR = path.resolve(import.meta.dirname!, "..", "..", "services", "backend");
+
 export async function runConvexLocalDev({
   port,
   siteProxyPort,
@@ -31,7 +33,6 @@ export async function runConvexLocalDev({
   let autoDeployer: AutoDeployer | undefined;
   let logWatcherAbortController: AbortController | undefined;
 
-  // Default no-op logger
   const logger: ConvexLogger = loggerInput ?? {
     debug: () => {},
     info: () => {},
@@ -47,7 +48,7 @@ export async function runConvexLocalDev({
         port,
         siteProxyPort: siteProxyPort ?? port + 1,
         instanceName,
-        projectDir: __dirname,
+        projectDir: BACKEND_DIR,
         logger,
         backendLogFile: path.join(process.cwd(), ".convex", "server.log"),
       },
@@ -71,10 +72,10 @@ export async function runConvexLocalDev({
     }
 
     autoDeployer = new AutoDeployer(backend, {
-      convexDir: path.join(__dirname, "convex"),
+      convexDir: path.join(BACKEND_DIR, "convex"),
       watchDirs: [
-        path.join(__dirname, "..", "..", "packages", "durable-agents", "src", "component"),
-        path.join(__dirname, "..", "..", "packages", "durable-agents", "src", "client"),
+        path.join(BACKEND_DIR, "..", "..", "packages", "durable-agents", "src", "component"),
+        path.join(BACKEND_DIR, "..", "..", "packages", "durable-agents", "src", "client"),
       ],
       logger,
     });
@@ -83,7 +84,6 @@ export async function runConvexLocalDev({
         logger.error("Error watching convex directory for changes", { error: e as Error });
     });
 
-    // Start watching function logs
     logWatcherAbortController = new AbortController();
     watchFunctionLogs(backend.backendUrl!, backend.adminKey, logger, logWatcherAbortController.signal).catch((e) => {
       if (!e.message?.includes("aborted")) {

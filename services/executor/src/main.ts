@@ -1,66 +1,77 @@
+#!/usr/bin/env bun
 import { readFileSync } from "node:fs";
 import { hostname } from "node:os";
+import { Command } from "commander";
 import { ConvexClient } from "convex/browser";
 import { AssignedJobSubscriptions } from "./assigned-job-subscriptions";
 import { CompileJobRunner } from "./compile-job-runner";
 import { ExecutorSession } from "./executor-session";
 import { RevisionWorkerPool } from "./revision-worker-pool";
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required`);
-  }
-  return value;
-}
-
 function readExecutorVersion(): string {
   const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version?: string };
   return pkg.version ?? "0.0.0";
 }
 
-async function main() {
-  const convexUrl = process.env.TOKENSPACE_API_URL || requireEnv("CONVEX_URL");
-  const bootstrapToken = requireEnv("TOKENSPACE_TOKEN");
-  const executorVersion = readExecutorVersion();
-  console.log(`Starting tokenspace executor with API URL=${convexUrl}`);
+const program = new Command()
+  .name("tokenspace-executor")
+  .description("Tokenspace self-hosted executor")
+  .version(readExecutorVersion())
+  .option("--api <url>", "Tokenspace API URL (env: TOKENSPACE_API_URL or CONVEX_URL)")
+  .option("--token <token>", "Bootstrap token (env: TOKENSPACE_TOKEN)")
+  .action(async (opts: { api?: string; token?: string }) => {
+    const convexUrl = opts.api || process.env.TOKENSPACE_API_URL || process.env.CONVEX_URL;
+    if (!convexUrl) {
+      return program.error("API URL is required (--api, TOKENSPACE_API_URL, or CONVEX_URL)");
+    }
 
-  const convex = new ConvexClient(convexUrl);
-  const session = new ExecutorSession({
-    convex,
-    bootstrapToken,
-    hostname: hostname(),
-    version: executorVersion,
-  });
-  await session.start();
+    const bootstrapToken = opts.token || process.env.TOKENSPACE_TOKEN;
+    if (!bootstrapToken) {
+      return program.error("Bootstrap token is required (--token or TOKENSPACE_TOKEN)");
+    }
 
-  RevisionWorkerPool.initialize({ convex, tokenSource: session });
-  const pool = RevisionWorkerPool.get();
-  const compileJobRunner = new CompileJobRunner(convex, session);
-  const subscriptions = new AssignedJobSubscriptions({
-    convex,
-    tokenSource: session,
-    runtimePool: pool,
-    compileJobRunner,
-    logger: console,
-  });
-  subscriptions.start();
+    const executorVersion = readExecutorVersion();
+    console.log(`Starting tokenspace executor v${executorVersion}`);
 
-  const fatalPromise = new Promise<never>((_, reject) => {
-    session.onFatal((error) => {
-      reject(error);
+    process.env.TOKENSPACE_API_URL = convexUrl;
+
+    const convex = new ConvexClient(convexUrl);
+    const session = new ExecutorSession({
+      convex,
+      bootstrapToken,
+      hostname: hostname(),
+      version: executorVersion,
     });
-  });
+    await session.start();
 
-  try {
-    await Promise.race([waitForSignal(), fatalPromise]);
-  } finally {
-    console.log("Shutting down...");
-    subscriptions.stop();
-    session.stop();
-    pool.shutdown();
-  }
-}
+    RevisionWorkerPool.initialize({ convex, tokenSource: session });
+    const pool = RevisionWorkerPool.get();
+    const compileJobRunner = new CompileJobRunner(convex, session);
+    const subscriptions = new AssignedJobSubscriptions({
+      convex,
+      tokenSource: session,
+      runtimePool: pool,
+      compileJobRunner,
+      logger: console,
+    });
+    subscriptions.start();
+
+    const fatalPromise = new Promise<never>((_, reject) => {
+      session.onFatal((error) => {
+        reject(error);
+      });
+    });
+
+    try {
+      await Promise.race([waitForSignal(), fatalPromise]);
+    } finally {
+      console.log("Shutting down...");
+      subscriptions.stop();
+      session.stop();
+      pool.shutdown();
+      await convex.close();
+    }
+  });
 
 async function waitForSignal() {
   return new Promise((resolve) => {
@@ -74,7 +85,7 @@ async function waitForSignal() {
   });
 }
 
-main().then(
+program.parseAsync().then(
   () => process.exit(0),
   (e) => {
     console.error(e);

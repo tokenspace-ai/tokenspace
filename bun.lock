@@ -14,7 +14,7 @@
     },
     "apps/cli": {
       "name": "tokenspace",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "bin": {
         "tokenspace": "./dist/cli.js",
       },
@@ -60,7 +60,7 @@
     },
     "apps/local-mcp": {
       "name": "@tokenspace/local-mcp",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "bin": {
         "tokenspace-local-mcp": "./dist/cli.js",
       },
@@ -214,20 +214,19 @@
         "just-bash": "^2.13.0",
       },
       "devDependencies": {
-        "@tokenspace/config": "workspace:*",
         "@types/bun": "^1.3.10",
         "typescript": "^5.8.3",
       },
     },
     "packages/compiler": {
       "name": "@tokenspace/compiler",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "bin": {
         "tokenspace-compiler": "./dist/cli.js",
       },
       "dependencies": {
-        "@tokenspace/system-content": "^0.2.1",
-        "@tokenspace/types": "^0.2.1",
+        "@tokenspace/system-content": "^0.2.2",
+        "@tokenspace/types": "^0.2.2",
         "esbuild": "^0.27.4",
         "typescript": "^5.8.3",
         "yaml": "^2.8.1",
@@ -235,10 +234,6 @@
       "devDependencies": {
         "@types/bun": "^1.3.10",
       },
-    },
-    "packages/config": {
-      "name": "@tokenspace/config",
-      "version": "0.0.0",
     },
     "packages/convex-local-dev": {
       "name": "@tokenspace/convex-local-dev",
@@ -248,7 +243,6 @@
         "@types/bun": "^1.3.10",
       },
       "devDependencies": {
-        "@tokenspace/config": "workspace:*",
         "@types/node": "^25.5.0",
         "typescript": "^5.9.2",
       },
@@ -278,9 +272,9 @@
     },
     "packages/runtime-core": {
       "name": "@tokenspace/runtime-core",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "dependencies": {
-        "@tokenspace/sdk": "^0.2.1",
+        "@tokenspace/sdk": "^0.2.2",
         "just-bash": "^2.13.0",
       },
       "devDependencies": {
@@ -290,7 +284,7 @@
     },
     "packages/sdk": {
       "name": "@tokenspace/sdk",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "dependencies": {
         "google-auth-library": "^10.5.0",
       },
@@ -301,14 +295,14 @@
     },
     "packages/session-fs": {
       "name": "@tokenspace/session-fs",
+      "version": "0.2.2",
       "dependencies": {
-        "@tokenspace/backend": "workspace:*",
+        "@tokenspace/backend": "^0.2.2",
         "just-bash": "^2.13.0",
       },
       "devDependencies": {
-        "@tokenspace/config": "workspace:*",
         "@types/bun": "^1.3.10",
-        "convex": "catalog:",
+        "convex": "^1.33.0",
         "typescript": "^5.8.3",
       },
       "peerDependencies": {
@@ -317,7 +311,7 @@
     },
     "packages/system-content": {
       "name": "@tokenspace/system-content",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "devDependencies": {
         "@types/bun": "^1.3.10",
         "typescript": "^5.8.3",
@@ -328,7 +322,6 @@
       "devDependencies": {
         "@tokenspace/backend": "workspace:*",
         "@tokenspace/compiler": "workspace:*",
-        "@tokenspace/config": "workspace:*",
         "@tokenspace/convex-local-dev": "workspace:*",
         "@tokenspace/sdk": "workspace:*",
         "@tokenspace/session-fs": "workspace:*",
@@ -338,7 +331,7 @@
     },
     "packages/types": {
       "name": "@tokenspace/types",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "devDependencies": {
         "@types/bun": "^1.3.10",
         "typescript": "^5.8.3",
@@ -351,9 +344,7 @@
         "tokenlens": "^1.3.1",
       },
       "devDependencies": {
-        "@tokenspace/backend": "workspace:*",
         "@tokenspace/compiler": "workspace:*",
-        "@tokenspace/config": "workspace:*",
         "@tokenspace/convex-local-dev": "workspace:*",
         "@tokenspace/executor": "workspace:*",
         "@tokenspace/sdk": "workspace:*",
@@ -364,42 +355,42 @@
     },
     "services/backend": {
       "name": "@tokenspace/backend",
-      "version": "1.0.0",
-      "dependencies": {
+      "version": "0.2.2",
+      "devDependencies": {
         "@ai-sdk/anthropic": "^3.0.58",
         "@ai-sdk/google": "^3.0.43",
         "@ai-sdk/google-vertex": "^4.0.80",
         "@ai-sdk/openai": "^3.0.41",
         "@convex-dev/resend": "^0.2.3",
-        "@tokenspace/compiler": "workspace:*",
+        "@tokenspace/compiler": "^0.2.2",
         "@tokenspace/convex-durable-agents": "workspace:*",
-        "@tokenspace/system-content": "workspace:*",
-        "@tokenspace/types": "workspace:*",
+        "@tokenspace/convex-local-dev": "workspace:*",
+        "@tokenspace/system-content": "^0.2.2",
+        "@tokenspace/types": "^0.2.2",
+        "@types/node": "^25.5.0",
         "@workos-inc/node": "^8.9.0",
         "ai": "^6.0.116",
-        "convex": "catalog:",
+        "convex": "^1.33.0",
         "esbuild-wasm": "0.27.4",
         "just-bash": "^2.13.0",
+        "typescript": "^5.9.2",
         "yaml": "^2.8.2",
         "zod": "^4.3.5",
-      },
-      "devDependencies": {
-        "@tokenspace/config": "workspace:*",
-        "@tokenspace/convex-local-dev": "workspace:*",
-        "@types/node": "^25.5.0",
-        "typescript": "^5.9.2",
       },
     },
     "services/executor": {
       "name": "@tokenspace/executor",
-      "version": "0.1.0",
+      "version": "0.2.2",
+      "bin": {
+        "tokenspace-executor": "./dist/main.js",
+      },
       "dependencies": {
-        "@tokenspace/backend": "workspace:*",
-        "@tokenspace/compiler": "workspace:*",
-        "@tokenspace/config": "workspace:*",
-        "@tokenspace/runtime-core": "workspace:*",
-        "@tokenspace/sdk": "workspace:*",
-        "@tokenspace/session-fs": "workspace:*",
+        "@tokenspace/backend": "^0.2.2",
+        "@tokenspace/compiler": "^0.2.2",
+        "@tokenspace/runtime-core": "^0.2.2",
+        "@tokenspace/sdk": "^0.2.2",
+        "@tokenspace/session-fs": "^0.2.2",
+        "commander": "^14.0.3",
         "convex": "^1.33.0",
         "just-bash": "^2.13.0",
         "zod": "^4.3.5",
@@ -1165,8 +1156,6 @@
     "@tokenspace/commands": ["@tokenspace/commands@workspace:packages/commands"],
 
     "@tokenspace/compiler": ["@tokenspace/compiler@workspace:packages/compiler"],
-
-    "@tokenspace/config": ["@tokenspace/config@workspace:packages/config"],
 
     "@tokenspace/convex-durable-agents": ["@tokenspace/convex-durable-agents@workspace:packages/durable-agents"],
 
