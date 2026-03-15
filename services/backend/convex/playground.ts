@@ -52,7 +52,7 @@ export const runPlaygroundCode = action({
       language,
       revisionId: args.revisionId,
       sessionId,
-      cwd: language === "bash" ? args.cwd : undefined,
+      cwd: args.cwd,
       timeoutMs: args.timeoutMs,
       approvals,
     });
