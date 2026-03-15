@@ -112,7 +112,7 @@ async function runCommand(
   name: string,
   color: (t: string) => string,
   command: Array<string>,
-  { cwd, env }: { cwd?: string; env?: Record<string, string> },
+  { cwd, env, quiet }: { cwd?: string; env?: Record<string, string>; quiet?: boolean },
 ) {
   const prefix = `${color(name.padEnd(LOG_PREFIX_LENGTH, " "))}`;
   const logPath = `logs/${name}.log`;
@@ -136,11 +136,14 @@ async function runCommand(
 
   childProcesses.push(proc);
 
-  pipeOutput(proc.stdout, prefix, logWriter);
-  pipeOutput(proc.stderr, prefix, logWriter);
+  pipeOutput(proc.stdout, prefix, logWriter, quiet);
+  pipeOutput(proc.stderr, prefix, logWriter, false);
 
   proc.exited.then((code) => {
     if (!shuttingDown) {
+      if (quiet && code !== 0) {
+        console.log(`${prefix} ${c.red(`Failed — see logs/${name}.log for full output`)}`);
+      }
       console.log(`${prefix} ${c.red(`Exited with code ${code}`)}`);
       cleanup();
     }
@@ -151,6 +154,7 @@ async function pipeOutput(
   stream: ReadableStream<Uint8Array>,
   prefix: string,
   logWriter: ReturnType<ReturnType<typeof Bun.file>["writer"]>,
+  quiet?: boolean,
 ) {
   const decoder = new TextDecoder();
   let buffer = "";
@@ -165,7 +169,7 @@ async function pipeOutput(
 
     for (const line of lines) {
       if (line.length === 0) continue;
-      console.log(`${prefix} ${line}`);
+      if (!quiet) console.log(`${prefix} ${line}`);
       logWriter.write(`${line}\n`);
     }
     logWriter.flush();
@@ -173,7 +177,7 @@ async function pipeOutput(
 
   // Flush any remaining buffer content
   if (buffer.length > 0) {
-    console.log(`${prefix} ${buffer}`);
+    if (!quiet) console.log(`${prefix} ${buffer}`);
     logWriter.write(`${buffer}\n`);
     logWriter.flush();
   }
@@ -415,7 +419,7 @@ async function main() {
     }
 
     // Start the dev servers
-    runCommand("libs", c.blue, ["bunx", "turbo", "dev:lib"], {});
+    runCommand("libs", c.blue, ["bunx", "turbo", "dev:lib"], { quiet: true });
     runCommand("webapp", c.cyan, ["bun", "run", "dev"], {
       cwd: "apps/web",
       env: { VITE_CONVEX_URL: process.env.CONVEX_URL! },

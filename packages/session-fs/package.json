@@ -31,7 +31,8 @@
     "prepack": "bun run clean && bun run build",
     "test:unit": "bun test",
     "typecheck": "tsc --noEmit",
-    "build:types": "tsc --declaration --emitDeclarationOnly --outDir dist"
+    "build:types": "tsc --declaration --emitDeclarationOnly --outDir dist",
+    "dev:lib": "tsc -w --preserveWatchOutput -p tsconfig.build.json"
   },
   "publishConfig": {
     "access": "public"
