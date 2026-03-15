@@ -9,7 +9,6 @@
   "devDependencies": {
     "@tokenspace/backend": "workspace:*",
     "@tokenspace/compiler": "workspace:*",
-    "@tokenspace/config": "workspace:*",
     "@tokenspace/convex-local-dev": "workspace:*",
     "@tokenspace/sdk": "workspace:*",
     "@tokenspace/session-fs": "workspace:*",

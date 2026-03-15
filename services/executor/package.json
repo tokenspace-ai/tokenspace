@@ -1,6 +1,6 @@
 {
   "name": "@tokenspace/executor",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -35,16 +35,15 @@
     "access": "public"
   },
   "devDependencies": {
-    "@tokenspace/config": "workspace:*",
     "@types/bun": "^1.3.10",
     "typescript": "^5.9.2"
   },
   "dependencies": {
-    "@tokenspace/backend": "workspace:*",
-    "@tokenspace/compiler": "workspace:*",
-    "@tokenspace/sdk": "workspace:*",
-    "@tokenspace/runtime-core": "workspace:*",
-    "@tokenspace/session-fs": "workspace:*",
+    "@tokenspace/backend": "^0.2.2",
+    "@tokenspace/compiler": "^0.2.2",
+    "@tokenspace/sdk": "^0.2.2",
+    "@tokenspace/runtime-core": "^0.2.2",
+    "@tokenspace/session-fs": "^0.2.2",
     "commander": "^14.0.3",
     "convex": "^1.33.0",
     "just-bash": "^2.13.0",

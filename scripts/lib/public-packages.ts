@@ -69,6 +69,7 @@ export const PUBLIC_PACKAGES: PublicPackageSpec[] = [
     dir: "services/backend",
     name: "@tokenspace/backend",
     requiredFiles: ["convex/_generated/api.js", "convex/_generated/api.d.ts", "convex/_generated/dataModel.d.ts"],
+    allowedPrefixes: ["convex/"],
   },
   {
     dir: "packages/session-fs",

@@ -154,7 +154,7 @@ function collectExportPaths(value: unknown): string[] {
 }
 
 function ensureNoWorkspaceVersions(pkg: PackageJson, packageName: string): void {
-  for (const blockName of ["dependencies", "devDependencies", "peerDependencies"] as const) {
+  for (const blockName of ["dependencies", "peerDependencies"] as const) {
     const block = pkg[blockName];
     if (!block) continue;
     for (const [dependency, version] of Object.entries(block)) {

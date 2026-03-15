@@ -1,6 +1,6 @@
 {
   "name": "@tokenspace/local-mcp",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -54,9 +54,9 @@
     "@radix-ui/react-separator": "^1.1.7",
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tooltip": "^1.2.8",
-    "@tokenspace/compiler": "^0.2.1",
-    "@tokenspace/sdk": "^0.2.1",
-    "@tokenspace/runtime-core": "^0.2.1",
+    "@tokenspace/compiler": "^0.2.2",
+    "@tokenspace/sdk": "^0.2.2",
+    "@tokenspace/runtime-core": "^0.2.2",
     "bun-plugin-tailwind": "^0.1.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
