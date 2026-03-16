@@ -8,6 +8,7 @@ import {
   isExecutorInstanceHealthy,
   LOCAL_DEV_EXECUTOR_CREATED_BY,
   LOCAL_DEV_EXECUTOR_NAME,
+  setWorkspaceExecutorInternalImpl,
 } from "../convex/executors";
 
 type TableName =
@@ -90,9 +91,15 @@ function createFakeCtx(seed?: Partial<Record<TableName, any[]>>) {
     },
   };
 
+  const mutationCalls: Array<{ ref: unknown; args: unknown }> = [];
   return {
     db,
     tables,
+    mutationCalls,
+    runMutation: async (ref: unknown, args: unknown) => {
+      mutationCalls.push({ ref, args });
+      return undefined;
+    },
   };
 }
 
@@ -508,5 +515,301 @@ describe("ensureLocalDevExecutorInternalImpl", () => {
       status: "offline",
       expiresAt: 100,
     });
+  });
+});
+
+describe("setWorkspaceExecutorInternalImpl", () => {
+  it("fails pending runtime and compile jobs when reassignment explicitly allows it", async () => {
+    const ctx = createFakeCtx({
+      workspaces: [
+        {
+          _id: "workspace_1",
+          slug: "demo",
+          name: "Demo",
+          executorId: "executor_old",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      executors: [
+        {
+          _id: "executor_old",
+          name: "Old Executor",
+          status: "active",
+          authMode: "opaque_secret",
+          tokenVersion: 1,
+          bootstrapTokenId: "old-token",
+          bootstrapTokenHash: "old-hash",
+          bootstrapIssuedAt: 1,
+          createdBy: "user_1",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          _id: "executor_new",
+          name: "New Executor",
+          status: "active",
+          authMode: "opaque_secret",
+          tokenVersion: 1,
+          bootstrapTokenId: "new-token",
+          bootstrapTokenHash: "new-hash",
+          bootstrapIssuedAt: 1,
+          createdBy: "user_1",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      jobs: [
+        {
+          _id: "job_pending",
+          workspaceId: "workspace_1",
+          targetExecutorId: "executor_old",
+          status: "pending",
+          threadId: "thread_1",
+          toolCallId: "tool_1",
+        },
+      ],
+      compileJobs: [
+        {
+          _id: "compile_pending",
+          workspaceId: "workspace_1",
+          targetExecutorId: "executor_old",
+          status: "pending",
+          createdAt: 1,
+        },
+      ],
+    });
+
+    await setWorkspaceExecutorInternalImpl(ctx as any, {
+      workspaceId: "workspace_1" as any,
+      executorId: "executor_new" as any,
+      failPendingJobs: true,
+    });
+
+    expect(ctx.tables.workspaces[0].executorId).toBe("executor_new");
+    expect(ctx.tables.jobs[0]).toMatchObject({
+      status: "failed",
+      error: {
+        data: {
+          errorType: "EXECUTOR_REASSIGNED",
+        },
+      },
+    });
+    expect(ctx.tables.compileJobs[0]).toMatchObject({
+      status: "failed",
+      error: {
+        data: {
+          errorType: "EXECUTOR_REASSIGNED",
+        },
+      },
+    });
+    expect(ctx.mutationCalls).toEqual([
+      {
+        ref: expect.anything(),
+        args: {
+          threadId: "thread_1",
+          toolCallId: "tool_1",
+          error:
+            "Code execution failed:\nJob failed because the workspace executor was reassigned before execution started.",
+        },
+      },
+    ]);
+  });
+
+  it("continues reassignment when tool error emission fails", async () => {
+    const ctx = createFakeCtx({
+      workspaces: [
+        {
+          _id: "workspace_1",
+          slug: "demo",
+          name: "Demo",
+          executorId: "executor_old",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      executors: [
+        {
+          _id: "executor_old",
+          name: "Old Executor",
+          status: "active",
+          authMode: "opaque_secret",
+          tokenVersion: 1,
+          bootstrapTokenId: "old-token",
+          bootstrapTokenHash: "old-hash",
+          bootstrapIssuedAt: 1,
+          createdBy: "user_1",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          _id: "executor_new",
+          name: "New Executor",
+          status: "active",
+          authMode: "opaque_secret",
+          tokenVersion: 1,
+          bootstrapTokenId: "new-token",
+          bootstrapTokenHash: "new-hash",
+          bootstrapIssuedAt: 1,
+          createdBy: "user_1",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      jobs: [
+        {
+          _id: "job_pending",
+          workspaceId: "workspace_1",
+          targetExecutorId: "executor_old",
+          status: "pending",
+          threadId: "thread_1",
+          toolCallId: "tool_1",
+        },
+      ],
+    });
+    ctx.runMutation = async (ref: unknown, args: unknown) => {
+      ctx.mutationCalls.push({ ref, args });
+      throw new Error("tool error mutation failed");
+    };
+
+    await setWorkspaceExecutorInternalImpl(ctx as any, {
+      workspaceId: "workspace_1" as any,
+      executorId: "executor_new" as any,
+      failPendingJobs: true,
+    });
+
+    expect(ctx.tables.workspaces[0].executorId).toBe("executor_new");
+    expect(ctx.tables.jobs[0]).toMatchObject({
+      status: "failed",
+      error: {
+        data: {
+          errorType: "EXECUTOR_REASSIGNED",
+        },
+      },
+    });
+    expect(ctx.mutationCalls).toHaveLength(1);
+  });
+
+  it("rejects reassignment when pending jobs exist and failure was not confirmed", async () => {
+    const ctx = createFakeCtx({
+      workspaces: [
+        {
+          _id: "workspace_1",
+          slug: "demo",
+          name: "Demo",
+          executorId: "executor_old",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      executors: [
+        {
+          _id: "executor_old",
+          name: "Old Executor",
+          status: "active",
+          authMode: "opaque_secret",
+          tokenVersion: 1,
+          bootstrapTokenId: "old-token",
+          bootstrapTokenHash: "old-hash",
+          bootstrapIssuedAt: 1,
+          createdBy: "user_1",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          _id: "executor_new",
+          name: "New Executor",
+          status: "active",
+          authMode: "opaque_secret",
+          tokenVersion: 1,
+          bootstrapTokenId: "new-token",
+          bootstrapTokenHash: "new-hash",
+          bootstrapIssuedAt: 1,
+          createdBy: "user_1",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      jobs: [
+        {
+          _id: "job_pending",
+          workspaceId: "workspace_1",
+          targetExecutorId: "executor_old",
+          status: "pending",
+        },
+      ],
+    });
+
+    await expect(
+      setWorkspaceExecutorInternalImpl(ctx as any, {
+        workspaceId: "workspace_1" as any,
+        executorId: "executor_new" as any,
+      }),
+    ).rejects.toThrow("unless pending jobs are explicitly failed");
+
+    expect(ctx.tables.workspaces[0].executorId).toBe("executor_old");
+    expect(ctx.tables.jobs[0].status).toBe("pending");
+  });
+
+  it("still rejects reassignment when running jobs exist", async () => {
+    const ctx = createFakeCtx({
+      workspaces: [
+        {
+          _id: "workspace_1",
+          slug: "demo",
+          name: "Demo",
+          executorId: "executor_old",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      executors: [
+        {
+          _id: "executor_old",
+          name: "Old Executor",
+          status: "active",
+          authMode: "opaque_secret",
+          tokenVersion: 1,
+          bootstrapTokenId: "old-token",
+          bootstrapTokenHash: "old-hash",
+          bootstrapIssuedAt: 1,
+          createdBy: "user_1",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          _id: "executor_new",
+          name: "New Executor",
+          status: "active",
+          authMode: "opaque_secret",
+          tokenVersion: 1,
+          bootstrapTokenId: "new-token",
+          bootstrapTokenHash: "new-hash",
+          bootstrapIssuedAt: 1,
+          createdBy: "user_1",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      jobs: [
+        {
+          _id: "job_running",
+          workspaceId: "workspace_1",
+          targetExecutorId: "executor_old",
+          status: "running",
+        },
+      ],
+    });
+
+    await expect(
+      setWorkspaceExecutorInternalImpl(ctx as any, {
+        workspaceId: "workspace_1" as any,
+        executorId: "executor_new" as any,
+        failPendingJobs: true,
+      }),
+    ).rejects.toThrow("running");
+
+    expect(ctx.tables.workspaces[0].executorId).toBe("executor_old");
+    expect(ctx.tables.jobs[0].status).toBe("running");
   });
 });

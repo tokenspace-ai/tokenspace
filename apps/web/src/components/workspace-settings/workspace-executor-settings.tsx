@@ -134,6 +134,7 @@ export function WorkspaceExecutorSettings({
       await assignWorkspaceExecutor({
         workspaceId,
         executorId: selectedExecutorId as Id<"executors">,
+        failPendingJobs: true,
       });
       toast.success("Executor assignment updated");
       setAssignDialogOpen(false);
@@ -151,6 +152,7 @@ export function WorkspaceExecutorSettings({
       await assignWorkspaceExecutor({
         workspaceId,
         executorId: undefined,
+        failPendingJobs: true,
       });
       toast.success("Executor unassigned");
       setUnassignDialogOpen(false);
@@ -172,6 +174,7 @@ export function WorkspaceExecutorSettings({
       const result = await createExecutor({
         workspaceId,
         name: newExecutorName.trim(),
+        failPendingJobs: true,
       });
       setSetupState({
         bootstrapToken: result.bootstrapToken,
@@ -394,7 +397,10 @@ export function WorkspaceExecutorSettings({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Assign Executor</DialogTitle>
-            <DialogDescription>Select an existing executor for this workspace.</DialogDescription>
+            <DialogDescription>
+              Switch this workspace to a different executor immediately. Pending jobs on the current executor will be
+              failed before the switch, and running jobs must finish or be stopped first.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-2 py-2">
             <Label htmlFor="executor-select">Executor</Label>
@@ -413,6 +419,14 @@ export function WorkspaceExecutorSettings({
             {assignableExecutors && assignableExecutors.executors.length === 0 && (
               <p className="text-sm text-muted-foreground">No assignable executors available. Create one first.</p>
             )}
+            <Alert>
+              <AlertCircleIcon />
+              <AlertTitle>Routing changes immediately</AlertTitle>
+              <AlertDescription>
+                If the newly assigned executor has no healthy instance, this workspace will not execute jobs until one
+                connects.
+              </AlertDescription>
+            </Alert>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>
@@ -443,7 +457,7 @@ export function WorkspaceExecutorSettings({
           <DialogHeader>
             <DialogTitle>Create Executor</DialogTitle>
             <DialogDescription>
-              Create a self-hosted executor and immediately assign it to this workspace.
+              Create a self-hosted executor, then immediately assign it to this workspace.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-2 py-2">
@@ -454,6 +468,15 @@ export function WorkspaceExecutorSettings({
               value={newExecutorName}
               onChange={(event) => setNewExecutorName(event.target.value)}
             />
+            <Alert>
+              <AlertCircleIcon />
+              <AlertTitle>Creation also reassigns the workspace</AlertTitle>
+              <AlertDescription>
+                The new executor becomes active for this workspace as soon as it is created. Pending jobs on the current
+                executor will be failed before the switch, and this workspace will remain non-functional until an
+                executor process connects with the new bootstrap token.
+              </AlertDescription>
+            </Alert>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
@@ -478,8 +501,9 @@ export function WorkspaceExecutorSettings({
           <AlertDialogHeader>
             <AlertDialogTitle>Unassign executor</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove the executor assignment from the workspace. Code execution will stop working until a new
-              executor is assigned.
+              This will remove the executor assignment from the workspace immediately. Pending jobs on the current
+              executor will be failed first, running jobs must finish or be stopped first, and code execution will stop
+              working until a new executor is assigned.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

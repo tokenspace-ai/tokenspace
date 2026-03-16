@@ -202,6 +202,7 @@ export async function setWorkspaceExecutorInternalImpl(
   args: {
     workspaceId: Id<"workspaces">;
     executorId: Id<"executors"> | undefined;
+    failPendingJobs?: boolean;
   },
 ): Promise<void> {
   const workspace = await ctx.db.get(args.workspaceId);
@@ -219,7 +220,11 @@ export async function setWorkspaceExecutorInternalImpl(
     }
   }
   if (workspace.executorId !== args.executorId) {
-    await assertNoNonterminalJobsForWorkspaceExecutor(ctx, args.workspaceId, workspace.executorId);
+    await assertWorkspaceExecutorAssignmentCanChange(ctx, {
+      workspaceId: args.workspaceId,
+      currentExecutorId: workspace.executorId,
+      failPendingJobs: args.failPendingJobs ?? false,
+    });
     await clearSessionExecutorAssignmentsForWorkspace(ctx, {
       workspaceId: args.workspaceId,
     });
@@ -475,10 +480,11 @@ export const createExecutor = mutation({
   args: {
     workspaceId: v.id("workspaces"),
     name: v.string(),
+    failPendingJobs: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { user } = await requireWorkspaceAdmin(ctx, args.workspaceId);
-    const workspace = await getWorkspaceOrThrow(ctx, args.workspaceId);
+    await getWorkspaceOrThrow(ctx, args.workspaceId);
 
     const name = normalizeExecutorName(args.name);
     const now = Date.now();
@@ -496,17 +502,11 @@ export const createExecutor = mutation({
       updatedAt: now,
     });
 
-    if (workspace.executorId !== executorId) {
-      await assertNoNonterminalJobsForWorkspaceExecutor(ctx, args.workspaceId, workspace.executorId);
-      await clearSessionExecutorAssignmentsForWorkspace(ctx, {
-        workspaceId: args.workspaceId,
-      });
-    }
-    await ctx.db.patch(args.workspaceId, {
+    await setWorkspaceExecutorInternalImpl(ctx, {
+      workspaceId: args.workspaceId,
       executorId,
-      updatedAt: now,
+      failPendingJobs: args.failPendingJobs,
     });
-
     const executor = await ctx.db.get(executorId);
     if (!executor) {
       throw new Error("Executor not found after creation");
@@ -571,6 +571,7 @@ export const assignWorkspaceExecutor = mutation({
   args: {
     workspaceId: v.id("workspaces"),
     executorId: v.optional(v.id("executors")),
+    failPendingJobs: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { user } = await requireWorkspaceAdmin(ctx, args.workspaceId);
@@ -919,63 +920,172 @@ export const listEligibleExecutorInstancesInternal = internalQuery({
   },
 });
 
-async function assertNoNonterminalJobsForWorkspaceExecutor(
+async function listNonterminalJobsForWorkspaceExecutor(
   ctx: MutationCtx,
   workspaceId: Id<"workspaces">,
   currentExecutorId: Id<"executors"> | undefined,
+): Promise<{
+  pendingJobs: Doc<"jobs">[];
+  pendingCompileJobs: Doc<"compileJobs">[];
+  runningJobs: Doc<"jobs">[];
+  runningCompileJobs: Doc<"compileJobs">[];
+}> {
+  if (!currentExecutorId) {
+    return {
+      pendingJobs: [],
+      pendingCompileJobs: [],
+      runningJobs: [],
+      runningCompileJobs: [],
+    };
+  }
+  const [pendingJobs, pendingCompileJobs, runningJobs, runningCompileJobs] = await Promise.all([
+    ctx.db
+      .query("jobs")
+      .withIndex("by_workspace_target_executor_status", (q) =>
+        q.eq("workspaceId", workspaceId).eq("targetExecutorId", currentExecutorId).eq("status", "pending"),
+      )
+      .collect(),
+    ctx.db
+      .query("compileJobs")
+      .withIndex("by_workspace_target_executor_status", (q) =>
+        q.eq("workspaceId", workspaceId).eq("targetExecutorId", currentExecutorId).eq("status", "pending"),
+      )
+      .collect(),
+    ctx.db
+      .query("jobs")
+      .withIndex("by_workspace_target_executor_status", (q) =>
+        q.eq("workspaceId", workspaceId).eq("targetExecutorId", currentExecutorId).eq("status", "running"),
+      )
+      .collect(),
+    ctx.db
+      .query("compileJobs")
+      .withIndex("by_workspace_target_executor_status", (q) =>
+        q.eq("workspaceId", workspaceId).eq("targetExecutorId", currentExecutorId).eq("status", "running"),
+      )
+      .collect(),
+  ]);
+
+  return {
+    pendingJobs,
+    pendingCompileJobs,
+    runningJobs,
+    runningCompileJobs,
+  };
+}
+
+function formatExecutorJobSummary(args: { runtimeCount: number; compileCount: number }): string | null {
+  const parts: string[] = [];
+  if (args.runtimeCount > 0) {
+    parts.push(`${args.runtimeCount} runtime job(s)`);
+  }
+  if (args.compileCount > 0) {
+    parts.push(`${args.compileCount} compile job(s)`);
+  }
+  if (parts.length === 0) {
+    return null;
+  }
+  const [first, second] = parts;
+  if (parts.length === 1) {
+    return first ?? null;
+  }
+  return first && second ? `${first} and ${second}` : (first ?? null);
+}
+
+async function failPendingJobsForWorkspaceExecutor(
+  ctx: MutationCtx,
+  args: {
+    pendingJobs: Doc<"jobs">[];
+    pendingCompileJobs: Doc<"compileJobs">[];
+  },
 ): Promise<void> {
-  if (!currentExecutorId) return;
-  const [pendingJob, pendingCompile] = await Promise.all([
-    ctx.db
-      .query("jobs")
-      .withIndex("by_target_executor_status", (q) =>
-        q.eq("targetExecutorId", currentExecutorId).eq("status", "pending"),
-      )
-      .first(),
-    ctx.db
-      .query("compileJobs")
-      .withIndex("by_target_executor_status", (q) =>
-        q.eq("targetExecutorId", currentExecutorId).eq("status", "pending"),
-      )
-      .first(),
-  ]);
-  const hasPending =
-    (pendingJob && pendingJob.workspaceId === workspaceId) ||
-    (pendingCompile && pendingCompile.workspaceId === workspaceId);
-  if (hasPending) {
-    throw new Error("Cannot reassign executor while workspace has pending jobs on the current executor");
+  const completedAt = Date.now();
+  const runtimeError = {
+    message: "Job failed because the workspace executor was reassigned before execution started.",
+    data: {
+      errorType: "EXECUTOR_REASSIGNED",
+    },
+  };
+  const compileError = {
+    message: "Compile job failed because the workspace executor was reassigned before execution started.",
+    data: {
+      errorType: "EXECUTOR_REASSIGNED",
+    },
+  };
+
+  for (const job of args.pendingJobs) {
+    await ctx.db.patch(job._id, {
+      status: "failed",
+      completedAt,
+      error: runtimeError,
+    });
+    if (job.threadId && job.toolCallId) {
+      try {
+        await ctx.runMutation(internal.ai.chat.addToolError, {
+          threadId: job.threadId,
+          toolCallId: job.toolCallId,
+          error: `Code execution failed:\n${runtimeError.message}`,
+        });
+      } catch (error) {
+        console.warn(`[executors] failed to add tool error for reassigned job ${job._id}: ${String(error)}`);
+      }
+    }
   }
-  const [runningJob, runningCompile] = await Promise.all([
-    ctx.db
-      .query("jobs")
-      .withIndex("by_target_executor_status", (q) =>
-        q.eq("targetExecutorId", currentExecutorId).eq("status", "running"),
-      )
-      .first(),
-    ctx.db
-      .query("compileJobs")
-      .withIndex("by_target_executor_status", (q) =>
-        q.eq("targetExecutorId", currentExecutorId).eq("status", "running"),
-      )
-      .first(),
-  ]);
-  const hasRunning =
-    (runningJob && runningJob.workspaceId === workspaceId) ||
-    (runningCompile && runningCompile.workspaceId === workspaceId);
-  if (hasRunning) {
-    throw new Error("Cannot reassign executor while workspace has running jobs on the current executor");
+
+  for (const job of args.pendingCompileJobs) {
+    await ctx.db.patch(job._id, {
+      status: "failed",
+      completedAt,
+      error: compileError,
+    });
   }
+}
+
+async function assertWorkspaceExecutorAssignmentCanChange(
+  ctx: MutationCtx,
+  args: {
+    workspaceId: Id<"workspaces">;
+    currentExecutorId: Id<"executors"> | undefined;
+    failPendingJobs: boolean;
+  },
+): Promise<void> {
+  const nonterminal = await listNonterminalJobsForWorkspaceExecutor(ctx, args.workspaceId, args.currentExecutorId);
+  const runningSummary = formatExecutorJobSummary({
+    runtimeCount: nonterminal.runningJobs.length,
+    compileCount: nonterminal.runningCompileJobs.length,
+  });
+  if (runningSummary) {
+    throw new Error(
+      `Cannot change executor assignment while workspace has running ${runningSummary} on the current executor`,
+    );
+  }
+
+  const pendingSummary = formatExecutorJobSummary({
+    runtimeCount: nonterminal.pendingJobs.length,
+    compileCount: nonterminal.pendingCompileJobs.length,
+  });
+  if (!pendingSummary) {
+    return;
+  }
+  if (!args.failPendingJobs) {
+    throw new Error(
+      `Cannot change executor assignment while workspace has pending ${pendingSummary} on the current executor unless pending jobs are explicitly failed`,
+    );
+  }
+
+  await failPendingJobsForWorkspaceExecutor(ctx, nonterminal);
 }
 
 export const setWorkspaceExecutorInternal = internalMutation({
   args: {
     workspaceId: v.id("workspaces"),
     executorId: v.optional(v.id("executors")),
+    failPendingJobs: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     await setWorkspaceExecutorInternalImpl(ctx, {
       workspaceId: args.workspaceId,
       executorId: args.executorId,
+      failPendingJobs: args.failPendingJobs,
     });
   },
 });
