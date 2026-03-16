@@ -1,7 +1,17 @@
-import { describe, expect, it } from "bun:test";
-import { createCredentialStore, createUserStore } from "./exec";
+import { beforeEach, describe, expect, it } from "bun:test";
+import {
+  clearTypeScriptSandboxCache,
+  compileTypeScriptForExecution,
+  createCredentialStore,
+  createUserStore,
+  executeCode,
+} from "./exec";
 
 describe("executor execution helpers", () => {
+  beforeEach(() => {
+    clearTypeScriptSandboxCache();
+  });
+
   it("reads the current instance token for each credential lookup", async () => {
     let currentToken = "instance-token-1";
     const seenTokens: string[] = [];
@@ -45,5 +55,60 @@ describe("executor execution helpers", () => {
     await userStore.getInfo({ id: "user_1" });
 
     expect(seenTokens).toEqual(["instance-token-1", "instance-token-2"]);
+  });
+
+  it("caches the TypeScript sandbox by revision", async () => {
+    let actionCalls = 0;
+    const convex = {
+      action: async () => {
+        actionCalls += 1;
+        return { builtins: "", sandboxApis: [] };
+      },
+    } as any;
+
+    await compileTypeScriptForExecution("const value: number = 1;\nconsole.log(value);", convex, {
+      revisionId: "revision_1",
+      getInstanceToken: () => "instance-token-1",
+    });
+    await compileTypeScriptForExecution("const value: number = 2;\nconsole.log(value);", convex, {
+      revisionId: "revision_1",
+      getInstanceToken: () => "instance-token-1",
+    });
+
+    expect(actionCalls).toBe(1);
+  });
+
+  it("reports TypeScript diagnostics before execution", async () => {
+    const convex = {
+      action: async () => ({ builtins: "", sandboxApis: [] }),
+    } as any;
+
+    await expect(
+      compileTypeScriptForExecution("const value: string = 123;", convex, {
+        revisionId: "revision_1",
+        getInstanceToken: () => "instance-token-1",
+      }),
+    ).rejects.toThrow(/TypeScript compilation failed/);
+  });
+
+  it("compiles raw TypeScript before executing it", async () => {
+    const convex = {
+      action: async () => ({ builtins: "", sandboxApis: [] }),
+    } as any;
+
+    const result = await executeCode(
+      `
+const value: number = await Promise.resolve(7);
+console.log("value", value);
+`,
+      convex,
+      {
+        language: "typescript",
+        revisionId: "revision_1",
+        getInstanceToken: () => "instance-token-1",
+      },
+    );
+
+    expect(result.output).toContain("value 7");
   });
 });

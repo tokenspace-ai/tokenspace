@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import type { ConvexLogger } from "@tokenspace/convex-local-dev";
 import type { Subprocess } from "bun";
@@ -108,11 +108,20 @@ async function checkExistingProcess(): Promise<boolean> {
   return false;
 }
 
+interface RunCommandOptions {
+  cwd?: string;
+  env?: Record<string, string>;
+  quiet?: boolean;
+  /** When set, `runCommand` returns a promise that resolves once stdout has emitted `readyCount` lines matching `readyPattern`. */
+  readyPattern?: RegExp;
+  readyCount?: number;
+}
+
 async function runCommand(
   name: string,
   color: (t: string) => string,
   command: Array<string>,
-  { cwd, env, quiet }: { cwd?: string; env?: Record<string, string>; quiet?: boolean },
+  { cwd, env, quiet, readyPattern, readyCount }: RunCommandOptions,
 ) {
   const prefix = `${color(name.padEnd(LOG_PREFIX_LENGTH, " "))}`;
   const logPath = `logs/${name}.log`;
@@ -127,6 +136,18 @@ async function runCommand(
     ...env,
   };
 
+  let readyResolve: (() => void) | undefined;
+  let readyPromise: Promise<void> | undefined;
+  if (readyPattern && readyCount && readyCount > 0) {
+    let hits = 0;
+    readyPromise = new Promise<void>((resolve) => {
+      readyResolve = () => {
+        hits++;
+        if (hits >= readyCount) resolve();
+      };
+    });
+  }
+
   const proc = Bun.spawn(command, {
     stdout: "pipe",
     stderr: "pipe",
@@ -136,7 +157,13 @@ async function runCommand(
 
   childProcesses.push(proc);
 
-  pipeOutput(proc.stdout, prefix, logWriter, quiet);
+  pipeOutput(
+    proc.stdout,
+    prefix,
+    logWriter,
+    quiet,
+    readyResolve ? { pattern: readyPattern!, onMatch: readyResolve } : undefined,
+  );
   pipeOutput(proc.stderr, prefix, logWriter, false);
 
   proc.exited.then((code) => {
@@ -148,6 +175,8 @@ async function runCommand(
       cleanup();
     }
   });
+
+  return readyPromise;
 }
 
 async function pipeOutput(
@@ -155,6 +184,7 @@ async function pipeOutput(
   prefix: string,
   logWriter: ReturnType<ReturnType<typeof Bun.file>["writer"]>,
   quiet?: boolean,
+  readyDetector?: { pattern: RegExp; onMatch: () => void },
 ) {
   const decoder = new TextDecoder();
   let buffer = "";
@@ -171,6 +201,7 @@ async function pipeOutput(
       if (line.length === 0) continue;
       if (!quiet) console.log(`${prefix} ${line}`);
       logWriter.write(`${line}\n`);
+      if (readyDetector?.pattern.test(line)) readyDetector.onMatch();
     }
     logWriter.flush();
   }
@@ -180,6 +211,7 @@ async function pipeOutput(
     if (!quiet) console.log(`${prefix} ${buffer}`);
     logWriter.write(`${buffer}\n`);
     logWriter.flush();
+    if (readyDetector?.pattern.test(buffer)) readyDetector.onMatch();
   }
 }
 
@@ -217,6 +249,22 @@ async function stopExistingProcess(): Promise<boolean> {
 
   console.log(c.yellow("No running dev server found."));
   return false;
+}
+
+function countLibWatchers(): number {
+  const workspaceDirs = ["packages", "services", "apps"];
+  let count = 0;
+  for (const dir of workspaceDirs) {
+    if (!existsSync(dir)) continue;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const pkgPath = `${dir}/${entry.name}/package.json`;
+      if (!existsSync(pkgPath)) continue;
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { scripts?: Record<string, string> };
+      if (pkg.scripts?.["dev:lib"]) count++;
+    }
+  }
+  return count;
 }
 
 const levelColors = {
@@ -399,6 +447,29 @@ async function main() {
 
     const ports = extractPortsFromEnvironment();
 
+    const libWatcherCount = countLibWatchers();
+    const LIB_SETTLE_TIMEOUT_MS = 120_000;
+
+    const libsPrefix = c.blue("libs".padEnd(LOG_PREFIX_LENGTH, " "));
+    console.log(`${libsPrefix} Starting ${libWatcherCount} library watchers...`);
+
+    const libsReady = runCommand("libs", c.blue, ["bunx", "turbo", "dev:lib"], {
+      quiet: true,
+      readyPattern: /Watching for file changes/,
+      readyCount: libWatcherCount,
+    });
+
+    const libsSettled = await Promise.race([
+      libsReady!.then(() => true),
+      Bun.sleep(LIB_SETTLE_TIMEOUT_MS).then(() => false),
+    ]);
+
+    if (libsSettled) {
+      console.log(`${libsPrefix} All library watchers ready`);
+    } else {
+      console.log(`${libsPrefix} ${c.yellow("Timed out waiting for library watchers — continuing anyway")}`);
+    }
+
     await runConvex(ports.convexPort);
     await Bun.sleep(1000);
 
@@ -418,8 +489,6 @@ async function main() {
       throw new Error("Local dev executor bootstrap token was not returned");
     }
 
-    // Start the dev servers
-    runCommand("libs", c.blue, ["bunx", "turbo", "dev:lib"], { quiet: true });
     runCommand("webapp", c.cyan, ["bun", "run", "dev"], {
       cwd: "apps/web",
       env: { VITE_CONVEX_URL: process.env.CONVEX_URL! },

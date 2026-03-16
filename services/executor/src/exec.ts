@@ -1,5 +1,6 @@
 import { api } from "@tokenspace/backend/convex/_generated/api";
 import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
+import { compileAgentCode } from "@tokenspace/compiler";
 import type { RuntimeExecutionOptions, ToolOutputResult } from "@tokenspace/runtime-core";
 import type { CredentialStore, MissingCredentialReason, UserLookup, UserStore } from "@tokenspace/sdk";
 import { MissingCredentialError, TokenspaceError, UserInfoUnavailableError } from "@tokenspace/sdk";
@@ -10,9 +11,11 @@ import { executeCode as executeRuntimeCode } from "@tokenspace/runtime-core";
 import { ConvexFs } from "@tokenspace/session-fs";
 import type { ConvexClient } from "convex/browser";
 import { InMemoryFs } from "just-bash";
+import ts from "typescript";
 
 export type ExecutionOptions = Omit<RuntimeExecutionOptions, "credentialStore" | "fileSystem"> & {
   getInstanceToken?: () => string | undefined;
+  revisionId?: Id<"revisions"> | string | null;
 };
 
 type CredentialMissingPayload = {
@@ -32,6 +35,13 @@ type UserInfoUnavailablePayload = {
   reason: "not_initialized" | "non_interactive" | "local_mcp";
   details?: string;
 };
+
+type TypeScriptSandboxEnvironment = {
+  builtins: string;
+  sandboxApis: Array<{ fileName: string; content: string }>;
+};
+
+const typeScriptSandboxCache = new Map<string, Promise<TypeScriptSandboxEnvironment>>();
 
 function extractCredentialMissingPayload(error: unknown): CredentialMissingPayload | null {
   if (!error || typeof error !== "object") return null;
@@ -94,6 +104,79 @@ function toCredentialDefForError(payload: CredentialMissingPayload): any {
     kind: payload.credential.kind,
     scope: payload.credential.scope,
   };
+}
+
+function formatCompilationDiagnostics(
+  diagnostics: Array<{ line?: number; column?: number; message: string; code: number }>,
+): string {
+  return diagnostics
+    .map((diagnostic) => {
+      const location =
+        diagnostic.line !== undefined && diagnostic.column !== undefined
+          ? `Line ${diagnostic.line}:${diagnostic.column}: `
+          : "";
+      return `${location}${diagnostic.message} (TS${diagnostic.code})`;
+    })
+    .join("\n");
+}
+
+export function clearTypeScriptSandboxCache(): void {
+  typeScriptSandboxCache.clear();
+}
+
+async function loadTypeScriptSandbox(
+  convex: ConvexClient,
+  revisionId: string,
+  instanceToken: string,
+): Promise<TypeScriptSandboxEnvironment> {
+  let cached = typeScriptSandboxCache.get(revisionId);
+  if (!cached) {
+    cached = convex
+      .action(api.executor.getTypeScriptSandboxForRevision, {
+        revisionId: revisionId as Id<"revisions">,
+        instanceToken,
+      })
+      .catch((error) => {
+        typeScriptSandboxCache.delete(revisionId);
+        throw error;
+      }) as Promise<TypeScriptSandboxEnvironment>;
+    typeScriptSandboxCache.set(revisionId, cached);
+  }
+  return await cached;
+}
+
+export async function compileTypeScriptForExecution(
+  code: string,
+  convex: ConvexClient,
+  options?: ExecutionOptions,
+): Promise<string> {
+  const revisionId = options?.revisionId ? String(options.revisionId) : null;
+  if (!revisionId) {
+    throw new Error("revisionId is required for TypeScript execution");
+  }
+
+  const instanceToken = options?.getInstanceToken?.();
+  if (!instanceToken) {
+    throw new Error("Executor misconfigured: instance token is not set");
+  }
+
+  const sandbox = await loadTypeScriptSandbox(convex, revisionId, instanceToken);
+  const compilationResult = compileAgentCode(code, {
+    sandboxApis: [{ fileName: "builtins.d.ts", content: sandbox.builtins }, ...sandbox.sandboxApis],
+  });
+
+  if (!compilationResult.success) {
+    throw new Error(`TypeScript compilation failed:\n${formatCompilationDiagnostics(compilationResult.diagnostics)}`);
+  }
+
+  const transpiled = ts.transpileModule(code, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ESNext,
+      module: ts.ModuleKind.CommonJS,
+    },
+  });
+
+  return transpiled.outputText;
 }
 
 export function createCredentialStore(convex: ConvexClient, options?: ExecutionOptions): CredentialStore {
@@ -197,6 +280,8 @@ export async function executeCode(
   convex: ConvexClient,
   options?: ExecutionOptions,
 ): Promise<ToolOutputResult> {
+  const executableCode =
+    options?.language === "bash" ? code : await compileTypeScriptForExecution(code, convex, options);
   const fileSystem =
     options?.sessionId != null
       ? new ConvexFs({
@@ -206,7 +291,7 @@ export async function executeCode(
         })
       : new InMemoryFs();
 
-  return await executeRuntimeCode(code, {
+  return await executeRuntimeCode(executableCode, {
     ...options,
     fileSystem,
     credentialStore: createCredentialStore(convex, options),

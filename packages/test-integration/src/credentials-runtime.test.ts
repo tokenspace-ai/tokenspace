@@ -232,20 +232,6 @@ export const readSessionFile = action(
   }
 }
 
-async function compileSnippet(revisionId: string, code: string): Promise<string> {
-  const backend = getSharedHarness().getBackend();
-  const result = (await backend.runFunction(getFunctionName(internal.fs.operations.compileCode), {
-    revisionId,
-    code,
-  })) as { success: boolean; code?: string; error?: string };
-
-  if (!result.success || !result.code) {
-    throw new Error(`Compilation failed: ${result.error ?? "unknown"}`);
-  }
-
-  return result.code;
-}
-
 async function createSession(revisionId: string): Promise<string> {
   const backend = getSharedHarness().getBackend();
   return (await backend.runFunction(getFunctionName(internal.sessions.createSession), {
@@ -256,9 +242,8 @@ async function createSession(revisionId: string): Promise<string> {
 
 async function runSnippet(revisionId: string, code: string, sessionId?: string) {
   const backend = getSharedHarness().getBackend();
-  const compiled = await compileSnippet(revisionId, code);
   const jobId = (await backend.runFunction(getFunctionName(internal.executor.createJob), {
-    code: compiled,
+    code,
     language: "typescript",
     revisionId,
     sessionId,

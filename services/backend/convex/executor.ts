@@ -111,6 +111,11 @@ type UserInfoUnavailablePayload = {
   details?: string;
 };
 
+type TypeScriptSandboxEnvironment = {
+  builtins: string;
+  sandboxApis: Array<{ fileName: string; content: string }>;
+};
+
 function normalizeToolResult(result: unknown): ToolResultPayload {
   if (result && typeof result === "object" && !Array.isArray(result)) {
     const base = { ...(result as Record<string, unknown>) };
@@ -805,6 +810,39 @@ export const resolveUserInfoForJob = action({
       callerUserId,
       email: args.email!,
     });
+  },
+});
+
+export const getTypeScriptSandboxForRevision = action({
+  args: {
+    revisionId: v.id("revisions"),
+    instanceToken: v.string(),
+  },
+  handler: async (ctx, args): Promise<TypeScriptSandboxEnvironment> => {
+    const verified = await verifyExecutorInstanceToken(ctx, args.instanceToken);
+    const revision = await ctx.runQuery(internal.revisions.getRevision, {
+      revisionId: args.revisionId,
+    });
+    if (!revision) {
+      throw new Error("Revision not found");
+    }
+
+    await assertWorkspaceAssignedToExecutor(ctx, {
+      workspaceId: revision.workspaceId,
+      executorId: verified.executorId,
+    });
+
+    const revisionFs = await ctx.runAction(internal.compile.getRevisionFsFromRevision, {
+      revisionId: args.revisionId,
+    });
+
+    return {
+      builtins: revisionFs.builtins,
+      sandboxApis: revisionFs.declarations.map((declaration) => ({
+        fileName: declaration.fileName,
+        content: declaration.content,
+      })),
+    };
   },
 });
 

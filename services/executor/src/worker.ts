@@ -107,6 +107,7 @@ async function main() {
           getInstanceToken: () => state.instanceToken ?? undefined,
           language: message.language,
           jobId: message.jobId,
+          revisionId: message.revisionId,
           sessionId: message.sessionId,
           cwd: message.cwd,
           timeoutMs: message.timeoutMs,

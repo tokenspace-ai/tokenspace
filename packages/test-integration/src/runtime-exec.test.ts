@@ -34,29 +34,15 @@ async function createSession(revisionId: string): Promise<string> {
   return sessionId;
 }
 
-async function compileTypeScript(revisionId: string, code: string): Promise<string> {
-  const backend = getSharedHarness().getBackend();
-  const compileResult = (await backend.runFunction(getFunctionName(internal.fs.operations.compileCode), {
-    revisionId,
-    code,
-  })) as { success: boolean; code?: string; error?: string };
-
-  if (!compileResult.success) {
-    throw new Error(`Compilation failed:\n${compileResult.error ?? "(unknown error)"}`);
-  }
-
-  if (!compileResult.code) {
-    throw new Error("Compilation succeeded but no code was returned");
-  }
-
-  return compileResult.code;
+async function compileTypeScript(_revisionId: string, code: string): Promise<string> {
+  return code;
 }
 
-async function runTypeScriptJob(revisionId: string, compiledCode: string, sessionId?: string): Promise<string> {
+async function runTypeScriptJob(revisionId: string, sourceCode: string, sessionId?: string): Promise<string> {
   const backend = getSharedHarness().getBackend();
 
   const jobId = (await backend.runFunction(getFunctionName(internal.executor.createJob), {
-    code: compiledCode,
+    code: sourceCode,
     language: "typescript",
     revisionId,
     sessionId,
@@ -134,9 +120,7 @@ describe("Executor Execution", () => {
     it("compiles and executes TypeScript code via executor service", async () => {
       const backend = getSharedHarness().getBackend();
 
-      // Compile the code using fs.operations.compileCode
-      const compileResult = (await backend.runFunction(getFunctionName(internal.fs.operations.compileCode), {
-        revisionId: context.revisionId,
+      const jobId = (await backend.runFunction(getFunctionName(internal.executor.createJob), {
         code: `
 const greeting = "Hello from TypeScript!";
 console.log(greeting);
@@ -150,14 +134,6 @@ console.log("Sum:", sum);
 const data = { name: "test", value: 42 };
 console.log("Data:", JSON.stringify(data));
 `,
-      })) as { success: boolean; code?: string; error?: string };
-
-      expect(compileResult.success).toBe(true);
-      expect(compileResult.code).toBeDefined();
-
-      // Create a job for the executor service to process
-      const jobId = (await backend.runFunction(getFunctionName(internal.executor.createJob), {
-        code: compileResult.code!,
         language: "typescript",
         revisionId: context.revisionId,
       })) as string;
@@ -177,25 +153,11 @@ console.log("Data:", JSON.stringify(data));
     it("invokes testConnection function from workspace", async () => {
       const backend = getSharedHarness().getBackend();
 
-      // Compile code that calls the testConnection function from the testing capability
-      // Note: Workspace functions are exposed as globals, not imports
-      const compileResult = (await backend.runFunction(getFunctionName(internal.fs.operations.compileCode), {
-        revisionId: context.revisionId,
+      const jobId = (await backend.runFunction(getFunctionName(internal.executor.createJob), {
         code: `
 const result = await testing.testConnection({});
 console.log("Result:", result);
 `,
-      })) as { success: boolean; code?: string; error?: string };
-
-      if (!compileResult.success) {
-        console.error("Compilation error:", compileResult.error);
-      }
-      expect(compileResult.success).toBe(true);
-      expect(compileResult.code).toBeDefined();
-
-      // Create a job for the executor service to process
-      const jobId = (await backend.runFunction(getFunctionName(internal.executor.createJob), {
-        code: compileResult.code!,
         language: "typescript",
         revisionId: context.revisionId,
       })) as string;
