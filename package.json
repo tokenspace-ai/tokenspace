@@ -63,6 +63,7 @@
     "release:publish": "changeset publish",
     "release:pack-smoke": "bun run scripts/release-pack-smoke.ts",
     "release:full": "bun install && bun run release:check && bun run release:pack-smoke && npm login && bun run release:publish",
+    "release:executor-image": "bun run scripts/publish-executor-image.ts",
     "clean:repo": "[ -f .env ] && mv .env .env.bak; git clean -fdX; [ -f .env.bak ] && mv .env.bak .env || true",
     "postinstall": "bun run build:public-packages",
     "prepare": "husky"
