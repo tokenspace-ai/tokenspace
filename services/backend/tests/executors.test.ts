@@ -8,8 +8,12 @@ import {
   isExecutorInstanceHealthy,
   LOCAL_DEV_EXECUTOR_CREATED_BY,
   LOCAL_DEV_EXECUTOR_NAME,
+  rotateExecutorBootstrapTokenImpl,
   setWorkspaceExecutorInternalImpl,
 } from "../convex/executors";
+
+process.env.WORKOS_ORG_ID ??= "org_test";
+process.env.CONVEX_URL ??= "https://example.convex.cloud";
 
 type TableName =
   | "workspaces"
@@ -19,7 +23,16 @@ type TableName =
   | "compileJobs"
   | "sessionExecutorAssignments";
 
-function createFakeCtx(seed?: Partial<Record<TableName, any[]>>) {
+function createFakeCtx(
+  seed?: Partial<Record<TableName, any[]>>,
+  options?: {
+    user?: {
+      subject: string;
+      org_id: string;
+      role?: string | null;
+    } | null;
+  },
+) {
   const tables: Record<TableName, any[]> = {
     workspaces: [],
     executors: [],
@@ -93,6 +106,9 @@ function createFakeCtx(seed?: Partial<Record<TableName, any[]>>) {
 
   const mutationCalls: Array<{ ref: unknown; args: unknown }> = [];
   return {
+    auth: {
+      getUserIdentity: async () => options?.user ?? null,
+    },
     db,
     tables,
     mutationCalls,
@@ -811,5 +827,90 @@ describe("setWorkspaceExecutorInternalImpl", () => {
 
     expect(ctx.tables.workspaces[0].executorId).toBe("executor_old");
     expect(ctx.tables.jobs[0].status).toBe("running");
+  });
+});
+
+describe("rotateExecutorBootstrapTokenImpl", () => {
+  it("rotates bootstrap credentials, invalidates online instances, and returns setup instructions", async () => {
+    const ctx = createFakeCtx(
+      {
+        executors: [
+          {
+            _id: "executor_existing",
+            name: "Shared Fleet",
+            status: "active",
+            authMode: "opaque_secret",
+            tokenVersion: 2,
+            bootstrapTokenId: "bootstrap-existing",
+            bootstrapTokenHash: "hash-existing",
+            bootstrapIssuedAt: 10,
+            bootstrapLastUsedAt: 12,
+            createdBy: "creator-user",
+            createdAt: 5,
+            updatedAt: 20,
+          },
+        ],
+        executorInstances: [
+          {
+            _id: "instance_online",
+            executorId: "executor_existing",
+            tokenVersion: 2,
+            status: "online",
+            registeredAt: 11,
+            lastHeartbeatAt: 20,
+            expiresAt: 500,
+            instanceTokenId: "instance-token-1",
+            instanceTokenHash: "instance-hash-1",
+            instanceTokenIssuedAt: 11,
+            instanceTokenExpiresAt: 500,
+          },
+          {
+            _id: "instance_offline",
+            executorId: "executor_existing",
+            tokenVersion: 2,
+            status: "offline",
+            registeredAt: 11,
+            lastHeartbeatAt: 20,
+            expiresAt: 100,
+            instanceTokenId: "instance-token-2",
+            instanceTokenHash: "instance-hash-2",
+            instanceTokenIssuedAt: 11,
+            instanceTokenExpiresAt: 100,
+          },
+        ],
+      },
+      {
+        user: {
+          subject: "creator-user",
+          org_id: process.env.WORKOS_ORG_ID!,
+          role: "member",
+        },
+      },
+    );
+
+    const result = await rotateExecutorBootstrapTokenImpl(ctx as any, {
+      executorId: "executor_existing" as any,
+    });
+
+    expect(result.bootstrapToken).toBeTruthy();
+    expect(result.executor.tokenVersion).toBe(3);
+    expect(result.executor.onlineInstanceCount).toBe(0);
+    expect(result.setup.requiredEnvVars).toEqual(["TOKENSPACE_API_URL", "TOKENSPACE_TOKEN"]);
+    expect(result.setup.snippets.docker).toContain(result.bootstrapToken);
+    expect(result.setup.snippets.docker).toContain(process.env.CONVEX_URL!);
+    expect(result.setup.snippets.raw).toContain(result.bootstrapToken);
+    expect(result.setup.snippets.raw).toContain(process.env.CONVEX_URL!);
+
+    expect(ctx.tables.executors[0].tokenVersion).toBe(3);
+    expect(ctx.tables.executors[0].bootstrapTokenId).not.toBe("bootstrap-existing");
+    expect(ctx.tables.executors[0].bootstrapTokenHash).not.toBe("hash-existing");
+    expect(ctx.tables.executors[0].bootstrapLastUsedAt).toBeUndefined();
+    expect(ctx.tables.executorInstances.find((instance) => instance._id === "instance_online")).toMatchObject({
+      status: "offline",
+    });
+    expect(ctx.tables.executorInstances.find((instance) => instance._id === "instance_offline")).toMatchObject({
+      status: "offline",
+      expiresAt: 100,
+    });
   });
 });
