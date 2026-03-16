@@ -52,6 +52,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { deriveWorkspaceExecutorState, ExecutorStateBadge, type WorkspaceExecutorState } from "./executor-status";
 
 type SetupState = {
+  mode: "create" | "rotate";
   bootstrapToken: string;
   setup: {
     requiredEnvVars: string[];
@@ -87,16 +88,19 @@ export function WorkspaceExecutorSettings({
   );
   const assignWorkspaceExecutor = useMutation(api.executors.assignWorkspaceExecutor);
   const createExecutor = useMutation(api.executors.createExecutor);
+  const rotateExecutorBootstrapToken = useMutation(api.executors.rotateExecutorBootstrapToken);
 
   const [selectedExecutorId, setSelectedExecutorId] = useState<string>("");
   const [newExecutorName, setNewExecutorName] = useState("");
   const [isAssigning, setIsAssigning] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isRotating, setIsRotating] = useState(false);
   const [isUnassigning, setIsUnassigning] = useState(false);
   const [setupState, setSetupState] = useState<SetupState | null>(null);
 
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [rotateDialogOpen, setRotateDialogOpen] = useState(false);
   const [unassignDialogOpen, setUnassignDialogOpen] = useState(false);
 
   const currentExecutorId = assignableExecutors?.currentExecutorId ?? assignedStatus?.currentExecutorId ?? null;
@@ -177,6 +181,7 @@ export function WorkspaceExecutorSettings({
         failPendingJobs: true,
       });
       setSetupState({
+        mode: "create",
         bootstrapToken: result.bootstrapToken,
         setup: result.setup,
       });
@@ -189,6 +194,28 @@ export function WorkspaceExecutorSettings({
       console.error(error);
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleRotateBootstrapToken = async () => {
+    if (!assignedStatus?.currentExecutorId) return;
+    setIsRotating(true);
+    try {
+      const result = await rotateExecutorBootstrapToken({
+        executorId: assignedStatus.currentExecutorId,
+      });
+      setSetupState({
+        mode: "rotate",
+        bootstrapToken: result.bootstrapToken,
+        setup: result.setup,
+      });
+      setRotateDialogOpen(false);
+      toast.success("Bootstrap token rotated");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to rotate bootstrap token");
+      console.error(error);
+    } finally {
+      setIsRotating(false);
     }
   };
 
@@ -243,6 +270,12 @@ export function WorkspaceExecutorSettings({
                       <ServerIcon className="size-4" />
                       Change executor
                     </DropdownMenuItem>
+                    {assignedStatus?.executor.canManageLifecycle && (
+                      <DropdownMenuItem onSelect={() => setRotateDialogOpen(true)}>
+                        <KeyRoundIcon className="size-4" />
+                        Rotate bootstrap token
+                      </DropdownMenuItem>
+                    )}
                     {assignedStatus && (
                       <DropdownMenuItem variant="destructive" onSelect={() => setUnassignDialogOpen(true)}>
                         <UnplugIcon className="size-4" />
@@ -496,6 +529,32 @@ export function WorkspaceExecutorSettings({
         </DialogContent>
       </Dialog>
 
+      <AlertDialog open={rotateDialogOpen} onOpenChange={setRotateDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Rotate bootstrap token</AlertDialogTitle>
+            <AlertDialogDescription>
+              This issues a new bootstrap token, invalidates the current bootstrap token, and marks all online instances
+              offline. Any executor process that should continue serving jobs must restart and register again with the
+              new token.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button variant="destructive" onClick={handleRotateBootstrapToken} disabled={isRotating}>
+              {isRotating ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Rotating...
+                </>
+              ) : (
+                "Rotate token"
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AlertDialog open={unassignDialogOpen} onOpenChange={setUnassignDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -534,7 +593,8 @@ export function WorkspaceExecutorSettings({
               Setup Instructions
             </CardTitle>
             <CardDescription>
-              The bootstrap credential is shown only for this create flow. Store it before leaving the page.
+              The bootstrap credential is shown only for this {setupState.mode === "create" ? "creation" : "rotation"}{" "}
+              flow. Store it before leaving the page.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -542,7 +602,8 @@ export function WorkspaceExecutorSettings({
               <CheckCircle2Icon className="text-emerald-500" />
               <AlertTitle>Bootstrap credential</AlertTitle>
               <AlertDescription>
-                Tokenspace will not re-show this plaintext bootstrap token after this view is gone.
+                Tokenspace will not re-show this plaintext bootstrap token after this view is gone. Use the updated
+                setup commands below for any executor instance you want to register with this executor.
               </AlertDescription>
             </Alert>
 

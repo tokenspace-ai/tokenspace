@@ -354,6 +354,28 @@ export async function ensureLocalDevExecutorInternalImpl(
   };
 }
 
+export async function rotateExecutorBootstrapTokenImpl(ctx: MutationCtx, args: { executorId: Id<"executors"> }) {
+  const { executor, user } = await requireExecutorLifecycleManager(ctx, args.executorId);
+  const now = Date.now();
+  const rotated = await rotateExecutorBootstrapInternal(ctx, {
+    executor,
+    now,
+  });
+  const updated = await ctx.db.get(executor._id);
+  if (!updated) {
+    throw new Error("Executor not found after rotation");
+  }
+  const updatedInstances = await ctx.db
+    .query("executorInstances")
+    .withIndex("by_executor", (q) => q.eq("executorId", executor._id))
+    .collect();
+  return {
+    executor: await buildExecutorSummaryForUser(user, updated, updatedInstances, now),
+    bootstrapToken: rotated.bootstrapToken,
+    setup: buildExecutorSetupPayload(rotated.bootstrapToken, getConvexUrl()),
+  };
+}
+
 async function getWorkspaceOrThrow(ctx: QueryCtx | MutationCtx, workspaceId: Id<"workspaces">): Promise<WorkspaceDoc> {
   const workspace = await ctx.db.get(workspaceId);
   if (!workspace) {
@@ -625,39 +647,7 @@ export const rotateExecutorBootstrapToken = mutation({
     executorId: v.id("executors"),
   },
   handler: async (ctx, args) => {
-    const { executor, user } = await requireExecutorLifecycleManager(ctx, args.executorId);
-    const now = Date.now();
-    const bootstrap = await createOpaqueToken();
-    await ctx.db.patch(executor._id, {
-      bootstrapTokenId: bootstrap.tokenId,
-      bootstrapTokenHash: bootstrap.tokenHash,
-      bootstrapIssuedAt: now,
-      bootstrapLastUsedAt: undefined,
-      tokenVersion: executor.tokenVersion + 1,
-      updatedAt: now,
-    });
-    const updated = await ctx.db.get(executor._id);
-    if (!updated) {
-      throw new Error("Executor not found after rotation");
-    }
-    const instances = await ctx.db
-      .query("executorInstances")
-      .withIndex("by_executor", (q) => q.eq("executorId", executor._id))
-      .collect();
-    for (const instance of instances) {
-      if (instance.status === "online") {
-        await ctx.db.patch(instance._id, { status: "offline", expiresAt: now });
-      }
-    }
-    const updatedInstances = await ctx.db
-      .query("executorInstances")
-      .withIndex("by_executor", (q) => q.eq("executorId", executor._id))
-      .collect();
-    return {
-      executor: await buildExecutorSummaryForUser(user, updated, updatedInstances, now),
-      bootstrapToken: bootstrap.token,
-      setup: buildExecutorSetupPayload(bootstrap.token, getConvexUrl()),
-    };
+    return await rotateExecutorBootstrapTokenImpl(ctx, args);
   },
 });
 
