@@ -5,10 +5,10 @@ Self-hosted executor for Tokenspace. Connects to a Tokenspace backend, registers
 ## Quick start
 
 ```bash
-bunx @tokenspace/executor --api <API_URL> --token <BOOTSTRAP_TOKEN>
+bunx @tokenspace/executor@latest --api <API_URL> --token <BOOTSTRAP_TOKEN>
 ```
 
-Both values are provided when you create an executor in the Tokenspace admin UI.
+Create or assign an executor from `Workspace -> Admin -> Execution Environment`, then use the one-time bootstrap token shown in the setup flow.
 
 ## Docker
 
@@ -27,6 +27,12 @@ docker run \
 | `--token <token>` | `TOKENSPACE_TOKEN` | Bootstrap token for this executor |
 
 CLI flags take precedence over environment variables.
+
+## Full setup and troubleshooting
+
+See the executor deployment guide in the docs app:
+
+- [Executor Deployment](../../apps/docs/content/docs/admin/executor-deployment.mdx)
 
 ## Development
 
