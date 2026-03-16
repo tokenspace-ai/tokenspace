@@ -984,10 +984,11 @@ function formatExecutorJobSummary(args: { runtimeCount: number; compileCount: nu
   if (parts.length === 0) {
     return null;
   }
+  const [first, second] = parts;
   if (parts.length === 1) {
-    return parts[0];
+    return first ?? null;
   }
-  return `${parts[0]} and ${parts[1]}`;
+  return first && second ? `${first} and ${second}` : (first ?? null);
 }
 
 async function failPendingJobsForWorkspaceExecutor(
