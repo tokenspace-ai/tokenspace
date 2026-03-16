@@ -1,8 +1,131 @@
 ---
 title: Executor Deployment
-description: How the executor connects to Convex and runs revision-scoped jobs.
+description: Set up and operate a self-hosted executor for one or more workspaces.
 ---
 
-The executor is the service that actually runs TokenSpace jobs. It subscribes to the backend for runnable work, claims jobs, and executes them against a compiled revision plus session state.
+Self-hosted executors are the runtime environments that compile and run TokenSpace jobs. You create an executor once, start one or more executor instances with the bootstrap token TokenSpace gives you, and then assign that executor to a workspace from the UI.
 
-TODO: Executor deployment guide
+One executor can be shared across multiple workspaces. Each workspace can have only one assigned executor at a time.
+
+Compilation and runtime execution depend on the assigned executor being healthy.
+
+- If a workspace has no assigned executor, compile and run requests will fail.
+- If a workspace has an assigned executor but no healthy instances are online, compile and run requests will fail until an instance reconnects.
+- The `Execution Environment` page shows the current assignment, instance health, and the setup commands you need to start a new instance.
+
+## Before you start
+
+You need:
+
+- workspace admin access
+- a reachable TokenSpace API URL
+- either Bun or Docker on the machine where you want to run the executor
+- a secure place to store the bootstrap token shown during executor creation
+
+The bootstrap token is shown once during the create flow. TokenSpace does not re-display the plaintext token after you leave that screen.
+
+## Create or assign an executor
+
+Go to `Workspace -> Admin -> Execution Environment`.
+
+From there you can:
+
+- create a new executor and assign it immediately to the current workspace
+- assign an existing executor to the workspace
+- unassign the current executor
+
+The page also shows the current fleet status:
+
+- `Online`: at least one healthy instance is connected
+- `Offline`: an executor is assigned, but no healthy instances are connected
+- `Online Instances`: how many healthy instances are currently available
+- `Recent Heartbeat`: the most recent liveness update from any instance
+- `Executor Instances`: the per-instance table with host, version, last heartbeat, registration time, and reported capacity
+
+## Start an executor instance
+
+After creating an executor, TokenSpace shows a one-time bootstrap token plus setup snippets.
+
+### Bun / CLI
+
+```bash
+bunx @tokenspace/executor@latest --api "<API_URL>" --token "<BOOTSTRAP_TOKEN>"
+```
+
+### Docker
+
+```bash
+docker run \
+  -e TOKENSPACE_API_URL="<API_URL>" \
+  -e TOKENSPACE_TOKEN="<BOOTSTRAP_TOKEN>" \
+  ghcr.io/tokenspace-ai/executor:latest
+```
+
+### Environment variables
+
+The executor supports these primary settings:
+
+| Flag | Env var | Description |
+| --- | --- | --- |
+| `--api <url>` | `TOKENSPACE_API_URL` | TokenSpace API URL |
+| `--token <token>` | `TOKENSPACE_TOKEN` | Bootstrap token for this executor |
+
+CLI flags override environment variables.
+
+## Verify that the executor is online
+
+After you start an instance, return to `Workspace -> Admin -> Execution Environment`.
+
+You should see:
+
+- the assigned executor status switch to `Online`
+- `Online Instances` increase from `0`
+- a recent heartbeat timestamp
+- a new row in `Executor Instances` with the host and version for the running process
+
+If you want more capacity or redundancy, start additional instances with the same bootstrap token. They will join the same executor fleet and appear in the same table.
+
+## Sharing one executor across workspaces
+
+A single executor can serve multiple workspaces. This is useful when you want one shared deployment for a team or environment.
+
+In practice:
+
+- create the executor once
+- start one or more instances for that fleet
+- assign that executor to each workspace that should use it
+
+Each workspace still has its own assignment. Reusing an executor does not merge workspace settings or credentials. It only means those workspaces use the same self-hosted execution fleet.
+
+## Environment credentials
+
+`env` credentials are resolved from the executor process environment. If a workspace depends on credentials like `DATADOG_API_KEY` or `SLACK_BOT_TOKEN`, those variables must exist on the host or container running the executor for that workspace.
+
+See [Credentials](/docs/developer/credentials) for the authoring model.
+
+## Troubleshooting
+
+### Executor not configured
+
+This means the workspace does not have an assigned executor.
+
+To fix it:
+
+- open `Workspace -> Admin -> Execution Environment`
+- assign an existing executor or create a new one
+- start an instance if you created a new executor
+- retry the compile or run
+
+### Assigned executor is offline
+
+This means the workspace has an assigned executor, but no healthy instances are currently online.
+
+To fix it:
+
+- open `Workspace -> Admin -> Execution Environment`
+- confirm the executor shows `Offline`
+- start a new instance with the current bootstrap token
+- check that the API URL is reachable from that machine
+- retry once the page shows `Online`
+
+If you are using Docker, also confirm the container is still running and that `TOKENSPACE_API_URL` and `TOKENSPACE_TOKEN` are set correctly.

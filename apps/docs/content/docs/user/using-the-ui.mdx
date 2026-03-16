@@ -31,9 +31,23 @@ The credentials settings page shows the credential requirements discovered from 
 - Runtime-scoped credentials are listed separately so authors can see what users will be asked for.
 - Environment credentials are documented, but their values must come from the self-hosted executor environment.
 
-### 3. Compile before rollout
+If your workspace uses `env` credentials, the required variables must exist on the executor host or container that serves that workspace.
+
+### 3. Manage the execution environment
+
+Workspace admins use `Workspace -> Admin -> Execution Environment` to control executor assignment and inspect instance health.
+
+- Assign an existing executor or create a new one for the workspace.
+- Check whether the assigned executor is `Online` or `Offline`.
+- Review registered instances, recent heartbeats, and the one-time setup commands shown when creating a new executor.
+
+See [Executor Deployment](/docs/admin/executor-deployment) for setup, startup commands, and troubleshooting.
+
+### 4. Compile before rollout
 
 Compilation is the boundary between editable source and runnable revision artifacts. A branch can be compiled with or without uncommitted working state so authors can test changes before promoting them.
+
+Compilation depends on a healthy assigned executor. If the workspace has no executor configured, or the assigned executor is offline, compile requests will fail until the execution environment is fixed.
 
 ## Operator workflow
 
@@ -47,6 +61,8 @@ In chat, the agent can:
 - run TypeScript against declared capability actions
 - use bash in the session filesystem
 - create and read files that persist for the session
+
+Runtime execution also depends on a healthy assigned executor. If the executor is missing or offline, runs will fail until the workspace's execution environment is restored.
 
 ### Session tools
 
