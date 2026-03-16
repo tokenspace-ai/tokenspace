@@ -7,9 +7,7 @@ Self-hosted executors are the runtime environments that compile and run TokenSpa
 
 One executor can be shared across multiple workspaces. Each workspace can have only one assigned executor at a time.
 
-## What changed
-
-Compilation and runtime execution now depend on the assigned executor being healthy.
+Compilation and runtime execution depend on the assigned executor being healthy.
 
 - If a workspace has no assigned executor, compile and run requests will fail.
 - If a workspace has an assigned executor but no healthy instances are online, compile and run requests will fail until an instance reconnects.
