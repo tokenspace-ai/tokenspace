@@ -941,35 +941,35 @@ async function listNonterminalJobsForWorkspaceExecutor(
   const [pendingJobs, pendingCompileJobs, runningJobs, runningCompileJobs] = await Promise.all([
     ctx.db
       .query("jobs")
-      .withIndex("by_target_executor_status", (q) =>
-        q.eq("targetExecutorId", currentExecutorId).eq("status", "pending"),
+      .withIndex("by_workspace_target_executor_status", (q) =>
+        q.eq("workspaceId", workspaceId).eq("targetExecutorId", currentExecutorId).eq("status", "pending"),
       )
       .collect(),
     ctx.db
       .query("compileJobs")
-      .withIndex("by_target_executor_status", (q) =>
-        q.eq("targetExecutorId", currentExecutorId).eq("status", "pending"),
+      .withIndex("by_workspace_target_executor_status", (q) =>
+        q.eq("workspaceId", workspaceId).eq("targetExecutorId", currentExecutorId).eq("status", "pending"),
       )
       .collect(),
     ctx.db
       .query("jobs")
-      .withIndex("by_target_executor_status", (q) =>
-        q.eq("targetExecutorId", currentExecutorId).eq("status", "running"),
+      .withIndex("by_workspace_target_executor_status", (q) =>
+        q.eq("workspaceId", workspaceId).eq("targetExecutorId", currentExecutorId).eq("status", "running"),
       )
       .collect(),
     ctx.db
       .query("compileJobs")
-      .withIndex("by_target_executor_status", (q) =>
-        q.eq("targetExecutorId", currentExecutorId).eq("status", "running"),
+      .withIndex("by_workspace_target_executor_status", (q) =>
+        q.eq("workspaceId", workspaceId).eq("targetExecutorId", currentExecutorId).eq("status", "running"),
       )
       .collect(),
   ]);
 
   return {
-    pendingJobs: pendingJobs.filter((job) => job.workspaceId === workspaceId),
-    pendingCompileJobs: pendingCompileJobs.filter((job) => job.workspaceId === workspaceId),
-    runningJobs: runningJobs.filter((job) => job.workspaceId === workspaceId),
-    runningCompileJobs: runningCompileJobs.filter((job) => job.workspaceId === workspaceId),
+    pendingJobs,
+    pendingCompileJobs,
+    runningJobs,
+    runningCompileJobs,
   };
 }
 
@@ -1019,11 +1019,15 @@ async function failPendingJobsForWorkspaceExecutor(
       error: runtimeError,
     });
     if (job.threadId && job.toolCallId) {
-      await ctx.runMutation(internal.ai.chat.addToolError, {
-        threadId: job.threadId,
-        toolCallId: job.toolCallId,
-        error: `Code execution failed:\n${runtimeError.message}`,
-      });
+      try {
+        await ctx.runMutation(internal.ai.chat.addToolError, {
+          threadId: job.threadId,
+          toolCallId: job.toolCallId,
+          error: `Code execution failed:\n${runtimeError.message}`,
+        });
+      } catch (error) {
+        console.warn(`[executors] failed to add tool error for reassigned job ${job._id}: ${String(error)}`);
+      }
     }
   }
 

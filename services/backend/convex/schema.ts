@@ -549,6 +549,8 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_status_thread", ["status", "threadId"])
     .index("by_assigned_instance_status", ["assignedInstanceId", "status"])
+    .index("by_workspace_status", ["workspaceId", "status"])
+    .index("by_workspace_target_executor_status", ["workspaceId", "targetExecutorId", "status"])
     .index("by_target_executor_status", ["targetExecutorId", "status"])
     .index("by_tool_call_id", ["threadId", "toolCallId"]),
 
@@ -593,6 +595,7 @@ export default defineSchema({
   })
     .index("by_status", ["status"])
     .index("by_assigned_instance_status", ["assignedInstanceId", "status"])
+    .index("by_workspace_target_executor_status", ["workspaceId", "targetExecutorId", "status"])
     .index("by_target_executor_status", ["targetExecutorId", "status"])
     .index("by_workspace_status", ["workspaceId", "status"]),
 
