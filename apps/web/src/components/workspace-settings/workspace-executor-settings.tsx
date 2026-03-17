@@ -303,7 +303,7 @@ export function WorkspaceExecutorSettings({
             </div>
             <div className="flex items-center gap-2">
               <ExecutorStateBadge state={executorState} />
-              {isWorkspaceAdmin && (
+              {(isWorkspaceAdmin || assignedStatus?.executor.canManageLifecycle) && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="size-8">
@@ -318,10 +318,12 @@ export function WorkspaceExecutorSettings({
                         Rename executor
                       </DropdownMenuItem>
                     ) : null}
-                    <DropdownMenuItem onSelect={() => setAssignDialogOpen(true)}>
-                      <ServerIcon className="size-4" />
-                      Change executor
-                    </DropdownMenuItem>
+                    {isWorkspaceAdmin ? (
+                      <DropdownMenuItem onSelect={() => setAssignDialogOpen(true)}>
+                        <ServerIcon className="size-4" />
+                        Change executor
+                      </DropdownMenuItem>
+                    ) : null}
                     {assignedStatus?.executor.canManageLifecycle && (
                       <DropdownMenuItem onSelect={() => setRotateDialogOpen(true)}>
                         <KeyRoundIcon className="size-4" />
@@ -334,17 +336,19 @@ export function WorkspaceExecutorSettings({
                         Delete executor
                       </DropdownMenuItem>
                     ) : null}
-                    {assignedStatus ? (
+                    {isWorkspaceAdmin && assignedStatus ? (
                       <DropdownMenuItem variant="destructive" onSelect={() => setUnassignDialogOpen(true)}>
                         <UnplugIcon className="size-4" />
                         Unassign executor
                       </DropdownMenuItem>
                     ) : null}
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onSelect={() => setCreateDialogOpen(true)}>
-                      <PlusIcon className="size-4" />
-                      Create new executor
-                    </DropdownMenuItem>
+                    {isWorkspaceAdmin ? (
+                      <DropdownMenuItem onSelect={() => setCreateDialogOpen(true)}>
+                        <PlusIcon className="size-4" />
+                        Create new executor
+                      </DropdownMenuItem>
+                    ) : null}
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}

@@ -84,22 +84,68 @@ function createFakeCtx(
       }
     },
     query: (table: TableName) => {
-      const buildAccessor = (filters: Array<{ field: string; value: unknown }>) => {
+      const buildAccessor = (
+        filters: Array<{ field: string; op: "eq" | "lt" | "lte" | "gt" | "gte"; value: unknown }>,
+      ) => {
         const applyFilters = () =>
-          tables[table].filter((row) => filters.every((filter) => row[filter.field] === filter.value));
+          tables[table].filter((row) =>
+            filters.every((filter) => {
+              const rowValue = row[filter.field];
+              switch (filter.op) {
+                case "eq":
+                  return rowValue === filter.value;
+                case "lt":
+                  return rowValue < filter.value;
+                case "lte":
+                  return rowValue <= filter.value;
+                case "gt":
+                  return rowValue > filter.value;
+                case "gte":
+                  return rowValue >= filter.value;
+                default:
+                  return false;
+              }
+            }),
+          );
         return {
           collect: async () => applyFilters(),
           first: async () => applyFilters()[0] ?? null,
+          take: async (count: number) => applyFilters().slice(0, count),
         };
       };
 
       return {
         collect: async () => tables[table],
-        withIndex: (_indexName: string, build?: (q: { eq: (field: string, value: unknown) => any }) => any) => {
-          const filters: Array<{ field: string; value: unknown }> = [];
+        withIndex: (
+          _indexName: string,
+          build?: (q: {
+            eq: (field: string, value: unknown) => any;
+            lt: (field: string, value: unknown) => any;
+            lte: (field: string, value: unknown) => any;
+            gt: (field: string, value: unknown) => any;
+            gte: (field: string, value: unknown) => any;
+          }) => any,
+        ) => {
+          const filters: Array<{ field: string; op: "eq" | "lt" | "lte" | "gt" | "gte"; value: unknown }> = [];
           const builder = {
             eq(field: string, value: unknown) {
-              filters.push({ field, value });
+              filters.push({ field, op: "eq", value });
+              return builder;
+            },
+            lt(field: string, value: unknown) {
+              filters.push({ field, op: "lt", value });
+              return builder;
+            },
+            lte(field: string, value: unknown) {
+              filters.push({ field, op: "lte", value });
+              return builder;
+            },
+            gt(field: string, value: unknown) {
+              filters.push({ field, op: "gt", value });
+              return builder;
+            },
+            gte(field: string, value: unknown) {
+              filters.push({ field, op: "gte", value });
               return builder;
             },
           };
@@ -1289,6 +1335,26 @@ describe("cleanupStaleExecutorInstancesInternalImpl", () => {
           instanceTokenExpiresAt: 200,
         },
       ],
+      sessionExecutorAssignments: [
+        {
+          _id: "assignment_stale",
+          sessionId: "session_1",
+          workspaceId: "workspace_1",
+          executorId: "executor_1",
+          assignedInstanceId: "instance_stale",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          _id: "assignment_recent",
+          sessionId: "session_2",
+          workspaceId: "workspace_1",
+          executorId: "executor_1",
+          assignedInstanceId: "instance_recent",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
     });
 
     const result = await cleanupStaleExecutorInstancesInternalImpl(ctx as any, { now });
@@ -1298,6 +1364,7 @@ describe("cleanupStaleExecutorInstancesInternalImpl", () => {
       "instance_recent",
       "instance_healthy",
     ]);
+    expect(ctx.tables.sessionExecutorAssignments.map((assignment) => assignment._id)).toEqual(["assignment_recent"]);
   });
 });
 

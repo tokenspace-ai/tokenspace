@@ -255,7 +255,14 @@ export function ExecutorInstancesTable({
   initialVisibleCount?: number;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const instanceSetKey = useMemo(() => instances.map((instance) => instance._id).join(":"), [instances]);
+  const instanceSetKey = useMemo(
+    () =>
+      instances
+        .map((instance) => instance._id)
+        .sort()
+        .join(":"),
+    [instances],
+  );
 
   useEffect(() => {
     setExpanded(false);
@@ -316,7 +323,7 @@ export function ExecutorInstancesTable({
 
       {hasHiddenInstances ? (
         <div className="border-t px-4 py-3">
-          <Button variant="ghost" size="sm" onClick={() => setExpanded((current) => !current)}>
+          <Button variant="ghost" size="sm" aria-expanded={expanded} onClick={() => setExpanded((current) => !current)}>
             {expanded ? (
               <>
                 <ChevronUpIcon className="mr-2 size-4" />

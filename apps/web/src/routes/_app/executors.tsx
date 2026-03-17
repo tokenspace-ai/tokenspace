@@ -100,10 +100,13 @@ function ExecutorsPage() {
     () => executorResponse?.executors.find((entry) => entry.executor._id === selectedExecutorId) ?? null,
     [executorResponse, selectedExecutorId],
   );
+  const selectedExecutorName = selectedExecutor?.executor.name ?? "";
 
   useEffect(() => {
-    setRenameExecutorName(selectedExecutor?.executor.name ?? "");
-  }, [selectedExecutor]);
+    if (!renameDialogOpen) {
+      setRenameExecutorName(selectedExecutorName);
+    }
+  }, [renameDialogOpen, selectedExecutorName]);
 
   const handleCreateExecutor = async () => {
     if (!newExecutorName.trim()) {
@@ -402,7 +405,7 @@ function ExecutorsPage() {
         onOpenChange={(open) => {
           setRenameDialogOpen(open);
           if (!open) {
-            setRenameExecutorName(selectedExecutor?.executor.name ?? "");
+            setRenameExecutorName(selectedExecutorName);
           }
         }}
       >

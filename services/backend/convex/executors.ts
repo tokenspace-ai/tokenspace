@@ -37,6 +37,7 @@ type AssignedWorkspaceRef = Pick<WorkspaceDoc, "_id" | "name" | "slug">;
 export const LOCAL_DEV_EXECUTOR_NAME = "Local Dev Executor";
 export const LOCAL_DEV_EXECUTOR_CREATED_BY = "dev-seed";
 export const EXECUTOR_INACTIVE_INSTANCE_RETENTION_MS = 24 * 60 * 60_000;
+const EXECUTOR_INSTANCE_CLEANUP_BATCH_SIZE = 128;
 
 function getConvexUrl(): string {
   const url = process.env.CONVEX_URL?.trim() || process.env.CONVEX_CLOUD_URL?.trim();
@@ -226,15 +227,32 @@ export async function cleanupStaleExecutorInstancesInternalImpl(
 ): Promise<{ deletedCount: number }> {
   const now = args?.now ?? Date.now();
   const cutoff = now - EXECUTOR_INACTIVE_INSTANCE_RETENTION_MS;
-  const instances = await ctx.db.query("executorInstances").collect();
-  const staleInstances = instances.filter((instance) => instance.expiresAt < cutoff);
+  let deletedCount = 0;
 
-  for (const instance of staleInstances) {
-    await ctx.db.delete(instance._id);
+  while (true) {
+    const staleInstances = await ctx.db
+      .query("executorInstances")
+      .withIndex("by_expires_at", (q) => q.lt("expiresAt", cutoff))
+      .take(EXECUTOR_INSTANCE_CLEANUP_BATCH_SIZE);
+    if (staleInstances.length === 0) {
+      break;
+    }
+
+    for (const instance of staleInstances) {
+      const assignments = await ctx.db
+        .query("sessionExecutorAssignments")
+        .withIndex("by_instance", (q) => q.eq("assignedInstanceId", instance._id))
+        .collect();
+      for (const assignment of assignments) {
+        await ctx.db.delete(assignment._id);
+      }
+      await ctx.db.delete(instance._id);
+    }
+    deletedCount += staleInstances.length;
   }
 
   return {
-    deletedCount: staleInstances.length,
+    deletedCount,
   };
 }
 
