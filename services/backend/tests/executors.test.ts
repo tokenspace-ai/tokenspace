@@ -3,13 +3,17 @@ import {
   assertWorkspaceExecutorAssignmentState,
   buildExecutorSummary,
   canManageExecutorLifecycle,
+  cleanupStaleExecutorInstancesInternalImpl,
   createExecutorUnassignedInternalImpl,
+  deleteExecutorImpl,
   deriveExecutorInstanceHealth,
+  EXECUTOR_INACTIVE_INSTANCE_RETENTION_MS,
   ensureLocalDevExecutorInternalImpl,
   isExecutorInstanceHealthy,
   LOCAL_DEV_EXECUTOR_CREATED_BY,
   LOCAL_DEV_EXECUTOR_NAME,
   listManageableExecutorsInternalImpl,
+  renameExecutorImpl,
   rotateExecutorBootstrapTokenImpl,
   setWorkspaceExecutorInternalImpl,
 } from "../convex/executors";
@@ -1029,6 +1033,271 @@ describe("setWorkspaceExecutorInternalImpl", () => {
 
     expect(ctx.tables.workspaces[0].executorId).toBe("executor_old");
     expect(ctx.tables.jobs[0].status).toBe("running");
+  });
+});
+
+describe("renameExecutorImpl", () => {
+  it("updates the executor name and returns the refreshed summary", async () => {
+    const ctx = createFakeCtx(
+      {
+        executors: [
+          {
+            _id: "executor_existing",
+            name: "Shared Fleet",
+            status: "active",
+            authMode: "opaque_secret",
+            tokenVersion: 2,
+            bootstrapTokenId: "bootstrap-existing",
+            bootstrapTokenHash: "hash-existing",
+            bootstrapIssuedAt: 10,
+            createdBy: "creator-user",
+            createdAt: 5,
+            updatedAt: 20,
+          },
+        ],
+        executorInstances: [
+          {
+            _id: "instance_online",
+            executorId: "executor_existing",
+            tokenVersion: 2,
+            status: "online",
+            registeredAt: 11,
+            lastHeartbeatAt: 20,
+            expiresAt: 500,
+            instanceTokenId: "instance-token-1",
+            instanceTokenHash: "instance-hash-1",
+            instanceTokenIssuedAt: 11,
+            instanceTokenExpiresAt: 500,
+          },
+        ],
+      },
+      {
+        user: {
+          subject: "creator-user",
+          org_id: process.env.WORKOS_ORG_ID!,
+          role: "member",
+        },
+      },
+    );
+
+    const result = await renameExecutorImpl(ctx as any, {
+      executorId: "executor_existing" as any,
+      name: "Renamed Fleet",
+    });
+
+    expect(result.executor.name).toBe("Renamed Fleet");
+    expect(ctx.tables.executors[0].name).toBe("Renamed Fleet");
+  });
+});
+
+describe("deleteExecutorImpl", () => {
+  it("deletes an idle executor, removes its instances, and unassigns workspaces", async () => {
+    const ctx = createFakeCtx(
+      {
+        executors: [
+          {
+            _id: "executor_existing",
+            name: "Shared Fleet",
+            status: "active",
+            authMode: "opaque_secret",
+            tokenVersion: 2,
+            bootstrapTokenId: "bootstrap-existing",
+            bootstrapTokenHash: "hash-existing",
+            bootstrapIssuedAt: 10,
+            createdBy: "creator-user",
+            createdAt: 5,
+            updatedAt: 20,
+          },
+        ],
+        executorInstances: [
+          {
+            _id: "instance_1",
+            executorId: "executor_existing",
+            tokenVersion: 2,
+            status: "offline",
+            registeredAt: 11,
+            lastHeartbeatAt: 20,
+            expiresAt: 100,
+            instanceTokenId: "instance-token-1",
+            instanceTokenHash: "instance-hash-1",
+            instanceTokenIssuedAt: 11,
+            instanceTokenExpiresAt: 500,
+          },
+          {
+            _id: "instance_2",
+            executorId: "executor_existing",
+            tokenVersion: 2,
+            status: "online",
+            registeredAt: 12,
+            lastHeartbeatAt: 21,
+            expiresAt: 600,
+            instanceTokenId: "instance-token-2",
+            instanceTokenHash: "instance-hash-2",
+            instanceTokenIssuedAt: 12,
+            instanceTokenExpiresAt: 600,
+          },
+        ],
+        workspaces: [
+          {
+            _id: "workspace_1",
+            slug: "alpha",
+            name: "Alpha",
+            executorId: "executor_existing",
+            createdAt: 1,
+            updatedAt: 1,
+          },
+          {
+            _id: "workspace_2",
+            slug: "beta",
+            name: "Beta",
+            executorId: "executor_existing",
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        ],
+        sessionExecutorAssignments: [
+          {
+            _id: "assignment_1",
+            sessionId: "session_1",
+            workspaceId: "workspace_1",
+            executorId: "executor_existing",
+            assignedInstanceId: "instance_1",
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        ],
+      },
+      {
+        user: {
+          subject: "creator-user",
+          org_id: process.env.WORKOS_ORG_ID!,
+          role: "member",
+        },
+      },
+    );
+
+    const result = await deleteExecutorImpl(ctx as any, {
+      executorId: "executor_existing" as any,
+    });
+
+    expect(result).toEqual({
+      deleted: true,
+      clearedWorkspaceCount: 2,
+      deletedInstanceCount: 2,
+    });
+    expect(ctx.tables.executors).toHaveLength(0);
+    expect(ctx.tables.executorInstances).toHaveLength(0);
+    expect(ctx.tables.sessionExecutorAssignments).toHaveLength(0);
+    expect(ctx.tables.workspaces.map((workspace) => workspace.executorId)).toEqual([undefined, undefined]);
+  });
+
+  it("rejects deletion when pending runtime or compile jobs exist", async () => {
+    const ctx = createFakeCtx(
+      {
+        executors: [
+          {
+            _id: "executor_existing",
+            name: "Shared Fleet",
+            status: "active",
+            authMode: "opaque_secret",
+            tokenVersion: 2,
+            bootstrapTokenId: "bootstrap-existing",
+            bootstrapTokenHash: "hash-existing",
+            bootstrapIssuedAt: 10,
+            createdBy: "creator-user",
+            createdAt: 5,
+            updatedAt: 20,
+          },
+        ],
+        jobs: [
+          {
+            _id: "job_pending",
+            workspaceId: "workspace_1",
+            targetExecutorId: "executor_existing",
+            status: "pending",
+          },
+        ],
+        compileJobs: [
+          {
+            _id: "compile_pending",
+            workspaceId: "workspace_1",
+            targetExecutorId: "executor_existing",
+            status: "pending",
+          },
+        ],
+      },
+      {
+        user: {
+          subject: "creator-user",
+          org_id: process.env.WORKOS_ORG_ID!,
+          role: "member",
+        },
+      },
+    );
+
+    await expect(
+      deleteExecutorImpl(ctx as any, {
+        executorId: "executor_existing" as any,
+      }),
+    ).rejects.toThrow("pending/running");
+    expect(ctx.tables.executors).toHaveLength(1);
+  });
+});
+
+describe("cleanupStaleExecutorInstancesInternalImpl", () => {
+  it("deletes instances inactive longer than the retention window", async () => {
+    const now = EXECUTOR_INACTIVE_INSTANCE_RETENTION_MS + 10_000;
+    const ctx = createFakeCtx({
+      executorInstances: [
+        {
+          _id: "instance_stale",
+          executorId: "executor_1",
+          tokenVersion: 1,
+          status: "offline",
+          registeredAt: 100,
+          lastHeartbeatAt: 200,
+          expiresAt: 0,
+          instanceTokenId: "instance-token-1",
+          instanceTokenHash: "instance-hash-1",
+          instanceTokenIssuedAt: 100,
+          instanceTokenExpiresAt: 200,
+        },
+        {
+          _id: "instance_recent",
+          executorId: "executor_1",
+          tokenVersion: 1,
+          status: "offline",
+          registeredAt: 100,
+          lastHeartbeatAt: 200,
+          expiresAt: now - EXECUTOR_INACTIVE_INSTANCE_RETENTION_MS + 1_000,
+          instanceTokenId: "instance-token-2",
+          instanceTokenHash: "instance-hash-2",
+          instanceTokenIssuedAt: 100,
+          instanceTokenExpiresAt: 200,
+        },
+        {
+          _id: "instance_healthy",
+          executorId: "executor_1",
+          tokenVersion: 1,
+          status: "online",
+          registeredAt: 100,
+          lastHeartbeatAt: 200,
+          expiresAt: now + 30_000,
+          instanceTokenId: "instance-token-3",
+          instanceTokenHash: "instance-hash-3",
+          instanceTokenIssuedAt: 100,
+          instanceTokenExpiresAt: 200,
+        },
+      ],
+    });
+
+    const result = await cleanupStaleExecutorInstancesInternalImpl(ctx as any, { now });
+
+    expect(result).toEqual({ deletedCount: 1 });
+    expect(ctx.tables.executorInstances.map((instance) => instance._id)).toEqual([
+      "instance_recent",
+      "instance_healthy",
+    ]);
   });
 });
 

@@ -8,6 +8,7 @@ export const periodicChecks = internalAction({
   args: {},
   handler: async (ctx) => {
     await ctx.runAction(components.durable_agents.agent.tryContinueAllThreads, {});
+    await ctx.runMutation(internal.executors.cleanupStaleExecutorInstancesInternal, {});
     return null;
   },
 });
