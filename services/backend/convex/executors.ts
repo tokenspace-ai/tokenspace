@@ -239,6 +239,45 @@ export async function cleanupStaleExecutorInstancesInternalImpl(
     }
 
     for (const instance of staleInstances) {
+      const [pendingJobs, runningJobs, pendingCompileJobs, runningCompileJobs] = await Promise.all([
+        ctx.db
+          .query("jobs")
+          .withIndex("by_assigned_instance_status", (q) =>
+            q.eq("assignedInstanceId", instance._id).eq("status", "pending"),
+          )
+          .collect(),
+        ctx.db
+          .query("jobs")
+          .withIndex("by_assigned_instance_status", (q) =>
+            q.eq("assignedInstanceId", instance._id).eq("status", "running"),
+          )
+          .collect(),
+        ctx.db
+          .query("compileJobs")
+          .withIndex("by_assigned_instance_status", (q) =>
+            q.eq("assignedInstanceId", instance._id).eq("status", "pending"),
+          )
+          .collect(),
+        ctx.db
+          .query("compileJobs")
+          .withIndex("by_assigned_instance_status", (q) =>
+            q.eq("assignedInstanceId", instance._id).eq("status", "running"),
+          )
+          .collect(),
+      ]);
+      for (const job of [...pendingJobs, ...runningJobs]) {
+        await ctx.db.patch(job._id, {
+          assignedInstanceId: undefined,
+          assignmentUpdatedAt: now,
+        });
+      }
+      for (const job of [...pendingCompileJobs, ...runningCompileJobs]) {
+        await ctx.db.patch(job._id, {
+          assignedInstanceId: undefined,
+          assignmentUpdatedAt: now,
+        });
+      }
+
       const assignments = await ctx.db
         .query("sessionExecutorAssignments")
         .withIndex("by_instance", (q) => q.eq("assignedInstanceId", instance._id))
@@ -440,6 +479,9 @@ export async function renameExecutorImpl(
   args: { executorId: Id<"executors">; name: string },
 ): Promise<{ executor: Awaited<ReturnType<typeof buildExecutorSummaryForUser>> }> {
   const { executor, user } = await requireExecutorLifecycleManager(ctx, args.executorId);
+  if (executor.name === LOCAL_DEV_EXECUTOR_NAME && executor.createdBy === LOCAL_DEV_EXECUTOR_CREATED_BY) {
+    throw new Error("Local dev executor cannot be renamed");
+  }
   const name = normalizeExecutorName(args.name);
   const updatedAt = Date.now();
   await ctx.db.patch(executor._id, {

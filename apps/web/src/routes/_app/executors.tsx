@@ -2,6 +2,7 @@ import { convexQuery } from "@convex-dev/react-query";
 import { useQuery as useTanstackQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { api } from "@tokenspace/backend/convex/_generated/api";
+import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import { KeyRoundIcon, Loader2, MoreHorizontalIcon, PencilIcon, PlusIcon, ServerIcon, Trash2Icon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -65,6 +66,7 @@ function ExecutorsPage() {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [rotateDialogOpen, setRotateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [dialogExecutorTarget, setDialogExecutorTarget] = useState<{ id: Id<"executors">; name: string } | null>(null);
   const [newExecutorName, setNewExecutorName] = useState("");
   const [renameExecutorName, setRenameExecutorName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -101,12 +103,32 @@ function ExecutorsPage() {
     [executorResponse, selectedExecutorId],
   );
   const selectedExecutorName = selectedExecutor?.executor.name ?? "";
+  const dialogExecutorId = dialogExecutorTarget?.id ?? null;
+  const dialogExecutorName = dialogExecutorTarget?.name ?? "";
 
   useEffect(() => {
     if (!renameDialogOpen) {
-      setRenameExecutorName(selectedExecutorName);
+      setRenameExecutorName(dialogExecutorName || selectedExecutorName);
     }
-  }, [renameDialogOpen, selectedExecutorName]);
+  }, [dialogExecutorName, renameDialogOpen, selectedExecutorName]);
+
+  const openExecutorDialog = (mode: "rename" | "rotate" | "delete") => {
+    if (!selectedExecutor) return;
+    setDialogExecutorTarget({
+      id: selectedExecutor.executor._id,
+      name: selectedExecutor.executor.name,
+    });
+    if (mode === "rename") {
+      setRenameExecutorName(selectedExecutor.executor.name);
+      setRenameDialogOpen(true);
+      return;
+    }
+    if (mode === "rotate") {
+      setRotateDialogOpen(true);
+      return;
+    }
+    setDeleteDialogOpen(true);
+  };
 
   const handleCreateExecutor = async () => {
     if (!newExecutorName.trim()) {
@@ -136,7 +158,7 @@ function ExecutorsPage() {
   };
 
   const handleRenameExecutor = async () => {
-    if (!selectedExecutor) return;
+    if (!dialogExecutorId) return;
     if (!renameExecutorName.trim()) {
       toast.error("Executor name is required");
       return;
@@ -144,10 +166,11 @@ function ExecutorsPage() {
     setIsRenaming(true);
     try {
       await renameExecutor({
-        executorId: selectedExecutor.executor._id,
+        executorId: dialogExecutorId,
         name: renameExecutorName.trim(),
       });
       setRenameDialogOpen(false);
+      setDialogExecutorTarget(null);
       toast.success("Executor renamed");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to rename executor");
@@ -158,11 +181,11 @@ function ExecutorsPage() {
   };
 
   const handleRotateBootstrapToken = async () => {
-    if (!selectedExecutor) return;
+    if (!dialogExecutorId) return;
     setIsRotating(true);
     try {
       const result = await rotateExecutorBootstrapToken({
-        executorId: selectedExecutor.executor._id,
+        executorId: dialogExecutorId,
       });
       setSetupState({
         mode: "rotate",
@@ -170,6 +193,7 @@ function ExecutorsPage() {
         setup: result.setup,
       });
       setRotateDialogOpen(false);
+      setDialogExecutorTarget(null);
       toast.success("Bootstrap token rotated");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to rotate bootstrap token");
@@ -180,15 +204,16 @@ function ExecutorsPage() {
   };
 
   const handleDeleteExecutor = async () => {
-    if (!selectedExecutor) return;
+    if (!dialogExecutorId) return;
     setIsDeleting(true);
     try {
       await deleteExecutor({
-        executorId: selectedExecutor.executor._id,
+        executorId: dialogExecutorId,
       });
-      setSelectedExecutorId((current) => (current === selectedExecutor.executor._id ? null : current));
+      setSelectedExecutorId((current) => (current === dialogExecutorId ? null : current));
       setSetupState(null);
       setDeleteDialogOpen(false);
+      setDialogExecutorTarget(null);
       toast.success("Executor deleted");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to delete executor");
@@ -315,15 +340,15 @@ function ExecutorsPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onSelect={() => setRenameDialogOpen(true)}>
+                                <DropdownMenuItem onSelect={() => openExecutorDialog("rename")}>
                                   <PencilIcon className="size-4" />
                                   Rename executor
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => setRotateDialogOpen(true)}>
+                                <DropdownMenuItem onSelect={() => openExecutorDialog("rotate")}>
                                   <KeyRoundIcon className="size-4" />
                                   Rotate bootstrap token
                                 </DropdownMenuItem>
-                                <DropdownMenuItem variant="destructive" onSelect={() => setDeleteDialogOpen(true)}>
+                                <DropdownMenuItem variant="destructive" onSelect={() => openExecutorDialog("delete")}>
                                   <Trash2Icon className="size-4" />
                                   Delete executor
                                 </DropdownMenuItem>
@@ -405,14 +430,17 @@ function ExecutorsPage() {
         onOpenChange={(open) => {
           setRenameDialogOpen(open);
           if (!open) {
-            setRenameExecutorName(selectedExecutorName);
+            setRenameExecutorName("");
+            setDialogExecutorTarget(null);
           }
         }}
       >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Rename executor</DialogTitle>
-            <DialogDescription>Update the display name for this executor fleet.</DialogDescription>
+            <DialogDescription>
+              Update the display name for {dialogExecutorName ? `"${dialogExecutorName}"` : "this executor fleet"}.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-2 py-2">
             <Label htmlFor="rename-executor-name">Executor name</Label>
@@ -440,14 +468,22 @@ function ExecutorsPage() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={rotateDialogOpen} onOpenChange={setRotateDialogOpen}>
+      <AlertDialog
+        open={rotateDialogOpen}
+        onOpenChange={(open) => {
+          setRotateDialogOpen(open);
+          if (!open) {
+            setDialogExecutorTarget(null);
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Rotate bootstrap token</AlertDialogTitle>
             <AlertDialogDescription>
-              This issues a new bootstrap token, invalidates the current bootstrap token, and marks all online instances
-              offline. Any executor process that should continue serving jobs must restart and register again with the
-              new token.
+              This issues a new bootstrap token for {dialogExecutorName ? `"${dialogExecutorName}"` : "this executor"},
+              invalidates the current bootstrap token, and marks all online instances offline. Any executor process that
+              should continue serving jobs must restart and register again with the new token.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -466,14 +502,22 @@ function ExecutorsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <AlertDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open) {
+            setDialogExecutorTarget(null);
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete executor</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently deletes the executor and all recorded instance rows. Any workspaces assigned to it will
-              be unassigned immediately, and deletion is blocked while runtime or compile jobs are still pending or
-              running.
+              This permanently deletes {dialogExecutorName ? `"${dialogExecutorName}"` : "the executor"} and all
+              recorded instance rows. Any workspaces assigned to it will be unassigned immediately, and deletion is
+              blocked while runtime or compile jobs are still pending or running.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

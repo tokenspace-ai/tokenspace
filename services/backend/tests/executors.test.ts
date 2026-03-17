@@ -1134,6 +1134,43 @@ describe("renameExecutorImpl", () => {
     expect(result.executor.name).toBe("Renamed Fleet");
     expect(ctx.tables.executors[0].name).toBe("Renamed Fleet");
   });
+
+  it("rejects renaming the shared local dev executor", async () => {
+    const ctx = createFakeCtx(
+      {
+        executors: [
+          {
+            _id: "executor_local_dev",
+            name: LOCAL_DEV_EXECUTOR_NAME,
+            status: "active",
+            authMode: "opaque_secret",
+            tokenVersion: 2,
+            bootstrapTokenId: "bootstrap-existing",
+            bootstrapTokenHash: "hash-existing",
+            bootstrapIssuedAt: 10,
+            createdBy: LOCAL_DEV_EXECUTOR_CREATED_BY,
+            createdAt: 5,
+            updatedAt: 20,
+          },
+        ],
+      },
+      {
+        user: {
+          subject: LOCAL_DEV_EXECUTOR_CREATED_BY,
+          org_id: process.env.WORKOS_ORG_ID!,
+          role: "member",
+        },
+      },
+    );
+
+    await expect(
+      renameExecutorImpl(ctx as any, {
+        executorId: "executor_local_dev" as any,
+        name: "Different Local Dev Name",
+      }),
+    ).rejects.toThrow("Local dev executor cannot be renamed");
+    expect(ctx.tables.executors[0].name).toBe(LOCAL_DEV_EXECUTOR_NAME);
+  });
 });
 
 describe("deleteExecutorImpl", () => {
@@ -1355,6 +1392,70 @@ describe("cleanupStaleExecutorInstancesInternalImpl", () => {
           updatedAt: 1,
         },
       ],
+      jobs: [
+        {
+          _id: "job_pending",
+          workspaceId: "workspace_1",
+          targetExecutorId: "executor_1",
+          assignedInstanceId: "instance_stale",
+          assignmentUpdatedAt: 1,
+          status: "pending",
+        },
+        {
+          _id: "job_running",
+          workspaceId: "workspace_1",
+          targetExecutorId: "executor_1",
+          assignedInstanceId: "instance_stale",
+          assignmentUpdatedAt: 1,
+          status: "running",
+        },
+        {
+          _id: "job_other",
+          workspaceId: "workspace_1",
+          targetExecutorId: "executor_1",
+          assignedInstanceId: "instance_recent",
+          assignmentUpdatedAt: 1,
+          status: "pending",
+        },
+      ],
+      compileJobs: [
+        {
+          _id: "compile_pending",
+          workspaceId: "workspace_1",
+          branchId: "branch_1",
+          commitId: "commit_1",
+          snapshotStorageId: "storage_1",
+          targetExecutorId: "executor_1",
+          assignedInstanceId: "instance_stale",
+          assignmentUpdatedAt: 1,
+          status: "pending",
+          createdAt: 1,
+        },
+        {
+          _id: "compile_running",
+          workspaceId: "workspace_1",
+          branchId: "branch_1",
+          commitId: "commit_1",
+          snapshotStorageId: "storage_2",
+          targetExecutorId: "executor_1",
+          assignedInstanceId: "instance_stale",
+          assignmentUpdatedAt: 1,
+          status: "running",
+          createdAt: 1,
+        },
+        {
+          _id: "compile_other",
+          workspaceId: "workspace_1",
+          branchId: "branch_1",
+          commitId: "commit_1",
+          snapshotStorageId: "storage_3",
+          targetExecutorId: "executor_1",
+          assignedInstanceId: "instance_recent",
+          assignmentUpdatedAt: 1,
+          status: "pending",
+          createdAt: 1,
+        },
+      ],
     });
 
     const result = await cleanupStaleExecutorInstancesInternalImpl(ctx as any, { now });
@@ -1365,6 +1466,28 @@ describe("cleanupStaleExecutorInstancesInternalImpl", () => {
       "instance_healthy",
     ]);
     expect(ctx.tables.sessionExecutorAssignments.map((assignment) => assignment._id)).toEqual(["assignment_recent"]);
+    expect(
+      ctx.tables.jobs.map((job) => ({
+        _id: job._id,
+        assignedInstanceId: job.assignedInstanceId,
+        assignmentUpdatedAt: job.assignmentUpdatedAt,
+      })),
+    ).toEqual([
+      { _id: "job_pending", assignedInstanceId: undefined, assignmentUpdatedAt: now },
+      { _id: "job_running", assignedInstanceId: undefined, assignmentUpdatedAt: now },
+      { _id: "job_other", assignedInstanceId: "instance_recent", assignmentUpdatedAt: 1 },
+    ]);
+    expect(
+      ctx.tables.compileJobs.map((job) => ({
+        _id: job._id,
+        assignedInstanceId: job.assignedInstanceId,
+        assignmentUpdatedAt: job.assignmentUpdatedAt,
+      })),
+    ).toEqual([
+      { _id: "compile_pending", assignedInstanceId: undefined, assignmentUpdatedAt: now },
+      { _id: "compile_running", assignedInstanceId: undefined, assignmentUpdatedAt: now },
+      { _id: "compile_other", assignedInstanceId: "instance_recent", assignmentUpdatedAt: 1 },
+    ]);
   });
 });
 
