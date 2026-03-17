@@ -3,11 +3,13 @@ import {
   assertWorkspaceExecutorAssignmentState,
   buildExecutorSummary,
   canManageExecutorLifecycle,
+  createExecutorUnassignedInternalImpl,
   deriveExecutorInstanceHealth,
   ensureLocalDevExecutorInternalImpl,
   isExecutorInstanceHealthy,
   LOCAL_DEV_EXECUTOR_CREATED_BY,
   LOCAL_DEV_EXECUTOR_NAME,
+  listManageableExecutorsInternalImpl,
   rotateExecutorBootstrapTokenImpl,
   setWorkspaceExecutorInternalImpl,
 } from "../convex/executors";
@@ -375,6 +377,206 @@ describe("buildExecutorSummary", () => {
     expect(summary.lastHeartbeatAt).toBe(2_200);
     expect(summary.lastRegistrationAt).toBe(1_300);
     expect(summary.canManageLifecycle).toBe(true);
+  });
+});
+
+describe("listManageableExecutorsInternalImpl", () => {
+  it("returns only manageable executors for non-admin users and includes workspace/instance data", async () => {
+    const ctx = createFakeCtx({
+      executors: [
+        {
+          _id: "executor_owned",
+          name: "Owned Executor",
+          status: "active",
+          authMode: "opaque_secret",
+          tokenVersion: 1,
+          bootstrapTokenId: "owned-bootstrap",
+          bootstrapTokenHash: "owned-hash",
+          bootstrapIssuedAt: 100,
+          createdBy: "creator-user",
+          createdAt: 100,
+          updatedAt: 120,
+        },
+        {
+          _id: "executor_other",
+          name: "Other Executor",
+          status: "active",
+          authMode: "opaque_secret",
+          tokenVersion: 2,
+          bootstrapTokenId: "other-bootstrap",
+          bootstrapTokenHash: "other-hash",
+          bootstrapIssuedAt: 90,
+          createdBy: "other-user",
+          createdAt: 90,
+          updatedAt: 110,
+        },
+      ],
+      executorInstances: [
+        {
+          _id: "instance_online",
+          executorId: "executor_owned",
+          tokenVersion: 1,
+          status: "online",
+          registeredAt: 130,
+          lastHeartbeatAt: 180,
+          expiresAt: 250,
+          instanceTokenId: "instance-online",
+          instanceTokenHash: "hash-online",
+          instanceTokenIssuedAt: 130,
+          instanceTokenExpiresAt: 260,
+          hostname: "host-a",
+          version: "1.0.0",
+        },
+        {
+          _id: "instance_offline",
+          executorId: "executor_owned",
+          tokenVersion: 1,
+          status: "offline",
+          registeredAt: 120,
+          lastHeartbeatAt: 140,
+          expiresAt: 150,
+          instanceTokenId: "instance-offline",
+          instanceTokenHash: "hash-offline",
+          instanceTokenIssuedAt: 120,
+          instanceTokenExpiresAt: 220,
+          hostname: "host-b",
+          version: "1.0.0",
+        },
+      ],
+      workspaces: [
+        {
+          _id: "workspace_a",
+          slug: "alpha",
+          name: "Alpha",
+          executorId: "executor_owned",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          _id: "workspace_b",
+          slug: "beta",
+          name: "Beta",
+          executorId: "executor_owned",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          _id: "workspace_c",
+          slug: "gamma",
+          name: "Gamma",
+          executorId: "executor_other",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+    });
+
+    const result = await listManageableExecutorsInternalImpl(ctx as any, {
+      user: {
+        subject: "creator-user",
+        role: "member",
+      },
+      now: 200,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].executor).toMatchObject({
+      _id: "executor_owned",
+      onlineInstanceCount: 1,
+      canManageLifecycle: true,
+      lastHeartbeatAt: 180,
+    });
+    expect(result[0].instances.map((instance) => instance.health)).toEqual(["online", "offline"]);
+    expect(result[0].assignedWorkspaceCount).toBe(2);
+    expect(result[0].assignedWorkspaces.map((workspace) => workspace.slug)).toEqual(["alpha", "beta"]);
+  });
+
+  it("returns all executors for org admins", async () => {
+    const ctx = createFakeCtx({
+      executors: [
+        {
+          _id: "executor_a",
+          name: "A Executor",
+          status: "active",
+          authMode: "opaque_secret",
+          tokenVersion: 1,
+          bootstrapTokenId: "bootstrap-a",
+          bootstrapTokenHash: "hash-a",
+          bootstrapIssuedAt: 100,
+          createdBy: "user-a",
+          createdAt: 100,
+          updatedAt: 100,
+        },
+        {
+          _id: "executor_b",
+          name: "B Executor",
+          status: "active",
+          authMode: "opaque_secret",
+          tokenVersion: 1,
+          bootstrapTokenId: "bootstrap-b",
+          bootstrapTokenHash: "hash-b",
+          bootstrapIssuedAt: 100,
+          createdBy: "user-b",
+          createdAt: 100,
+          updatedAt: 100,
+        },
+      ],
+    });
+
+    const result = await listManageableExecutorsInternalImpl(ctx as any, {
+      user: {
+        subject: "admin-user",
+        role: "admin",
+      },
+      now: 200,
+    });
+
+    expect(result.map((entry) => entry.executor._id)).toEqual(["executor_a", "executor_b"]);
+  });
+});
+
+describe("createExecutorUnassignedInternalImpl", () => {
+  it("creates an unassigned executor and returns setup instructions", async () => {
+    const originalConvexUrl = process.env.CONVEX_URL;
+    process.env.CONVEX_URL = "https://example.convex.cloud";
+
+    try {
+      const ctx = createFakeCtx({
+        workspaces: [
+          {
+            _id: "workspace_1",
+            slug: "alpha",
+            name: "Alpha",
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        ],
+      });
+
+      const result = await createExecutorUnassignedInternalImpl(ctx as any, {
+        name: "Shared Executor",
+        createdBy: "creator-user",
+        now: 500,
+      });
+
+      expect(result.executor).toMatchObject({
+        name: "Shared Executor",
+        createdBy: "creator-user",
+        status: "active",
+        onlineInstanceCount: 0,
+        canManageLifecycle: true,
+      });
+      expect(result.bootstrapToken).toBeTruthy();
+      expect(result.setup.requiredEnvVars.length).toBeGreaterThan(0);
+      expect(ctx.tables.executors).toHaveLength(1);
+      expect(ctx.tables.workspaces[0].executorId).toBeUndefined();
+    } finally {
+      if (originalConvexUrl === undefined) {
+        delete process.env.CONVEX_URL;
+      } else {
+        process.env.CONVEX_URL = originalConvexUrl;
+      }
+    }
   });
 });
 

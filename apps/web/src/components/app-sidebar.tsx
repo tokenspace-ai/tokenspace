@@ -3,6 +3,7 @@ import { api } from "@tokenspace/backend/convex/_generated/api";
 import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
 import { useQuery } from "convex/react";
 import {
+  AlertTriangleIcon,
   CogIcon,
   HomeIcon,
   MessageSquare,
@@ -288,7 +289,11 @@ export function AppSidebar({
               tooltip={executorState ? `${executorLabel} (${executorState.label})` : "Executor status"}
             >
               <Link to="/workspace/$slug/admin/executor" params={{ slug: slug ?? "" }}>
-                <ServerIcon className={cn("size-4", executorState?.iconClassName)} />
+                {executorState?.key === "unassigned" ? (
+                  <AlertTriangleIcon className="size-4 text-destructive" />
+                ) : (
+                  <ServerIcon className={cn("size-4", executorState?.iconClassName)} />
+                )}
                 <span>{executorLabel}</span>
               </Link>
             </SidebarMenuButton>

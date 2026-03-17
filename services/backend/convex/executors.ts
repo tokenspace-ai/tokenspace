@@ -32,6 +32,7 @@ type ExecutorDoc = Doc<"executors">;
 type WorkspaceDoc = Doc<"workspaces">;
 type ExecutorInstanceDoc = Doc<"executorInstances">;
 type ExecutorWriteCtx = MutationCtx;
+type AssignedWorkspaceRef = Pick<WorkspaceDoc, "_id" | "name" | "slug">;
 
 export const LOCAL_DEV_EXECUTOR_NAME = "Local Dev Executor";
 export const LOCAL_DEV_EXECUTOR_CREATED_BY = "dev-seed";
@@ -66,6 +67,27 @@ function mapInstancesByExecutorId(instances: ExecutorInstanceDoc[]): Map<Id<"exe
       current.push(instance);
     } else {
       map.set(instance.executorId, [instance]);
+    }
+  }
+  return map;
+}
+
+function mapAssignedWorkspacesByExecutorId(workspaces: WorkspaceDoc[]): Map<Id<"executors">, AssignedWorkspaceRef[]> {
+  const map = new Map<Id<"executors">, AssignedWorkspaceRef[]>();
+  for (const workspace of workspaces) {
+    if (!workspace.executorId) {
+      continue;
+    }
+    const current = map.get(workspace.executorId);
+    const ref = {
+      _id: workspace._id,
+      name: workspace.name,
+      slug: workspace.slug,
+    };
+    if (current) {
+      current.push(ref);
+    } else {
+      map.set(workspace.executorId, [ref]);
     }
   }
   return map;
@@ -400,13 +422,15 @@ async function requireExecutorLifecycleManager(
 }
 
 async function listAllExecutorsWithInstances(ctx: QueryCtx | MutationCtx) {
-  const [executors, instances] = await Promise.all([
+  const [executors, instances, workspaces] = await Promise.all([
     ctx.db.query("executors").collect(),
     ctx.db.query("executorInstances").collect(),
+    ctx.db.query("workspaces").collect(),
   ]);
   return {
     executors: sortExecutorsByName(executors),
     instancesByExecutorId: mapInstancesByExecutorId(instances),
+    assignedWorkspacesByExecutorId: mapAssignedWorkspacesByExecutorId(workspaces),
   };
 }
 
@@ -420,6 +444,73 @@ async function buildExecutorSummaryForUser(
     now,
     canManageLifecycle: canManageExecutorLifecycle({ executor, user }),
   });
+}
+
+function buildManageableExecutorRecord(args: {
+  user: ExecutorManagerIdentity;
+  executor: ExecutorDoc;
+  instances: ExecutorInstanceDoc[];
+  assignedWorkspaces: AssignedWorkspaceRef[];
+  now?: number;
+}) {
+  const now = args.now ?? Date.now();
+  return {
+    executor: buildExecutorSummary(args.executor, args.instances, {
+      now,
+      canManageLifecycle: canManageExecutorLifecycle({ executor: args.executor, user: args.user }),
+    }),
+    instances: args.instances
+      .map((instance) => buildExecutorInstanceStatus(instance, now))
+      .sort((a, b) => {
+        return b.lastHeartbeatAt - a.lastHeartbeatAt;
+      }),
+    assignedWorkspaces: [...args.assignedWorkspaces].sort((a, b) => a.name.localeCompare(b.name)),
+    assignedWorkspaceCount: args.assignedWorkspaces.length,
+  };
+}
+
+export async function listManageableExecutorsInternalImpl(
+  ctx: QueryCtx | MutationCtx,
+  args: { user: ExecutorManagerIdentity; now?: number },
+) {
+  const now = args.now ?? Date.now();
+  const { executors, instancesByExecutorId, assignedWorkspacesByExecutorId } = await listAllExecutorsWithInstances(ctx);
+  const manageableExecutors = executors.filter((executor) => canManageExecutorLifecycle({ executor, user: args.user }));
+
+  return manageableExecutors.map((executor) =>
+    buildManageableExecutorRecord({
+      user: args.user,
+      executor,
+      instances: instancesByExecutorId.get(executor._id) ?? [],
+      assignedWorkspaces: assignedWorkspacesByExecutorId.get(executor._id) ?? [],
+      now,
+    }),
+  );
+}
+
+export async function createExecutorUnassignedInternalImpl(
+  ctx: ExecutorWriteCtx,
+  args: { name: string; createdBy: string; now?: number },
+) {
+  const now = args.now ?? Date.now();
+  const created = await createExecutorInternalRecord(ctx, {
+    name: args.name,
+    createdBy: args.createdBy,
+    now,
+  });
+  const executor = await ctx.db.get(created.executorId);
+  if (!executor) {
+    throw new Error("Executor not found after creation");
+  }
+
+  return {
+    executor: buildExecutorSummary(executor, [], {
+      now,
+      canManageLifecycle: true,
+    }),
+    bootstrapToken: created.bootstrapToken,
+    setup: buildExecutorSetupPayload(created.bootstrapToken, getConvexUrl()),
+  };
 }
 
 export async function assertWorkspaceAssignedToExecutor(
@@ -461,6 +552,16 @@ export const listAssignableExecutorsForWorkspace = query({
             await buildExecutorSummaryForUser(user, executor, instancesByExecutorId.get(executor._id) ?? [], now),
         ),
       ),
+    };
+  },
+});
+
+export const listManageableExecutors = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireAuthenticatedUser(ctx);
+    return {
+      executors: await listManageableExecutorsInternalImpl(ctx, { user }),
     };
   },
 });
@@ -539,6 +640,19 @@ export const createExecutor = mutation({
       bootstrapToken: bootstrap.token,
       setup: buildExecutorSetupPayload(bootstrap.token, getConvexUrl()),
     };
+  },
+});
+
+export const createExecutorUnassigned = mutation({
+  args: {
+    name: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAuthenticatedUser(ctx);
+    return await createExecutorUnassignedInternalImpl(ctx, {
+      name: args.name,
+      createdBy: user.subject,
+    });
   },
 });
 

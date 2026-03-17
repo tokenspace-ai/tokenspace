@@ -5,7 +5,7 @@ import { api } from "@tokenspace/backend/convex/_generated/api";
 import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
 import { getSignInUrl, type User } from "@workos/authkit-tanstack-react-start";
 import { useAction, useQuery as useConvexQuery, useMutation } from "convex/react";
-import { FolderGit2, Plus, UserPlus2 } from "lucide-react";
+import { FolderGit2, MoreHorizontal, Plus, ServerIcon, UserPlus2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { UserMenu } from "@/components/header/user-menu";
@@ -24,6 +24,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -149,7 +155,25 @@ function LoggedIn({ user }: { user: User }) {
             <FolderGit2 className="size-5 text-primary" />
             <h2 className="font-semibold">Tokenspaces</h2>
           </div>
-          <CreateWorkspaceDialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen} userId={user?.id} />
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="size-9">
+                  <MoreHorizontal className="size-4" />
+                  <span className="sr-only">More actions</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem asChild>
+                  <Link to="/executors">
+                    <ServerIcon className="size-4 mr-2" />
+                    Manage executors
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <CreateWorkspaceDialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen} userId={user?.id} />
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
