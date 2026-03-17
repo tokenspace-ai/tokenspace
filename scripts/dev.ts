@@ -43,11 +43,9 @@ function isProcessAlive(pid: number): boolean {
 }
 
 let shuttingDown = false;
-async function cleanup() {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  console.log(c.red("Shutting down..."));
+let restarting = false;
 
+async function killChildProcesses() {
   for (const proc of childProcesses) {
     proc.kill();
   }
@@ -55,7 +53,7 @@ async function cleanup() {
   const GRACEFUL_TIMEOUT_MS = 5000;
   const POLL_INTERVAL_MS = 100;
 
-  const waitForChildren = Promise.all(
+  await Promise.all(
     childProcesses.map(async (proc) => {
       let elapsed = 0;
       while (elapsed < GRACEFUL_TIMEOUT_MS) {
@@ -67,10 +65,21 @@ async function cleanup() {
       proc.kill(9);
     }),
   );
+}
 
-  await Promise.all([waitForChildren, convexHandle?.stop()]).catch((e) => {
-    console.error(c.red(`Error during shutdown: ${e}`));
+async function stopServices() {
+  await Promise.all([killChildProcesses(), convexHandle?.stop()]).catch((e) => {
+    console.error(c.red(`Error during stop: ${e}`));
   });
+  childProcesses.length = 0;
+  convexHandle = undefined;
+}
+
+async function cleanup() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(c.red("Shutting down..."));
+  await stopServices();
   await deletePidFile();
 }
 
@@ -167,7 +176,7 @@ async function runCommand(
   pipeOutput(proc.stderr, prefix, logWriter, false);
 
   proc.exited.then((code) => {
-    if (!shuttingDown) {
+    if (!shuttingDown && !restarting) {
       if (quiet && code !== 0) {
         console.log(`${prefix} ${c.red(`Failed — see logs/${name}.log for full output`)}`);
       }
@@ -360,7 +369,79 @@ function openUrl(url: string) {
   Bun.spawn(["open", url], { stdout: "ignore", stderr: "ignore" });
 }
 
-function startKeyboardShortcuts(urls: { web: string; dashboard: string }) {
+interface StartServicesOptions {
+  shouldSeed: boolean;
+}
+
+async function startServices({ shouldSeed }: StartServicesOptions) {
+  const ports = extractPortsFromEnvironment();
+
+  const libWatcherCount = countLibWatchers();
+  const LIB_SETTLE_TIMEOUT_MS = 120_000;
+
+  const libsPrefix = c.blue("libs".padEnd(LOG_PREFIX_LENGTH, " "));
+  console.log(`${libsPrefix} Starting ${libWatcherCount} library watchers...`);
+
+  const libsReady = runCommand("libs", c.blue, ["bunx", "turbo", "dev:lib"], {
+    quiet: true,
+    readyPattern: /Watching for file changes/,
+    readyCount: libWatcherCount,
+  });
+
+  const libsSettled = await Promise.race([
+    libsReady!.then(() => true),
+    Bun.sleep(LIB_SETTLE_TIMEOUT_MS).then(() => false),
+  ]);
+
+  if (libsSettled) {
+    console.log(`${libsPrefix} All library watchers ready`);
+  } else {
+    console.log(`${libsPrefix} ${c.yellow("Timed out waiting for library watchers — continuing anyway")}`);
+  }
+
+  await runConvex(ports.convexPort);
+  await Bun.sleep(1000);
+
+  const seedPrefix = c.magenta("seed".padEnd(LOG_PREFIX_LENGTH, " "));
+  const log = (message: string) => console.log(`${seedPrefix} ${message}`);
+  const convexUrl = process.env.CONVEX_URL!;
+  const adminKey = getAdminKey();
+  const seedResult = await seedConfiguredWorkspaces({
+    convexUrl,
+    adminKey,
+    seedWorkspaces: shouldSeed,
+    executorMode: "assignAndRotateBootstrap",
+    log,
+  });
+  const bootstrapToken = seedResult.executor.bootstrapToken;
+  if (!bootstrapToken) {
+    throw new Error("Local dev executor bootstrap token was not returned");
+  }
+
+  runCommand("webapp", c.cyan, ["bun", "run", "dev"], {
+    cwd: "apps/web",
+    env: { VITE_CONVEX_URL: process.env.CONVEX_URL! },
+  });
+  runCommand("executor", c.yellow, ["bun", "run", "dev"], {
+    cwd: "services/executor",
+    env: { TOKENSPACE_TOKEN: bootstrapToken, TOKENSPACE_API_URL: process.env.CONVEX_URL! },
+  });
+
+  return ports;
+}
+
+async function restart(opts: StartServicesOptions) {
+  if (restarting) return;
+  restarting = true;
+  const prefix = c.red("restart".padEnd(LOG_PREFIX_LENGTH, " "));
+  console.log(`${prefix} Restarting all services...`);
+  await stopServices();
+  await startServices(opts);
+  restarting = false;
+  console.log(`${prefix} All services restarted`);
+}
+
+function startKeyboardShortcuts(urls: { web: string; dashboard: string }, onRestart: () => void) {
   if (!process.stdin.isTTY) return;
 
   process.stdin.setRawMode(true);
@@ -387,6 +468,8 @@ function startKeyboardShortcuts(urls: { web: string; dashboard: string }) {
       console.log(`${prefix} ---- ${fg.cyan(`marker: ${now}`)} ----`);
     } else if (key === "h") {
       printKeyboardShortcuts();
+    } else if (key === "r") {
+      onRestart();
     }
   });
 }
@@ -394,6 +477,7 @@ function startKeyboardShortcuts(urls: { web: string; dashboard: string }) {
 function printKeyboardShortcuts() {
   const prefix = c.blue("keys".padEnd(LOG_PREFIX_LENGTH, " "));
   console.log(`${prefix} Keyboard shortcuts:`);
+  console.log(`${prefix}   ${fg.cyan("r")} - restart all services`);
   console.log(`${prefix}   ${fg.cyan("o")} - open webapp in browser`);
   console.log(`${prefix}   ${fg.cyan("c")} - open Convex dashboard in browser`);
   console.log(`${prefix}   ${fg.cyan("m")} - insert a visual marker with timestamp`);
@@ -445,58 +529,8 @@ async function main() {
       mkdirSync("logs");
     }
 
-    const ports = extractPortsFromEnvironment();
-
-    const libWatcherCount = countLibWatchers();
-    const LIB_SETTLE_TIMEOUT_MS = 120_000;
-
-    const libsPrefix = c.blue("libs".padEnd(LOG_PREFIX_LENGTH, " "));
-    console.log(`${libsPrefix} Starting ${libWatcherCount} library watchers...`);
-
-    const libsReady = runCommand("libs", c.blue, ["bunx", "turbo", "dev:lib"], {
-      quiet: true,
-      readyPattern: /Watching for file changes/,
-      readyCount: libWatcherCount,
-    });
-
-    const libsSettled = await Promise.race([
-      libsReady!.then(() => true),
-      Bun.sleep(LIB_SETTLE_TIMEOUT_MS).then(() => false),
-    ]);
-
-    if (libsSettled) {
-      console.log(`${libsPrefix} All library watchers ready`);
-    } else {
-      console.log(`${libsPrefix} ${c.yellow("Timed out waiting for library watchers — continuing anyway")}`);
-    }
-
-    await runConvex(ports.convexPort);
-    await Bun.sleep(1000);
-
-    const seedPrefix = c.magenta("seed".padEnd(LOG_PREFIX_LENGTH, " "));
-    const log = (message: string) => console.log(`${seedPrefix} ${message}`);
-    const convexUrl = process.env.CONVEX_URL!;
-    const adminKey = getAdminKey();
-    const seedResult = await seedConfiguredWorkspaces({
-      convexUrl,
-      adminKey,
-      seedWorkspaces: shouldSeed,
-      executorMode: "assignAndRotateBootstrap",
-      log,
-    });
-    const bootstrapToken = seedResult.executor.bootstrapToken;
-    if (!bootstrapToken) {
-      throw new Error("Local dev executor bootstrap token was not returned");
-    }
-
-    runCommand("webapp", c.cyan, ["bun", "run", "dev"], {
-      cwd: "apps/web",
-      env: { VITE_CONVEX_URL: process.env.CONVEX_URL! },
-    });
-    runCommand("executor", c.yellow, ["bun", "run", "dev"], {
-      cwd: "services/executor",
-      env: { TOKENSPACE_TOKEN: bootstrapToken, TOKENSPACE_API_URL: process.env.CONVEX_URL! },
-    });
+    const serviceOpts: StartServicesOptions = { shouldSeed };
+    const ports = await startServices(serviceOpts);
 
     // Open URLs in browser if requested
     const webUrl = `http://localhost:${ports.webPort}`;
@@ -510,7 +544,9 @@ async function main() {
     }
 
     // Start keyboard shortcut listener
-    startKeyboardShortcuts({ web: webUrl, dashboard: dashboardUrl });
+    startKeyboardShortcuts({ web: webUrl, dashboard: dashboardUrl }, () => {
+      restart(serviceOpts);
+    });
     printKeyboardShortcuts();
 
     await waitForSignal();
