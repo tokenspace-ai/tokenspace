@@ -87,27 +87,11 @@ export class ExecutorSession implements ExecutorInstanceTokenSource {
       return;
     }
 
-    const registered = (await this.args.convex.mutation(api.executors.registerExecutorInstance, {
-      bootstrapToken: this.args.bootstrapToken,
-      hostname: this.args.hostname,
-      version: this.args.version,
-    })) as RegisterExecutorInstanceResult;
-
-    this.state = {
-      executorId: registered.executorId,
-      instanceId: registered.instanceId,
-      instanceToken: registered.instanceToken,
-      instanceTokenExpiresAt: registered.instanceTokenExpiresAt,
-      heartbeatIntervalMs: registered.heartbeatIntervalMs,
-      heartbeatTimeoutMs: registered.heartbeatTimeoutMs,
-      lastHeartbeatAt: this.now(),
-      expiresAt: this.now() + registered.heartbeatTimeoutMs,
-    };
-
+    const registered = await this.registerInstance();
+    this.applyRegisteredState(registered);
     this.logger.log(
       `Registered executor instance ${registered.instanceId} for executor ${registered.executorId} on ${this.args.hostname}`,
     );
-
     this.scheduleNextHeartbeat(registered.heartbeatIntervalMs);
   }
 
@@ -194,15 +178,20 @@ export class ExecutorSession implements ExecutorInstanceTokenSource {
 
       this.scheduleNextHeartbeat(heartbeat.heartbeatIntervalMs);
     } catch (error) {
-      this.handleHeartbeatFailure(toError(error));
+      await this.handleHeartbeatFailure(toError(error));
     } finally {
       this.heartbeatInFlight = false;
     }
   }
 
-  private handleHeartbeatFailure(error: Error): void {
+  private async handleHeartbeatFailure(error: Error): Promise<void> {
     if (!this.state) {
       this.fail(error);
+      return;
+    }
+
+    if (isReRegisterableHeartbeatError(error)) {
+      await this.reRegisterAfterHeartbeatFailure(error);
       return;
     }
 
@@ -220,6 +209,53 @@ export class ExecutorSession implements ExecutorInstanceTokenSource {
 
     this.logger.warn(`Executor heartbeat failed, retrying in ${this.heartbeatRetryMs}ms: ${error.message}`);
     this.scheduleNextHeartbeat(this.heartbeatRetryMs);
+  }
+
+  private async reRegisterAfterHeartbeatFailure(error: Error): Promise<void> {
+    const previousToken = this.state?.instanceToken ?? null;
+    this.logger.warn(`Executor heartbeat failed with recoverable lease loss, re-registering: ${error.message}`);
+
+    try {
+      const registered = await this.registerInstance();
+      this.applyRegisteredState(registered);
+
+      if (previousToken !== registered.instanceToken) {
+        for (const listener of this.tokenListeners) {
+          listener(registered.instanceToken);
+        }
+      }
+
+      this.logger.log(
+        `Re-registered executor instance ${registered.instanceId} for executor ${registered.executorId} on ${this.args.hostname}`,
+      );
+      this.scheduleNextHeartbeat(registered.heartbeatIntervalMs);
+    } catch (registrationError) {
+      this.fail(
+        new Error(`Executor failed to re-register after heartbeat lease loss: ${toError(registrationError).message}`),
+      );
+    }
+  }
+
+  private async registerInstance(): Promise<RegisterExecutorInstanceResult> {
+    return (await this.args.convex.mutation(api.executors.registerExecutorInstance, {
+      bootstrapToken: this.args.bootstrapToken,
+      hostname: this.args.hostname,
+      version: this.args.version,
+    })) as RegisterExecutorInstanceResult;
+  }
+
+  private applyRegisteredState(registered: RegisterExecutorInstanceResult): void {
+    const now = this.now();
+    this.state = {
+      executorId: registered.executorId,
+      instanceId: registered.instanceId,
+      instanceToken: registered.instanceToken,
+      instanceTokenExpiresAt: registered.instanceTokenExpiresAt,
+      heartbeatIntervalMs: registered.heartbeatIntervalMs,
+      heartbeatTimeoutMs: registered.heartbeatTimeoutMs,
+      lastHeartbeatAt: now,
+      expiresAt: now + registered.heartbeatTimeoutMs,
+    };
   }
 
   private fail(error: Error): void {
@@ -242,6 +278,12 @@ function toError(error: unknown): Error {
 
 function isFatalHeartbeatError(error: Error): boolean {
   return /Unauthorized|Executor is not active|Executor token version mismatch|Executor instance token expired|Executor instance heartbeat lease expired|Executor instance is not online/i.test(
+    error.message,
+  );
+}
+
+function isReRegisterableHeartbeatError(error: Error): boolean {
+  return /Executor instance token expired|Executor instance heartbeat lease expired|Executor instance is not online/i.test(
     error.message,
   );
 }

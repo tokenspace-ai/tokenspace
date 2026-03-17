@@ -163,4 +163,50 @@ describe("ExecutorSession", () => {
 
     expect(fatals).toEqual(["Executor token version mismatch"]);
   });
+
+  it("re-registers with the bootstrap token after heartbeat lease expiry", async () => {
+    const scheduler = createScheduler();
+    const tokenChanges: string[] = [];
+    const fatals: string[] = [];
+    let registrationCount = 0;
+    const session = new ExecutorSession({
+      convex: {
+        mutation: async (_ref: unknown, args: Record<string, unknown>) => {
+          if ("bootstrapToken" in args) {
+            registrationCount += 1;
+            return {
+              executorId: "executor_1",
+              instanceId: registrationCount === 1 ? "instance_1" : "instance_2",
+              instanceToken: registrationCount === 1 ? "instance-token-1" : "instance-token-2",
+              instanceTokenExpiresAt: registrationCount === 1 ? 10_000 : 20_000,
+              heartbeatIntervalMs: 5_000,
+              heartbeatTimeoutMs: 15_000,
+            };
+          }
+          throw new Error("Executor instance heartbeat lease expired");
+        },
+      } as any,
+      bootstrapToken: "bootstrap-token",
+      hostname: "executor-host",
+      version: "1.2.3",
+      schedule: scheduler.schedule as typeof setTimeout,
+      cancel: scheduler.cancel as typeof clearTimeout,
+      logger: { log() {}, warn() {}, error() {} },
+    });
+    session.onTokenChange((token) => tokenChanges.push(token));
+    session.onFatal((error) => fatals.push(error.message));
+
+    await session.start();
+    expect(session.getInstanceToken()).toBe("instance-token-1");
+    expect(String(session.getState()?.instanceId)).toBe("instance_1");
+
+    await scheduler.runNext();
+    await Promise.resolve();
+
+    expect(session.getInstanceToken()).toBe("instance-token-2");
+    expect(String(session.getState()?.instanceId)).toBe("instance_2");
+    expect(tokenChanges).toEqual(["instance-token-2"]);
+    expect(fatals).toEqual([]);
+    expect(scheduler.size).toBe(1);
+  });
 });
