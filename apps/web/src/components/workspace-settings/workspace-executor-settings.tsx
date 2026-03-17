@@ -3,7 +3,6 @@ import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import {
   AlertCircleIcon,
-  CheckCircle2Icon,
   KeyRoundIcon,
   Loader2,
   MoreHorizontalIcon,
@@ -13,8 +12,15 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CodeBlock, CodeBlockCopyButton } from "@/components/ai-elements/code-block";
-import { RelativeTime } from "@/components/relative-time";
+import {
+  ExecutorAssignmentWarning,
+  ExecutorAvailabilityBadge,
+  ExecutorInstancesTable,
+  ExecutorSetupInstructionsCard,
+  type ExecutorSetupState,
+  ExecutorStatusTable,
+  formatExecutorDateTime,
+} from "@/components/executors/executor-management";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -44,35 +50,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { deriveWorkspaceExecutorState, ExecutorStateBadge, type WorkspaceExecutorState } from "./executor-status";
-
-type SetupState = {
-  mode: "create" | "rotate";
-  bootstrapToken: string;
-  setup: {
-    requiredEnvVars: string[];
-    snippets: {
-      docker: string;
-      raw: string;
-    };
-  };
-};
-
-function formatDateTime(timestamp: number | null | undefined): string {
-  if (!timestamp) return "Never";
-  return new Date(timestamp).toLocaleString();
-}
-
-function formatCapacity(runtime: number | null, compile: number | null): string {
-  const runtimeLabel = runtime == null ? "runtime unlimited" : `runtime ${runtime}`;
-  const compileLabel = compile == null ? "compile unlimited" : `compile ${compile}`;
-  return `${runtimeLabel} / ${compileLabel}`;
-}
+import { deriveWorkspaceExecutorState, ExecutorStateBadge } from "./executor-status";
 
 export function WorkspaceExecutorSettings({
   workspaceId,
@@ -96,8 +77,7 @@ export function WorkspaceExecutorSettings({
   const [isCreating, setIsCreating] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
   const [isUnassigning, setIsUnassigning] = useState(false);
-  const [setupState, setSetupState] = useState<SetupState | null>(null);
-
+  const [setupState, setSetupState] = useState<ExecutorSetupState | null>(null);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [rotateDialogOpen, setRotateDialogOpen] = useState(false);
@@ -111,23 +91,34 @@ export function WorkspaceExecutorSettings({
 
   const executorState = deriveWorkspaceExecutorState(assignedStatus ?? null);
 
-  const executorOptions = useMemo(() => {
-    if (!assignableExecutors) return [];
-    const options = [...assignableExecutors.executors];
+  const assignmentRows = useMemo(() => {
+    const assignable = assignableExecutors?.executors ?? [];
+    const rows = assignable.map((executor) => ({
+      executor,
+      isCurrent: executor._id === currentExecutorId,
+      selectable: true,
+    }));
+
     const current = assignedStatus?.executor;
-    const currentId = assignedStatus?.currentExecutorId;
-    if (current && currentId && !options.some((executor) => executor._id === currentId)) {
-      options.unshift({
-        ...current,
-        _id: currentId,
+    if (current && currentExecutorId && !rows.some((row) => row.executor._id === currentExecutorId)) {
+      rows.unshift({
+        executor: {
+          ...current,
+          _id: currentExecutorId,
+        },
+        isCurrent: true,
+        selectable: false,
       });
     }
-    return options;
-  }, [assignableExecutors, assignedStatus]);
 
+    return rows;
+  }, [assignableExecutors, assignedStatus, currentExecutorId]);
+
+  const assignableCount = assignmentRows.filter((row) => row.selectable).length;
   const canApplyAssignment =
     isWorkspaceAdmin &&
     !!selectedExecutorId &&
+    assignmentRows.some((row) => row.executor._id === selectedExecutorId && row.selectable) &&
     selectedExecutorId !== currentExecutorId &&
     assignableExecutors !== undefined;
 
@@ -230,6 +221,8 @@ export function WorkspaceExecutorSettings({
     );
   }
 
+  const showEmptyAssignmentState = !assignedStatus;
+
   return (
     <div className="space-y-6">
       {!isWorkspaceAdmin && (
@@ -252,7 +245,7 @@ export function WorkspaceExecutorSettings({
                 {assignedStatus ? assignedStatus.executor.name : "No Executor Assigned"}
               </CardTitle>
               <CardDescription>
-                Review the executor assigned to this workspace and the fleet's live health.
+                Review executor routing for this workspace and the fleet&apos;s live health before sending jobs to it.
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -276,12 +269,12 @@ export function WorkspaceExecutorSettings({
                         Rotate bootstrap token
                       </DropdownMenuItem>
                     )}
-                    {assignedStatus && (
+                    {assignedStatus ? (
                       <DropdownMenuItem variant="destructive" onSelect={() => setUnassignDialogOpen(true)}>
                         <UnplugIcon className="size-4" />
                         Unassign executor
                       </DropdownMenuItem>
-                    )}
+                    ) : null}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onSelect={() => setCreateDialogOpen(true)}>
                       <PlusIcon className="size-4" />
@@ -301,7 +294,7 @@ export function WorkspaceExecutorSettings({
                   <div className="text-xs uppercase tracking-wide text-muted-foreground">Executor</div>
                   <div className="mt-2 text-sm font-medium">{assignedStatus.executor.name}</div>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <ExecutorStateBadge state={executorState} className="text-[10px]" />
+                    <ExecutorAvailabilityBadge executor={assignedStatus.executor} className="text-[10px]" />
                     <Badge variant="outline" className="text-[10px] capitalize">
                       {assignedStatus.executor.status}
                     </Badge>
@@ -315,26 +308,16 @@ export function WorkspaceExecutorSettings({
                   <div className="text-xs uppercase tracking-wide text-muted-foreground">Recent Heartbeat</div>
                   <div className="mt-2 text-sm font-medium">
                     {assignedStatus.executor.lastHeartbeatAt ? (
-                      <RelativeTime timestamp={assignedStatus.executor.lastHeartbeatAt} />
+                      <span>{formatExecutorDateTime(assignedStatus.executor.lastHeartbeatAt)}</span>
                     ) : (
                       "Never"
                     )}
-                  </div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {formatDateTime(assignedStatus.executor.lastHeartbeatAt)}
                   </div>
                 </div>
                 <div className="rounded-lg border p-4">
                   <div className="text-xs uppercase tracking-wide text-muted-foreground">Bootstrap Last Used</div>
                   <div className="mt-2 text-sm font-medium">
-                    {assignedStatus.executor.bootstrapLastUsedAt ? (
-                      <RelativeTime timestamp={assignedStatus.executor.bootstrapLastUsedAt} />
-                    ) : (
-                      "Never"
-                    )}
-                  </div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {formatDateTime(assignedStatus.executor.bootstrapLastUsedAt)}
+                    {formatExecutorDateTime(assignedStatus.executor.bootstrapLastUsedAt)}
                   </div>
                 </div>
               </div>
@@ -348,86 +331,54 @@ export function WorkspaceExecutorSettings({
                     </p>
                   </div>
                 </div>
-                {assignedStatus.instances.length === 0 ? (
-                  <div className="px-4 py-6 text-sm text-muted-foreground">
-                    No instances have registered yet. Start one with the setup instructions below.
-                  </div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Health</TableHead>
-                        <TableHead>Host</TableHead>
-                        <TableHead>Version</TableHead>
-                        <TableHead>Last Heartbeat</TableHead>
-                        <TableHead>Registered</TableHead>
-                        <TableHead>Capacity</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {assignedStatus.instances.map((instance) => {
-                        const healthState: WorkspaceExecutorState =
-                          instance.health === "online"
-                            ? {
-                                key: "online",
-                                label: "Online",
-                                description: "",
-                                iconClassName: "",
-                                badgeClassName:
-                                  "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-                              }
-                            : {
-                                key: "offline",
-                                label: "Offline",
-                                description: "",
-                                iconClassName: "",
-                                badgeClassName: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
-                              };
-
-                        return (
-                          <TableRow key={instance._id}>
-                            <TableCell>
-                              <ExecutorStateBadge state={healthState} className="text-[10px]" />
-                            </TableCell>
-                            <TableCell>{instance.hostname ?? "Unknown host"}</TableCell>
-                            <TableCell>{instance.version ?? "Unknown version"}</TableCell>
-                            <TableCell>
-                              <div className="font-medium">
-                                <RelativeTime timestamp={instance.lastHeartbeatAt} />
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {formatDateTime(instance.lastHeartbeatAt)}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {formatDateTime(instance.registeredAt)}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {formatCapacity(instance.maxConcurrentRuntimeJobs, instance.maxConcurrentCompileJobs)}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                )}
+                <ExecutorInstancesTable
+                  instances={assignedStatus.instances}
+                  emptyMessage="No instances have registered yet. Start one with the setup instructions below."
+                />
               </div>
             </>
           ) : (
-            <Alert>
-              <AlertCircleIcon />
-              <AlertTitle>No executor assigned</AlertTitle>
-              <AlertDescription>
-                This workspace is not routed to a self-hosted executor yet. Assign an existing executor or create a new
-                one below.
-              </AlertDescription>
-            </Alert>
+            <Empty className="border bg-muted/15 py-10">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <ServerIcon className="size-5" />
+                </EmptyMedia>
+                <EmptyTitle>No executor assigned</EmptyTitle>
+                <EmptyDescription>
+                  This workspace is not routed to a self-hosted executor yet. Add an existing executor or create a new
+                  one before running tools that require execution.
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent className="max-w-lg">
+                {isWorkspaceAdmin ? (
+                  <div className="flex flex-wrap items-center justify-center gap-3">
+                    <Button onClick={() => setAssignDialogOpen(true)} disabled={assignableCount === 0}>
+                      Add executor
+                    </Button>
+                    <Button variant="outline" onClick={() => setCreateDialogOpen(true)}>
+                      Create new executor
+                    </Button>
+                  </div>
+                ) : (
+                  <Alert className="w-full text-left">
+                    <AlertCircleIcon />
+                    <AlertTitle>Workspace admin required</AlertTitle>
+                    <AlertDescription>
+                      Ask a workspace admin to assign an executor before execution can be enabled here.
+                    </AlertDescription>
+                  </Alert>
+                )}
+                {isWorkspaceAdmin && assignableCount === 0 ? (
+                  <p className="text-sm text-muted-foreground">No assignable executors are available yet.</p>
+                ) : null}
+              </EmptyContent>
+            </Empty>
           )}
         </CardContent>
       </Card>
 
       <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>Assign Executor</DialogTitle>
             <DialogDescription>
@@ -435,31 +386,28 @@ export function WorkspaceExecutorSettings({
               failed before the switch, and running jobs must finish or be stopped first.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-2 py-2">
-            <Label htmlFor="executor-select">Executor</Label>
-            <Select value={selectedExecutorId} onValueChange={setSelectedExecutorId}>
-              <SelectTrigger id="executor-select">
-                <SelectValue placeholder="Choose an executor" />
-              </SelectTrigger>
-              <SelectContent>
-                {executorOptions.map((executor) => (
-                  <SelectItem key={executor._id} value={executor._id}>
-                    {executor.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {assignableExecutors && assignableExecutors.executors.length === 0 && (
-              <p className="text-sm text-muted-foreground">No assignable executors available. Create one first.</p>
-            )}
-            <Alert>
-              <AlertCircleIcon />
-              <AlertTitle>Routing changes immediately</AlertTitle>
-              <AlertDescription>
-                If the newly assigned executor has no healthy instance, this workspace will not execute jobs until one
-                connects.
-              </AlertDescription>
-            </Alert>
+          <div className="grid gap-4 py-2">
+            <ExecutorStatusTable
+              mode="select"
+              rows={assignmentRows}
+              selectedExecutorId={selectedExecutorId}
+              onSelectExecutor={setSelectedExecutorId}
+              emptyMessage="No assignable executors available. Create one first."
+            />
+            <ExecutorAssignmentWarning>
+              If the newly assigned executor has no healthy instance, this workspace will not execute jobs until one
+              connects.
+            </ExecutorAssignmentWarning>
+            {showEmptyAssignmentState ? (
+              <Alert className="border-dashed bg-muted/20">
+                <AlertCircleIcon />
+                <AlertTitle>Workspace currently has no executor</AlertTitle>
+                <AlertDescription>
+                  Select a healthy executor if one is available, or create a new fleet if you need a fresh bootstrap
+                  token.
+                </AlertDescription>
+              </Alert>
+            ) : null}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>
@@ -501,15 +449,11 @@ export function WorkspaceExecutorSettings({
               value={newExecutorName}
               onChange={(event) => setNewExecutorName(event.target.value)}
             />
-            <Alert>
-              <AlertCircleIcon />
-              <AlertTitle>Creation also reassigns the workspace</AlertTitle>
-              <AlertDescription>
-                The new executor becomes active for this workspace as soon as it is created. Pending jobs on the current
-                executor will be failed before the switch, and this workspace will remain non-functional until an
-                executor process connects with the new bootstrap token.
-              </AlertDescription>
-            </Alert>
+            <ExecutorAssignmentWarning>
+              The new executor becomes active for this workspace as soon as it is created. Pending jobs on the current
+              executor will be failed before the switch, and this workspace will remain non-functional until an executor
+              process connects with the new bootstrap token.
+            </ExecutorAssignmentWarning>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
@@ -585,84 +529,17 @@ export function WorkspaceExecutorSettings({
         </AlertDialogContent>
       </AlertDialog>
 
-      {setupState && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <KeyRoundIcon className="size-4" />
-              Setup Instructions
-            </CardTitle>
-            <CardDescription>
-              The bootstrap credential is shown only for this {setupState.mode === "create" ? "creation" : "rotation"}{" "}
-              flow. Store it before leaving the page.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <Alert className="border-emerald-500/20 bg-emerald-500/5">
-              <CheckCircle2Icon className="text-emerald-500" />
-              <AlertTitle>Bootstrap credential</AlertTitle>
-              <AlertDescription>
-                Tokenspace will not re-show this plaintext bootstrap token after this view is gone. Use the updated
-                setup commands below for any executor instance you want to register with this executor.
-              </AlertDescription>
-            </Alert>
-
-            <div className="space-y-2">
-              <Label>Bootstrap token</Label>
-              <div className="overflow-hidden rounded-lg border">
-                <CodeBlock code={setupState.bootstrapToken} language="bash" fontSize="xs">
-                  <CodeBlockCopyButton
-                    variant="outline"
-                    size="sm"
-                    onCopy={() => toast.success("Bootstrap token copied")}
-                  />
-                </CodeBlock>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <Label>Required environment variables</Label>
-              <div className="flex flex-wrap gap-2">
-                {setupState.setup.requiredEnvVars.map((envVar) => (
-                  <div key={envVar} className="rounded-full border px-3 py-1 text-xs font-medium">
-                    {envVar}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Docker</Label>
-                <div className="overflow-hidden rounded-lg border">
-                  <CodeBlock code={setupState.setup.snippets.docker} language="bash">
-                    <CodeBlockCopyButton
-                      variant="outline"
-                      size="sm"
-                      onCopy={() => toast.success("Docker snippet copied")}
-                    />
-                  </CodeBlock>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Raw CLI</Label>
-                <div className="overflow-hidden rounded-lg border">
-                  <CodeBlock code={setupState.setup.snippets.raw} language="bash">
-                    <CodeBlockCopyButton
-                      variant="outline"
-                      size="sm"
-                      onCopy={() => toast.success("CLI snippet copied")}
-                    />
-                  </CodeBlock>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {setupState ? (
+        <ExecutorSetupInstructionsCard
+          setupState={setupState}
+          description={`The bootstrap credential is shown only for this ${setupState.mode === "rotate" ? "rotation" : "creation"} flow. Store it before leaving the page.`}
+          credentialNotice={
+            setupState.mode === "rotate"
+              ? "Tokenspace will not re-show this plaintext bootstrap token after this view is gone. Use the updated setup commands below for any executor instance you want to register with this executor."
+              : "Tokenspace will not re-show this plaintext bootstrap token after this view is gone."
+          }
+        />
+      ) : null}
     </div>
   );
 }

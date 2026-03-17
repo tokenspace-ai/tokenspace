@@ -13,6 +13,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as OauthCallbackRouteImport } from './routes/oauth/callback'
 import { Route as AppWorkspacesRouteImport } from './routes/_app/workspaces'
+import { Route as AppExecutorsRouteImport } from './routes/_app/executors'
 import { Route as ApiCliConfigRouteImport } from './routes/api/cli/config'
 import { Route as ApiAuthCallbackRouteImport } from './routes/api/auth/callback'
 import { Route as AppWorkspaceSlugRouteImport } from './routes/_app/workspace.$slug'
@@ -49,6 +50,11 @@ const OauthCallbackRoute = OauthCallbackRouteImport.update({
 const AppWorkspacesRoute = AppWorkspacesRouteImport.update({
   id: '/workspaces',
   path: '/workspaces',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppExecutorsRoute = AppExecutorsRouteImport.update({
+  id: '/executors',
+  path: '/executors',
   getParentRoute: () => AppRoute,
 } as any)
 const ApiCliConfigRoute = ApiCliConfigRouteImport.update({
@@ -156,6 +162,7 @@ const AppWorkspaceSlugAppChatChatIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/executors': typeof AppExecutorsRoute
   '/workspaces': typeof AppWorkspacesRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/user/settings': typeof AppUserSettingsRoute
@@ -178,6 +185,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/executors': typeof AppExecutorsRoute
   '/workspaces': typeof AppWorkspacesRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/user/settings': typeof AppUserSettingsRoute
@@ -201,6 +209,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
+  '/_app/executors': typeof AppExecutorsRoute
   '/_app/workspaces': typeof AppWorkspacesRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/_app/user/settings': typeof AppUserSettingsRoute
@@ -226,6 +235,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/executors'
     | '/workspaces'
     | '/oauth/callback'
     | '/user/settings'
@@ -248,6 +258,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/executors'
     | '/workspaces'
     | '/oauth/callback'
     | '/user/settings'
@@ -270,6 +281,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_app'
+    | '/_app/executors'
     | '/_app/workspaces'
     | '/oauth/callback'
     | '/_app/user/settings'
@@ -329,6 +341,13 @@ declare module '@tanstack/react-router' {
       path: '/workspaces'
       fullPath: '/workspaces'
       preLoaderRoute: typeof AppWorkspacesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/executors': {
+      id: '/_app/executors'
+      path: '/executors'
+      fullPath: '/executors'
+      preLoaderRoute: typeof AppExecutorsRouteImport
       parentRoute: typeof AppRoute
     }
     '/api/cli/config': {
@@ -522,12 +541,14 @@ const AppWorkspaceSlugRouteWithChildren =
   AppWorkspaceSlugRoute._addFileChildren(AppWorkspaceSlugRouteChildren)
 
 interface AppRouteChildren {
+  AppExecutorsRoute: typeof AppExecutorsRoute
   AppWorkspacesRoute: typeof AppWorkspacesRoute
   AppUserSettingsRoute: typeof AppUserSettingsRoute
   AppWorkspaceSlugRoute: typeof AppWorkspaceSlugRouteWithChildren
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppExecutorsRoute: AppExecutorsRoute,
   AppWorkspacesRoute: AppWorkspacesRoute,
   AppUserSettingsRoute: AppUserSettingsRoute,
   AppWorkspaceSlugRoute: AppWorkspaceSlugRouteWithChildren,
