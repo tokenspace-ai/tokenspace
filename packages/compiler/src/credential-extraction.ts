@@ -34,6 +34,11 @@ type ExtractCredentialsPayload = {
   }>;
 };
 
+type CredentialExportMetadata = {
+  order: string[];
+  originByExportName: ReadonlyMap<string, string>;
+};
+
 const WORKSPACE_CREDENTIALS_SOURCE_PATH = "src/credentials.ts";
 const DEFAULT_CREDENTIAL_EVAL_TIMEOUT_MS = 10_000;
 const EVAL_RESULT_MARKER = "__TOKENSPACE_CREDENTIALS_RESULT__";
@@ -229,21 +234,89 @@ function normalizeOptionalMetadataString(value: string | undefined): string | un
   return normalized ? normalized : undefined;
 }
 
+function normalizeWorkspaceRelativePath(workspaceDir: string, absolutePath: string): string | null {
+  const relativePath = path.relative(workspaceDir, absolutePath).replace(/\\/g, "/").replace(/^\.\//, "");
+  if (!relativePath || relativePath === "." || relativePath.startsWith("../")) {
+    return null;
+  }
+  return relativePath;
+}
+
+async function resolveWorkspaceModulePath(
+  workspaceDir: string,
+  sourcePath: string,
+  moduleSpecifier: string,
+): Promise<string | null> {
+  if (!moduleSpecifier.startsWith(".")) {
+    return null;
+  }
+
+  const absoluteBasePath = path.resolve(workspaceDir, path.dirname(sourcePath), moduleSpecifier);
+  const candidatePaths = [
+    absoluteBasePath,
+    `${absoluteBasePath}.ts`,
+    `${absoluteBasePath}.tsx`,
+    `${absoluteBasePath}.mts`,
+    `${absoluteBasePath}.cts`,
+    `${absoluteBasePath}.js`,
+    `${absoluteBasePath}.jsx`,
+    `${absoluteBasePath}.mjs`,
+    `${absoluteBasePath}.cjs`,
+    path.join(absoluteBasePath, "index.ts"),
+    path.join(absoluteBasePath, "index.tsx"),
+    path.join(absoluteBasePath, "index.mts"),
+    path.join(absoluteBasePath, "index.cts"),
+    path.join(absoluteBasePath, "index.js"),
+    path.join(absoluteBasePath, "index.jsx"),
+    path.join(absoluteBasePath, "index.mjs"),
+    path.join(absoluteBasePath, "index.cjs"),
+  ];
+
+  for (const candidatePath of candidatePaths) {
+    try {
+      await access(candidatePath, fsConstants.F_OK);
+      return normalizeWorkspaceRelativePath(workspaceDir, candidatePath);
+    } catch {}
+  }
+
+  return null;
+}
+
 function getExportSpecifierName(specifier: ts.ExportSpecifier): string {
   return (specifier.name ?? specifier.propertyName).text;
 }
 
-function collectCredentialExportOrder(sourceText: string, sourcePath: string): string[] {
+async function collectCredentialExportMetadata(
+  workspaceDir: string,
+  sourcePath: string,
+  sourceText: string,
+  cache: Map<string, CredentialExportMetadata>,
+): Promise<CredentialExportMetadata> {
+  const cached = cache.get(sourcePath);
+  if (cached) {
+    return cached;
+  }
+
   const sourceFile = ts.createSourceFile(sourcePath, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const exportNames: string[] = [];
+  const order: string[] = [];
   const seen = new Set<string>();
-  const pushName = (name: string | null | undefined) => {
-    if (!name || seen.has(name)) {
+  const originByExportName = new Map<string, string>();
+  const normalizedSourcePath = sourcePath.replace(/\\/g, "/");
+
+  const recordExport = (exportName: string | null | undefined, originPath: string | null | undefined) => {
+    if (!exportName || seen.has(exportName)) {
       return;
     }
-    seen.add(name);
-    exportNames.push(name);
+    seen.add(exportName);
+    order.push(exportName);
+    originByExportName.set(exportName, originPath ?? normalizedSourcePath);
   };
+
+  const metadata: CredentialExportMetadata = {
+    order,
+    originByExportName,
+  };
+  cache.set(sourcePath, metadata);
 
   for (const statement of sourceFile.statements) {
     if (
@@ -252,7 +325,7 @@ function collectCredentialExportOrder(sourceText: string, sourcePath: string): s
     ) {
       for (const declaration of statement.declarationList.declarations) {
         if (ts.isIdentifier(declaration.name)) {
-          pushName(declaration.name.text);
+          recordExport(declaration.name.text, normalizedSourcePath);
         }
       }
       continue;
@@ -262,20 +335,51 @@ function collectCredentialExportOrder(sourceText: string, sourcePath: string): s
       ts.isFunctionDeclaration(statement) &&
       statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)
     ) {
-      pushName(statement.name?.text);
+      recordExport(statement.name?.text, normalizedSourcePath);
       continue;
     }
 
-    if (ts.isExportDeclaration(statement) && !statement.moduleSpecifier && statement.exportClause) {
-      if (ts.isNamedExports(statement.exportClause)) {
-        for (const specifier of statement.exportClause.elements) {
-          pushName(getExportSpecifierName(specifier));
-        }
+    if (!ts.isExportDeclaration(statement) || !statement.exportClause) {
+      continue;
+    }
+
+    const moduleSpecifier =
+      statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier)
+        ? statement.moduleSpecifier.text
+        : null;
+    if (!ts.isNamedExports(statement.exportClause)) {
+      continue;
+    }
+
+    if (!moduleSpecifier) {
+      for (const specifier of statement.exportClause.elements) {
+        recordExport(getExportSpecifierName(specifier), normalizedSourcePath);
       }
+      continue;
+    }
+
+    const targetSourcePath = await resolveWorkspaceModulePath(workspaceDir, sourcePath, moduleSpecifier);
+    const targetMetadata =
+      targetSourcePath === null
+        ? null
+        : await collectCredentialExportMetadata(
+            workspaceDir,
+            targetSourcePath,
+            await readFile(path.join(workspaceDir, targetSourcePath), "utf8"),
+            cache,
+          );
+
+    for (const specifier of statement.exportClause.elements) {
+      const exportName = getExportSpecifierName(specifier);
+      const targetName = specifier.propertyName?.text ?? specifier.name.text;
+      recordExport(
+        exportName,
+        targetMetadata?.originByExportName.get(targetName) ?? targetSourcePath ?? normalizedSourcePath,
+      );
     }
   }
 
-  return exportNames;
+  return metadata;
 }
 
 async function runCredentialsEvaluation(
@@ -379,8 +483,13 @@ export async function extractCredentialRequirementsFromWorkspace(
     runCredentialsEvaluation(workspaceDir, sourcePath, timeoutMs),
   ]);
 
-  const exportOrder = collectCredentialExportOrder(sourceText, sourcePath);
-  const exportOrderIndex = new Map(exportOrder.map((exportName, index) => [exportName, index]));
+  const exportMetadata = await collectCredentialExportMetadata(
+    workspaceDir,
+    WORKSPACE_CREDENTIALS_SOURCE_PATH,
+    sourceText,
+    new Map(),
+  );
+  const exportOrderIndex = new Map(exportMetadata.order.map((exportName, index) => [exportName, index]));
   const byCredentialId = new Map<string, string>();
   const requirements: ExtractedCredentialRequirement[] = [];
 
@@ -389,7 +498,8 @@ export async function extractCredentialRequirementsFromWorkspace(
       throw new Error("Credential evaluation returned an invalid export entry");
     }
     const exportName = assertNonEmptyString(item.exportName, "Credential export name");
-    const requirement = normalizeCredentialValue(exportName, item.value, WORKSPACE_CREDENTIALS_SOURCE_PATH);
+    const exportSourcePath = exportMetadata.originByExportName.get(exportName) ?? WORKSPACE_CREDENTIALS_SOURCE_PATH;
+    const requirement = normalizeCredentialValue(exportName, item.value, exportSourcePath);
 
     const previousExport = byCredentialId.get(requirement.id);
     if (previousExport) {

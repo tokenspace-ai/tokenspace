@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { CredentialIcon } from "@/components/credentials/credential-icon";
+import type { CredentialRequirement } from "@/components/credentials/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,19 +19,6 @@ type WorkspaceCredentialBinding = {
   kind: "secret" | "oauth";
   updatedAt: number;
   isExpired: boolean;
-};
-
-type CredentialRequirement = {
-  id: string;
-  label?: string;
-  group?: string;
-  kind: "secret" | "env" | "oauth";
-  scope: "workspace" | "session" | "user";
-  description?: string;
-  iconPath?: string;
-  placeholder?: string;
-  optional?: boolean;
-  config?: unknown;
 };
 
 type CredentialGroup = {

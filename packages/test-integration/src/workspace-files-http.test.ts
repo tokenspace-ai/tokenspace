@@ -11,12 +11,22 @@ describe("workspace file HTTP route", () => {
     const backend = getSharedHarness().getBackend();
     const siteUrl = `http://127.0.0.1:${backend.siteProxyPort}`;
 
-    const response = await fetch(
-      `${siteUrl}/api/fs/file?revisionId=${encodeURIComponent(revisionId)}&path=${encodeURIComponent("../secret.svg")}`,
-    );
+    const responses = await Promise.all([
+      fetch(
+        `${siteUrl}/api/fs/file?revisionId=${encodeURIComponent(revisionId)}&path=${encodeURIComponent("../secret.svg")}`,
+      ),
+      fetch(
+        `${siteUrl}/api/fs/file?revisionId=${encodeURIComponent(revisionId)}&path=${encodeURIComponent("./sandbox/icon.svg")}`,
+      ),
+      fetch(
+        `${siteUrl}/api/fs/file?revisionId=${encodeURIComponent(revisionId)}&path=${encodeURIComponent("foo/../revision/file.png")}`,
+      ),
+    ]);
 
-    expect(response.status).toBe(400);
-    expect(await response.text()).toContain("path is invalid");
+    for (const response of responses) {
+      expect(response.status).toBe(400);
+      expect(await response.text()).toContain("path is invalid");
+    }
   });
 
   it("requires authentication for valid revision file requests", async () => {

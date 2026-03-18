@@ -1,5 +1,5 @@
 import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAccessToken } from "@/hooks/use-access-token";
 import { buildWorkspaceFileUrl } from "@/lib/workspace-files";
 import { WorkspaceIcon } from "./workspace-icon";
@@ -25,6 +25,7 @@ export function WorkspaceFileIcon({
 }: WorkspaceFileIconProps) {
   const { getAccessToken } = useAccessToken();
   const [iconUrl, setIconUrl] = useState<string | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
 
   const fileUrl = useMemo(() => {
     if (!filePath) {
@@ -41,12 +42,15 @@ export function WorkspaceFileIcon({
 
   useEffect(() => {
     if (!fileUrl) {
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
       setIconUrl(null);
       return;
     }
 
     let active = true;
-    let objectUrl: string | null = null;
     const abortController = new AbortController();
 
     void (async () => {
@@ -69,9 +73,15 @@ export function WorkspaceFileIcon({
           throw new Error(`Failed to fetch workspace file icon (${response.status})`);
         }
 
-        objectUrl = URL.createObjectURL(await response.blob());
+        const nextObjectUrl = URL.createObjectURL(await response.blob());
         if (active) {
-          setIconUrl(objectUrl);
+          if (objectUrlRef.current) {
+            URL.revokeObjectURL(objectUrlRef.current);
+          }
+          objectUrlRef.current = nextObjectUrl;
+          setIconUrl(nextObjectUrl);
+        } else {
+          URL.revokeObjectURL(nextObjectUrl);
         }
       } catch (error) {
         if (!abortController.signal.aborted) {
@@ -86,8 +96,9 @@ export function WorkspaceFileIcon({
     return () => {
       active = false;
       abortController.abort();
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
       }
     };
   }, [fileUrl, getAccessToken]);

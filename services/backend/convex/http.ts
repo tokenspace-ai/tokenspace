@@ -14,7 +14,7 @@ type ServedFile = {
   binary: boolean;
 };
 
-function corsHeaders(request: Request): HeadersInit {
+function corsHeaders(request: Request): Record<string, string> {
   const origin = request.headers.get("origin");
   return {
     "access-control-allow-origin": origin ?? "*",
@@ -49,12 +49,12 @@ function normalizeRequestedPath(rawPath: string | null): string {
   if (normalized.startsWith("/")) {
     throw new Error("path is invalid");
   }
-  if (normalized.startsWith("sandbox/") || normalized.startsWith("revision/")) {
-    throw new Error("path is invalid");
-  }
 
   normalized = normalizeSlashes(normalized);
   if (!normalized || normalized === "." || normalized.startsWith("../")) {
+    throw new Error("path is invalid");
+  }
+  if (normalized.startsWith("sandbox/") || normalized.startsWith("revision/")) {
     throw new Error("path is invalid");
   }
 
@@ -194,14 +194,20 @@ export const serveWorkspaceFile = httpAction(async (ctx, request) => {
       return errorResponse(request, 404, "File not found.");
     }
 
+    const contentType = contentTypeForPath(requestedPath);
+    const headers: Record<string, string> = {
+      ...corsHeaders(request),
+      "content-type": contentType,
+      "cache-control": "private, no-store, max-age=0",
+      "x-content-type-options": "nosniff",
+    };
+    if (getLowercaseExtension(requestedPath) === ".svg") {
+      headers["content-security-policy"] = "default-src 'none'; script-src 'none'; sandbox";
+    }
+
     return new Response(file.binary ? new Blob([decodeBase64ToArrayBuffer(content)]) : content, {
       status: 200,
-      headers: {
-        ...corsHeaders(request),
-        "content-type": contentTypeForPath(requestedPath),
-        "cache-control": "private, no-store, max-age=0",
-        "x-content-type-options": "nosniff",
-      },
+      headers,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

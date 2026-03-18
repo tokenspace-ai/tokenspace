@@ -8,25 +8,13 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { CredentialIcon } from "@/components/credentials/credential-icon";
+import type { CredentialRequirement } from "@/components/credentials/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-
-type CredentialRequirement = {
-  id: string;
-  label?: string;
-  group?: string;
-  kind: "secret" | "env" | "oauth";
-  scope: "workspace" | "session" | "user";
-  description?: string;
-  iconPath?: string;
-  placeholder?: string;
-  optional?: boolean;
-  config?: unknown;
-};
 
 type CredentialGroup = {
   key: string;

@@ -363,6 +363,7 @@ function resolveCredentialIconUrl(
   if (ext === ".png") {
     return `data:image/png;base64,${iconFile.content}`;
   }
+  console.warn(`Unsupported credential icon format for local MCP: ${iconPath}`);
   return undefined;
 }
 

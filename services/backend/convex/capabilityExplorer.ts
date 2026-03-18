@@ -101,7 +101,7 @@ function collectMethodsFromStatements(
 export function stripLeadingMarkdownFrontmatter(content: string): string {
   const normalized = content.replace(/\r\n/g, "\n").replace(/^\uFEFF/, "");
   if (!normalized.startsWith("---\n")) {
-    return content;
+    return normalized;
   }
 
   const lines = normalized.split("\n");
@@ -115,7 +115,7 @@ export function stripLeadingMarkdownFrontmatter(content: string): string {
   }
 
   if (endIndex === -1) {
-    return content;
+    return normalized;
   }
 
   return lines

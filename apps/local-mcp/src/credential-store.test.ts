@@ -12,6 +12,7 @@ import {
   createLocalFileSecretsStore,
   LocalCredentialBackendError,
 } from "./credential-store";
+import { createMemorySecretsStore } from "./test-utils";
 import type { LocalSession } from "./types";
 
 const cleanupCallbacks: Array<() => Promise<void>> = [];
@@ -52,19 +53,6 @@ function createCredentialManager(requirements: CredentialRequirementSummary[]) {
   });
 
   return manager;
-}
-
-function createMemorySecretsStore(): LocalSecretsStore {
-  const entries = new Map<string, string>();
-  const key = ({ service, name }: { service: string; name: string }) => `${service}:${name}`;
-
-  return {
-    get: async (address) => entries.get(key(address)) ?? null,
-    set: async ({ service, name, value }) => {
-      entries.set(`${service}:${name}`, value);
-    },
-    delete: async (address) => entries.delete(key(address)),
-  };
 }
 
 afterEach(async () => {

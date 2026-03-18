@@ -96,6 +96,7 @@ describe("capability explorer helpers", () => {
       getCapabilityNamespace({
         path: "capabilities/github/CAPABILITY.md",
         typesPath: "capabilities/github/capability.d.ts",
+        name: "GitHub",
       }),
     ).toBe("github");
   });

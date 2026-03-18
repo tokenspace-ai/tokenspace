@@ -133,6 +133,7 @@ export const broken = token;
 
     try {
       await mkdir(path.join(workspaceDir, "src/capabilities/demo"), { recursive: true });
+      await mkdir(path.join(workspaceDir, "src/integrations/github"), { recursive: true });
       await mkdir(path.join(workspaceDir, "docs"), { recursive: true });
       await mkdir(path.join(workspaceDir, "node_modules/@tokenspace"), { recursive: true });
       await symlink(path.join(REPO_ROOT, "packages/sdk"), path.join(workspaceDir, "node_modules/@tokenspace/sdk"));
@@ -151,6 +152,24 @@ export const noop = true;
       await writeFile(
         path.join(workspaceDir, "docs/oauth.svg"),
         `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"></svg>\n`,
+        "utf8",
+      );
+      await writeFile(
+        path.join(workspaceDir, "src/integrations/github/icon.svg"),
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"></svg>\n`,
+        "utf8",
+      );
+      await writeFile(
+        path.join(workspaceDir, "src/integrations/github/credentials.ts"),
+        `
+import { credentials } from "@tokenspace/sdk";
+
+export const reexportedIcon = credentials.secret({
+  id: "reexported-icon",
+  scope: "workspace",
+  icon: "./icon.svg",
+});
+`,
         "utf8",
       );
       await writeFile(path.join(workspaceDir, "docs/not-an-image.txt"), "nope\n", "utf8");
@@ -190,6 +209,8 @@ export const invalidIcon = credentials.secret({
   scope: "workspace",
   icon: "../docs/not-an-image.txt",
 });
+
+export { reexportedIcon } from "./integrations/github/credentials";
 `,
         "utf8",
       );
@@ -203,6 +224,7 @@ export const invalidIcon = credentials.secret({
       const byId = new Map(result.metadata.credentialRequirements.map((credential) => [credential.id, credential]));
       expect(byId.get("source-icon")?.iconPath).toBe("capabilities/demo/icon.svg");
       expect(byId.get("docs-icon")?.iconPath).toBe("docs/oauth.svg");
+      expect(byId.get("reexported-icon")?.iconPath).toBe("integrations/github/icon.svg");
       expect(byId.get("missing-icon")?.iconPath).toBeUndefined();
       expect(byId.get("invalid-icon")?.iconPath).toBeUndefined();
       expect(result.diagnostics.warnings).toEqual(
