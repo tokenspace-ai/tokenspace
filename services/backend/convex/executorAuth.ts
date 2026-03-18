@@ -34,6 +34,7 @@ export type ExecutorSetupPayload = {
   instanceTokenTtlMs: number;
   instanceTokenRefreshWindowMs: number;
   snippets: {
+    compose: string;
     docker: string;
     raw: string;
   };
@@ -171,6 +172,15 @@ export function buildExecutorSetupPayload(bootstrapToken: string, convexUrl: str
     instanceTokenTtlMs: EXECUTOR_INSTANCE_TOKEN_TTL_MS,
     instanceTokenRefreshWindowMs: EXECUTOR_INSTANCE_TOKEN_REFRESH_WINDOW_MS,
     snippets: {
+      compose: [
+        "services:",
+        "  executor:",
+        `    image: ${EXECUTOR_IMAGE}`,
+        "    restart: unless-stopped",
+        "    environment:",
+        `      ${EXECUTOR_CONVEX_URL_ENV_VAR}: "${convexUrl}"`,
+        `      ${EXECUTOR_BOOTSTRAP_ENV_VAR}: "${bootstrapToken}"`,
+      ].join("\n"),
       docker: [
         "docker run \\",
         `  -e ${EXECUTOR_CONVEX_URL_ENV_VAR}="${convexUrl}" \\`,

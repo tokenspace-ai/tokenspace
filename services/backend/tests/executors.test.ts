@@ -1557,6 +1557,8 @@ describe("rotateExecutorBootstrapTokenImpl", () => {
     expect(result.executor.tokenVersion).toBe(3);
     expect(result.executor.onlineInstanceCount).toBe(0);
     expect(result.setup.requiredEnvVars).toEqual(["TOKENSPACE_API_URL", "TOKENSPACE_TOKEN"]);
+    expect(result.setup.snippets.compose).toContain(result.bootstrapToken);
+    expect(result.setup.snippets.compose).toContain(process.env.CONVEX_URL!);
     expect(result.setup.snippets.docker).toContain(result.bootstrapToken);
     expect(result.setup.snippets.docker).toContain(process.env.CONVEX_URL!);
     expect(result.setup.snippets.raw).toContain(result.bootstrapToken);

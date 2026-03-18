@@ -3,6 +3,8 @@ title: Executor Deployment
 description: Set up and operate a self-hosted executor for one or more workspaces.
 ---
 
+import { Tab, Tabs } from "fumadocs-ui/components/tabs";
+
 Self-hosted executors are the runtime environments that compile and run TokenSpace jobs. You create an executor once, start one or more executor instances with the bootstrap token TokenSpace gives you, and then assign that executor to a workspace from the UI.
 
 One executor can be shared across multiple workspaces. Each workspace can have only one assigned executor at a time.
@@ -19,7 +21,7 @@ You need:
 
 - workspace admin access
 - a reachable TokenSpace API URL
-- either Bun or Docker on the machine where you want to run the executor
+- either Bun, Docker, or Docker Compose on the machine where you want to run the executor
 - a secure place to store the bootstrap token shown during executor creation
 
 The bootstrap token is shown once during the create flow. TokenSpace does not re-display the plaintext token after you leave that screen.
@@ -46,20 +48,34 @@ The page also shows the current fleet status:
 
 After creating an executor, TokenSpace shows a one-time bootstrap token plus setup snippets.
 
-### Bun / CLI
+<Tabs items={["CLI command", "Docker", "Docker Compose"]}>
+  <Tab>
+    ```bash
+    bunx @tokenspace/executor@latest --api "<API_URL>" --token "<BOOTSTRAP_TOKEN>"
+    ```
+  </Tab>
+  <Tab>
+    ```bash
+    docker run \
+      -e TOKENSPACE_API_URL="<API_URL>" \
+      -e TOKENSPACE_TOKEN="<BOOTSTRAP_TOKEN>" \
+      ghcr.io/tokenspace-ai/executor:latest
+    ```
+  </Tab>
+  <Tab>
+    ```yaml
+    services:
+      executor:
+        image: ghcr.io/tokenspace-ai/executor:latest
+        restart: unless-stopped
+        environment:
+          TOKENSPACE_API_URL: "<API_URL>"
+          TOKENSPACE_TOKEN: "<BOOTSTRAP_TOKEN>"
+    ```
 
-```bash
-bunx @tokenspace/executor@latest --api "<API_URL>" --token "<BOOTSTRAP_TOKEN>"
-```
-
-### Docker
-
-```bash
-docker run \
-  -e TOKENSPACE_API_URL="<API_URL>" \
-  -e TOKENSPACE_TOKEN="<BOOTSTRAP_TOKEN>" \
-  ghcr.io/tokenspace-ai/executor:latest
-```
+    Run it with `docker compose up -d`.
+  </Tab>
+</Tabs>
 
 ### Environment variables
 
