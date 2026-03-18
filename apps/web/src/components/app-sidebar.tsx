@@ -1,16 +1,21 @@
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useMatchRoute, useParams } from "@tanstack/react-router";
 import { api } from "@tokenspace/backend/convex/_generated/api";
 import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
 import { useQuery } from "convex/react";
 import {
   AlertTriangleIcon,
+  CalendarClockIcon,
+  ClipboardListIcon,
   CogIcon,
   HomeIcon,
+  KeyRoundIcon,
+  Layers3Icon,
   MessageSquare,
   MessageSquareIcon,
   PlusIcon,
   ServerIcon,
   TerminalSquareIcon,
+  WebhookIcon,
 } from "lucide-react";
 import { useState } from "react";
 import {
@@ -66,20 +71,36 @@ export interface Thread {
   status?: ChatStatus;
 }
 
-type AppNavItem = "home" | "chat" | "playground";
+type AppNavItem =
+  | "home"
+  | "chat"
+  | "playground"
+  | "schedules"
+  | "events"
+  | "capabilities"
+  | "credentials"
+  | "audit-log";
 
 function useCurrentAppRoute(): AppNavItem | undefined {
-  const pathname = typeof window !== "undefined" ? window.location.pathname : "";
+  const matchRoute = useMatchRoute();
 
-  if (pathname.match(/\/workspace\/[^/]+\/playground/)) return "playground";
-  if (pathname.match(/\/workspace\/[^/]+\/chat/)) return "chat";
-  if (pathname.match(/\/workspace\/[^/]+$/)) return "home";
+  if (matchRoute({ to: "/workspace/$slug/audit-log" })) return "audit-log";
+  if (matchRoute({ to: "/workspace/$slug/credentials" })) return "credentials";
+  if (matchRoute({ to: "/workspace/$slug/capabilities" })) return "capabilities";
+  if (matchRoute({ to: "/workspace/$slug/events" })) return "events";
+  if (matchRoute({ to: "/workspace/$slug/schedules" })) return "schedules";
+  if (matchRoute({ to: "/workspace/$slug/playground", fuzzy: true })) return "playground";
+  if (matchRoute({ to: "/workspace/$slug/chat", fuzzy: true }) || matchRoute({ to: "/workspace/$slug/chat/$chatId" })) {
+    return "chat";
+  }
+  if (matchRoute({ to: "/workspace/$slug" })) return "home";
   return undefined;
 }
 
 interface AppSidebarProps {
   workspaces: Workspace[];
   workspaceId: Id<"workspaces">;
+  revisionId?: Id<"revisions">;
   branches: Branch[];
   currentWorkspaceSlug?: string;
   currentBranchId?: string;
@@ -90,6 +111,7 @@ interface AppSidebarProps {
   onToggleWorkingState: (include: boolean) => void;
   workingChanges: WorkspaceWorkingChange[];
   onCommitChanges: (message: string) => Promise<void>;
+  isWorkspaceAdmin: boolean;
   user: {
     id: string;
     email?: string | null;
@@ -110,6 +132,7 @@ interface AppSidebarProps {
 export function AppSidebar({
   workspaces,
   workspaceId,
+  revisionId,
   branches,
   currentWorkspaceSlug,
   currentBranchId,
@@ -120,6 +143,7 @@ export function AppSidebar({
   onToggleWorkingState,
   workingChanges,
   onCommitChanges,
+  isWorkspaceAdmin,
   user,
   onSignOut,
   threads,
@@ -137,9 +161,31 @@ export function AppSidebar({
   const currentRoute = useCurrentAppRoute();
   const [threadsPopoverOpen, setThreadsPopoverOpen] = useState(false);
   const assignedExecutorStatus = useQuery(api.executors.getAssignedExecutorStatus, { workspaceId });
+  const resolvedRevisionId = useQuery(
+    api.workspace.getRevision,
+    revisionId || !currentBranchId
+      ? "skip"
+      : {
+          workspaceId,
+          branchId: currentBranchId as Id<"branches">,
+          workingStateHash,
+        },
+  );
+  const effectiveRevisionId = revisionId ?? resolvedRevisionId ?? undefined;
+  const credentialSummary = useQuery(
+    api.credentials.getCredentialNavigationSummary,
+    effectiveRevisionId ? { revisionId: effectiveRevisionId } : "skip",
+  );
   const executorState =
     assignedExecutorStatus === undefined ? null : deriveWorkspaceExecutorState(assignedExecutorStatus);
   const executorLabel = assignedExecutorStatus?.executor.name ?? "Unassigned";
+  const showCredentials = isWorkspaceAdmin || Boolean(credentialSummary?.hasUserScopedRequirements);
+  const credentialsDisabled = Boolean(
+    isWorkspaceAdmin && credentialSummary !== undefined && !credentialSummary.hasAnyRequirements,
+  );
+  const credentialsNeedAction = Boolean(
+    showCredentials && credentialSummary && credentialSummary.missingConfigurableCount > 0,
+  );
 
   return (
     <Sidebar variant="sidebar" collapsible="icon" className="border-r">
@@ -162,6 +208,7 @@ export function AppSidebar({
 
       <SidebarContent>
         <SidebarGroup>
+          <SidebarGroupLabel>Work</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
@@ -265,6 +312,71 @@ export function AppSidebar({
 
       <SidebarFooter className="">
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={currentRoute === "schedules"} tooltip="Schedules">
+              <Link to="/workspace/$slug/schedules" params={{ slug: slug ?? "" }}>
+                <CalendarClockIcon className="size-4" />
+                <span>Schedules</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={currentRoute === "events"} tooltip="Events">
+              <Link to="/workspace/$slug/events" params={{ slug: slug ?? "" }}>
+                <WebhookIcon className="size-4" />
+                <span>Events</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+
+          {showCredentials ? (
+            <SidebarMenuItem>
+              {credentialsDisabled ? (
+                <SidebarMenuButton disabled tooltip="No credentials defined in this workspace">
+                  <KeyRoundIcon className="size-4" />
+                  <span>Credentials</span>
+                </SidebarMenuButton>
+              ) : (
+                <SidebarMenuButton
+                  asChild
+                  isActive={currentRoute === "credentials"}
+                  tooltip={credentialsNeedAction ? "Credentials (action needed)" : "Credentials"}
+                >
+                  <Link to="/workspace/$slug/credentials" params={{ slug: slug ?? "" }}>
+                    {credentialsNeedAction ? (
+                      <AlertTriangleIcon className="size-4 text-destructive" />
+                    ) : (
+                      <KeyRoundIcon className="size-4" />
+                    )}
+                    <span>Credentials</span>
+                  </Link>
+                </SidebarMenuButton>
+              )}
+              {!credentialsDisabled && credentialsNeedAction ? (
+                <SidebarMenuBadge className="text-[10px] text-destructive uppercase">Action</SidebarMenuBadge>
+              ) : null}
+            </SidebarMenuItem>
+          ) : null}
+
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={currentRoute === "capabilities"} tooltip="Capabilities">
+              <Link to="/workspace/$slug/capabilities" params={{ slug: slug ?? "" }}>
+                <Layers3Icon className="size-4" />
+                <span>Capabilities</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={currentRoute === "audit-log"} tooltip="Audit Log">
+              <Link to="/workspace/$slug/audit-log" params={{ slug: slug ?? "" }}>
+                <ClipboardListIcon className="size-4" />
+                <span>Audit Log</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+
           <SidebarMenuItem>
             <SidebarMenuButton asChild isActive={currentRoute === "playground"} tooltip="Playground">
               <Link to="/workspace/$slug/playground" params={{ slug: slug ?? "" }}>

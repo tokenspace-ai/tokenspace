@@ -16,6 +16,7 @@ type WorkspaceCredentialBinding = {
   credentialId: string;
   kind: "secret" | "oauth";
   updatedAt: number;
+  isExpired: boolean;
 };
 
 type CredentialRequirement = {
@@ -65,7 +66,15 @@ function requirementHint(requirement: CredentialRequirement): string | null {
   return null;
 }
 
-function RequirementMeta({ requirement, configured }: { requirement: CredentialRequirement; configured?: boolean }) {
+function RequirementMeta({
+  requirement,
+  configured,
+  configuredLabel,
+}: {
+  requirement: CredentialRequirement;
+  configured?: boolean;
+  configuredLabel?: string;
+}) {
   const hint = requirementHint(requirement);
 
   return (
@@ -80,7 +89,7 @@ function RequirementMeta({ requirement, configured }: { requirement: CredentialR
       ) : null}
       {configured !== undefined ? (
         <Badge variant={configured ? "default" : "destructive"} className="text-[10px]">
-          {configured ? "configured" : "not configured"}
+          {configuredLabel ?? (configured ? "configured" : "not configured")}
         </Badge>
       ) : null}
       {hint ? (
@@ -194,6 +203,10 @@ function GroupedRequirementList({
   );
 }
 
+function isBindingConfigured(binding: WorkspaceCredentialBinding | undefined): boolean {
+  return Boolean(binding && !binding.isExpired);
+}
+
 export function WorkspaceCredentialsSettings({
   workspaceId,
   revisionId,
@@ -238,6 +251,7 @@ export function WorkspaceCredentialsSettings({
         credentialId: binding.credentialId,
         kind: binding.kind,
         updatedAt: binding.updatedAt,
+        isExpired: Boolean(binding.isExpired),
       });
     }
     return map;
@@ -349,9 +363,10 @@ export function WorkspaceCredentialsSettings({
           renderRequirement={(requirement) => {
             const key = `${requirement.id}:${requirement.kind}`;
             const binding = bindingByKey.get(key);
-            const isMissing = requirement.kind !== "env" && !binding;
+            const isConfigured = isBindingConfigured(binding);
+            const isMissing = requirement.kind !== "env" && !isConfigured;
             const showSecretEditor =
-              requirement.kind === "secret" && (!binding || editingSecret[requirement.id] === true);
+              requirement.kind === "secret" && (!isConfigured || editingSecret[requirement.id] === true);
             const isSaving = savingKey === key;
             const isDeleting = deletingKey === key;
             const isBusy = isSaving || isDeleting;
@@ -369,7 +384,8 @@ export function WorkspaceCredentialsSettings({
                   <h3 className="min-w-0 text-sm font-medium">{requirementDisplayName(requirement)}</h3>
                   <RequirementMeta
                     requirement={requirement}
-                    configured={requirement.kind !== "env" ? !!binding : undefined}
+                    configured={requirement.kind !== "env" ? isConfigured : undefined}
+                    configuredLabel={binding?.isExpired ? "expired" : undefined}
                   />
                 </div>
                 {requirement.description ? <CredentialDescription description={requirement.description} /> : null}

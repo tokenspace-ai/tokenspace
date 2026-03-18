@@ -664,18 +664,44 @@ async function validateCredentialWriteAgainstRevision(args: {
 
   return requirement;
 }
-function mapCredentialBindingRow(row: {
-  _id: Id<"credentialValues">;
-  workspaceId: Id<"workspaces">;
-  credentialId: string;
-  scope: CredentialScope;
-  subject: string;
-  kind: StoredCredentialKind;
-  keyVersion: number;
-  createdAt: number;
-  updatedAt: number;
-  updatedByUserId?: string;
-}) {
+type CredentialBindingRow = Doc<"credentialValues">;
+
+async function mapCredentialBindingRow(row: CredentialBindingRow) {
+  let isExpired = false;
+
+  if (row.kind === "oauth") {
+    try {
+      const context = buildCryptoContext({
+        workspaceId: row.workspaceId,
+        credentialId: row.credentialId,
+        scope: row.scope,
+        subject: row.subject,
+        kind: row.kind,
+        keyVersion: row.keyVersion,
+      });
+      const payload = parseOAuthPayload(
+        await decryptCredentialPayload<OAuthCredentialPayload>(
+          {
+            keyVersion: row.keyVersion,
+            iv: row.iv,
+            ciphertext: row.ciphertext,
+          },
+          context,
+        ),
+      );
+      isExpired = isOAuthCredentialExpired(payload);
+    } catch (error) {
+      console.error("[credentials] failed to read oauth binding row", {
+        workspaceId: row.workspaceId,
+        credentialId: row.credentialId,
+        scope: row.scope,
+        subject: row.subject,
+        error,
+      });
+      isExpired = true;
+    }
+  }
+
   return {
     _id: row._id,
     workspaceId: row.workspaceId,
@@ -687,6 +713,115 @@ function mapCredentialBindingRow(row: {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     updatedByUserId: row.updatedByUserId,
+    isExpired,
+  };
+}
+
+function credentialBindingKey(credentialId: string, kind: StoredCredentialKind) {
+  return `${credentialId}:${kind}`;
+}
+
+type CredentialNavigationRequirement = {
+  id: string;
+  kind: "secret" | "env" | "oauth";
+  scope: "workspace" | "session" | "user";
+  optional?: boolean;
+};
+
+type CredentialNavigationBinding = {
+  credentialId: string;
+  kind: StoredCredentialKind;
+  isExpired?: boolean;
+};
+
+export function summarizeCredentialNavigationState(args: {
+  requirements: CredentialNavigationRequirement[];
+  userBindings: CredentialNavigationBinding[];
+  workspaceBindings?: CredentialNavigationBinding[];
+  isWorkspaceAdmin: boolean;
+}) {
+  const isConfigured = (binding: CredentialNavigationBinding) => !binding.isExpired;
+  const userBindingKeys = new Set(
+    args.userBindings.filter(isConfigured).map((binding) => credentialBindingKey(binding.credentialId, binding.kind)),
+  );
+  const workspaceBindingKeys = new Set(
+    (args.workspaceBindings ?? [])
+      .filter(isConfigured)
+      .map((binding) => credentialBindingKey(binding.credentialId, binding.kind)),
+  );
+
+  let requiredUserScopedCount = 0;
+  let requiredWorkspaceScopedCount = 0;
+  let configurableUserScopedCount = 0;
+  let configurableWorkspaceScopedCount = 0;
+  let missingUserScopedCount = 0;
+  let missingWorkspaceScopedCount = 0;
+  let missingConfigurableUserScopedCount = 0;
+  let missingConfigurableWorkspaceScopedCount = 0;
+  let hasUserScopedRequirements = false;
+  let hasWorkspaceScopedRequirements = false;
+  let hasSessionScopedRequirements = false;
+
+  for (const requirement of args.requirements) {
+    if (requirement.scope === "user") hasUserScopedRequirements = true;
+    if (requirement.scope === "workspace") hasWorkspaceScopedRequirements = true;
+    if (requirement.scope === "session") hasSessionScopedRequirements = true;
+
+    if (requirement.kind === "env") {
+      continue;
+    }
+
+    const key = credentialBindingKey(requirement.id, requirement.kind);
+    if (requirement.scope === "user") {
+      configurableUserScopedCount += 1;
+      if (!userBindingKeys.has(key)) {
+        missingConfigurableUserScopedCount += 1;
+      }
+      if (requirement.optional) {
+        continue;
+      }
+      requiredUserScopedCount += 1;
+      if (!userBindingKeys.has(key)) {
+        missingUserScopedCount += 1;
+      }
+      continue;
+    }
+
+    if (requirement.scope === "workspace") {
+      configurableWorkspaceScopedCount += 1;
+      if (args.isWorkspaceAdmin && !workspaceBindingKeys.has(key)) {
+        missingConfigurableWorkspaceScopedCount += 1;
+      }
+      if (requirement.optional) {
+        continue;
+      }
+      requiredWorkspaceScopedCount += 1;
+      if (args.isWorkspaceAdmin && !workspaceBindingKeys.has(key)) {
+        missingWorkspaceScopedCount += 1;
+      }
+    }
+  }
+
+  const missingActionableCount = missingUserScopedCount + (args.isWorkspaceAdmin ? missingWorkspaceScopedCount : 0);
+  const missingConfigurableCount =
+    missingConfigurableUserScopedCount + (args.isWorkspaceAdmin ? missingConfigurableWorkspaceScopedCount : 0);
+
+  return {
+    isWorkspaceAdmin: args.isWorkspaceAdmin,
+    hasAnyRequirements: args.requirements.length > 0,
+    hasUserScopedRequirements,
+    hasWorkspaceScopedRequirements,
+    hasSessionScopedRequirements,
+    configurableUserScopedCount,
+    configurableWorkspaceScopedCount,
+    requiredUserScopedCount,
+    requiredWorkspaceScopedCount,
+    missingConfigurableUserScopedCount,
+    missingConfigurableWorkspaceScopedCount,
+    missingConfigurableCount,
+    missingUserScopedCount,
+    missingWorkspaceScopedCount,
+    missingActionableCount,
   };
 }
 
@@ -703,7 +838,8 @@ async function listCredentialBindingsByScopeAndSubject(args: {
     )
     .collect();
 
-  return rows.sort((a, b) => b.updatedAt - a.updatedAt).map(mapCredentialBindingRow);
+  const sortedRows = rows.sort((a, b) => b.updatedAt - a.updatedAt);
+  return await Promise.all(sortedRows.map((row) => mapCredentialBindingRow(row)));
 }
 
 async function deleteCredentialBindings(args: {
@@ -1363,6 +1499,37 @@ export const getCredentialRequirementsForRevision = query({
     }
     await requireWorkspaceMember(ctx, revision.workspaceId);
     return [...(revision.credentialRequirements ?? [])].map(redactCredentialRequirementForClient);
+  },
+});
+
+export const getCredentialNavigationSummary = query({
+  args: {
+    revisionId: v.id("revisions"),
+  },
+  handler: async (ctx, args) => {
+    const revision = await ctx.db.get(args.revisionId);
+    if (!revision) {
+      throw new Error("Revision not found");
+    }
+
+    const { membership, user } = await requireWorkspaceMember(ctx, revision.workspaceId);
+    const isWorkspaceAdmin = membership.role === "workspace_admin";
+    const userBindings = await listCredentialBindingsByScopeAndSubject({
+      ctx,
+      workspaceId: revision.workspaceId,
+      scope: "user",
+      subject: user.subject,
+    });
+    const workspaceBindings = isWorkspaceAdmin
+      ? await listWorkspaceCredentialBindingsImpl(ctx, revision.workspaceId)
+      : [];
+
+    return summarizeCredentialNavigationState({
+      requirements: [...(revision.credentialRequirements ?? [])].map(redactCredentialRequirementForClient),
+      userBindings,
+      workspaceBindings,
+      isWorkspaceAdmin,
+    });
   },
 });
 
