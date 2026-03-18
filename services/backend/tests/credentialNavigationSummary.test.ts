@@ -69,4 +69,27 @@ describe("summarizeCredentialNavigationState", () => {
     expect(result.missingConfigurableCount).toBe(0);
     expect(result.missingActionableCount).toBe(0);
   });
+
+  it("treats expired oauth bindings as missing", () => {
+    const result = summarizeCredentialNavigationState({
+      requirements: [
+        { id: "github-token", kind: "oauth", scope: "user" },
+        { id: "slack-oauth", kind: "oauth", scope: "workspace", optional: true },
+      ],
+      userBindings: [{ credentialId: "github-token", kind: "oauth", isExpired: true }],
+      workspaceBindings: [{ credentialId: "slack-oauth", kind: "oauth", isExpired: true }],
+      isWorkspaceAdmin: true,
+    });
+
+    expect(result.configurableUserScopedCount).toBe(1);
+    expect(result.configurableWorkspaceScopedCount).toBe(1);
+    expect(result.missingConfigurableUserScopedCount).toBe(1);
+    expect(result.missingConfigurableWorkspaceScopedCount).toBe(1);
+    expect(result.missingConfigurableCount).toBe(2);
+    expect(result.requiredUserScopedCount).toBe(1);
+    expect(result.missingUserScopedCount).toBe(1);
+    expect(result.requiredWorkspaceScopedCount).toBe(0);
+    expect(result.missingWorkspaceScopedCount).toBe(0);
+    expect(result.missingActionableCount).toBe(1);
+  });
 });

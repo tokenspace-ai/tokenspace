@@ -36,6 +36,7 @@ type CredentialBinding = {
   credentialId: string;
   kind: "secret" | "oauth";
   updatedAt: number;
+  isExpired: boolean;
 };
 
 function formatUpdatedAt(timestamp: number | undefined): string {
@@ -49,6 +50,10 @@ function requirementBadgeLabel(requirement: Pick<CredentialRequirement, "scope" 
 
 function requirementDisplayName(requirement: Pick<CredentialRequirement, "id" | "label">) {
   return requirement.label ?? requirement.id;
+}
+
+function isBindingConfigured(binding: CredentialBinding | undefined): boolean {
+  return Boolean(binding && !binding.isExpired);
 }
 
 function requirementHint(requirement: CredentialRequirement): string | null {
@@ -208,6 +213,7 @@ export function WorkspaceAppCredentialsPage({
         credentialId: binding.credentialId,
         kind: binding.kind,
         updatedAt: binding.updatedAt,
+        isExpired: Boolean(binding.isExpired),
       });
     }
     return map;
@@ -220,6 +226,7 @@ export function WorkspaceAppCredentialsPage({
         credentialId: binding.credentialId,
         kind: binding.kind,
         updatedAt: binding.updatedAt,
+        isExpired: Boolean(binding.isExpired),
       });
     }
     return map;
@@ -371,9 +378,10 @@ export function WorkspaceAppCredentialsPage({
             renderRequirement={(requirement) => {
               const key = `${requirement.id}:${requirement.kind}`;
               const binding = userBindingByKey.get(key);
-              const isMissing = !requirement.optional && requirement.kind !== "env" && !binding;
+              const isConfigured = isBindingConfigured(binding);
+              const isMissing = !requirement.optional && requirement.kind !== "env" && !isConfigured;
               const showSecretEditor =
-                requirement.kind === "secret" && (!binding || editingSecret[requirement.id] === true);
+                requirement.kind === "secret" && (!isConfigured || editingSecret[requirement.id] === true);
               const isSaving = savingKey === key;
               const isDeleting = deletingKey === key;
               const isBusy = isSaving || isDeleting;
@@ -391,7 +399,8 @@ export function WorkspaceAppCredentialsPage({
                     <h3 className="min-w-0 text-sm font-medium">{requirementDisplayName(requirement)}</h3>
                     <RequirementMeta
                       requirement={requirement}
-                      configured={requirement.kind !== "env" ? !!binding : undefined}
+                      configured={requirement.kind !== "env" ? isConfigured : undefined}
+                      configuredLabel={binding?.isExpired ? "expired" : undefined}
                     />
                   </div>
                   {requirement.description ? <CredentialDescription description={requirement.description} /> : null}
@@ -553,14 +562,17 @@ export function WorkspaceAppCredentialsPage({
               renderRequirement={(requirement) => {
                 const key = `${requirement.id}:${requirement.kind}`;
                 const binding = workspaceBindingByKey.get(key);
+                const isConfigured = isBindingConfigured(binding);
                 return (
                   <div key={key} className="rounded-lg border bg-card p-4 space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <h3 className="min-w-0 text-sm font-medium">{requirementDisplayName(requirement)}</h3>
                       <RequirementMeta
                         requirement={requirement}
-                        configured={isWorkspaceAdmin && requirement.kind !== "env" ? !!binding : undefined}
-                        configuredLabel={isWorkspaceAdmin ? undefined : "admin managed"}
+                        configured={isWorkspaceAdmin && requirement.kind !== "env" ? isConfigured : undefined}
+                        configuredLabel={
+                          isWorkspaceAdmin ? (binding?.isExpired ? "expired" : undefined) : "admin managed"
+                        }
                       />
                     </div>
                     {requirement.description ? <CredentialDescription description={requirement.description} /> : null}

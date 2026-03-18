@@ -1,4 +1,4 @@
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { api } from "@tokenspace/backend/convex/_generated/api";
 import { useAuth } from "@workos/authkit-tanstack-react-start/client";
 import { useQuery } from "convex/react";
@@ -17,9 +17,9 @@ import { buildWorkspaceSlug, parseWorkspaceSlug } from "@/lib/workspace-slug";
 type RouteSection = "admin" | "app";
 
 function useCurrentRouteSection(): { section: RouteSection; subRoute?: string } {
-  const pathname = typeof window !== "undefined" ? window.location.pathname : "";
+  const { pathname } = useLocation();
 
-  if (pathname.includes("/admin/")) {
+  if (/\/admin(?:\/|$)/.test(pathname)) {
     return { section: "admin" };
   }
   if (pathname.includes("/playground")) return { section: "app", subRoute: "playground" };

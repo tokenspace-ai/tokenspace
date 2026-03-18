@@ -1,4 +1,4 @@
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useMatchRoute, useParams } from "@tanstack/react-router";
 import { api } from "@tokenspace/backend/convex/_generated/api";
 import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
 import { useQuery } from "convex/react";
@@ -82,16 +82,18 @@ type AppNavItem =
   | "audit-log";
 
 function useCurrentAppRoute(): AppNavItem | undefined {
-  const pathname = typeof window !== "undefined" ? window.location.pathname : "";
+  const matchRoute = useMatchRoute();
 
-  if (pathname.match(/\/workspace\/[^/]+\/audit-log\/?$/)) return "audit-log";
-  if (pathname.match(/\/workspace\/[^/]+\/credentials\/?$/)) return "credentials";
-  if (pathname.match(/\/workspace\/[^/]+\/capabilities\/?$/)) return "capabilities";
-  if (pathname.match(/\/workspace\/[^/]+\/events\/?$/)) return "events";
-  if (pathname.match(/\/workspace\/[^/]+\/schedules\/?$/)) return "schedules";
-  if (pathname.match(/\/workspace\/[^/]+\/playground/)) return "playground";
-  if (pathname.match(/\/workspace\/[^/]+\/chat/)) return "chat";
-  if (pathname.match(/\/workspace\/[^/]+\/?$/)) return "home";
+  if (matchRoute({ to: "/workspace/$slug/audit-log" })) return "audit-log";
+  if (matchRoute({ to: "/workspace/$slug/credentials" })) return "credentials";
+  if (matchRoute({ to: "/workspace/$slug/capabilities" })) return "capabilities";
+  if (matchRoute({ to: "/workspace/$slug/events" })) return "events";
+  if (matchRoute({ to: "/workspace/$slug/schedules" })) return "schedules";
+  if (matchRoute({ to: "/workspace/$slug/playground", fuzzy: true })) return "playground";
+  if (matchRoute({ to: "/workspace/$slug/chat", fuzzy: true }) || matchRoute({ to: "/workspace/$slug/chat/$chatId" })) {
+    return "chat";
+  }
+  if (matchRoute({ to: "/workspace/$slug" })) return "home";
   return undefined;
 }
 

@@ -664,18 +664,33 @@ async function validateCredentialWriteAgainstRevision(args: {
 
   return requirement;
 }
-function mapCredentialBindingRow(row: {
-  _id: Id<"credentialValues">;
-  workspaceId: Id<"workspaces">;
-  credentialId: string;
-  scope: CredentialScope;
-  subject: string;
-  kind: StoredCredentialKind;
-  keyVersion: number;
-  createdAt: number;
-  updatedAt: number;
-  updatedByUserId?: string;
-}) {
+type CredentialBindingRow = Doc<"credentialValues">;
+
+async function mapCredentialBindingRow(row: CredentialBindingRow) {
+  let isExpired = false;
+
+  if (row.kind === "oauth") {
+    const context = buildCryptoContext({
+      workspaceId: row.workspaceId,
+      credentialId: row.credentialId,
+      scope: row.scope,
+      subject: row.subject,
+      kind: row.kind,
+      keyVersion: row.keyVersion,
+    });
+    const payload = parseOAuthPayload(
+      await decryptCredentialPayload<OAuthCredentialPayload>(
+        {
+          keyVersion: row.keyVersion,
+          iv: row.iv,
+          ciphertext: row.ciphertext,
+        },
+        context,
+      ),
+    );
+    isExpired = isOAuthCredentialExpired(payload);
+  }
+
   return {
     _id: row._id,
     workspaceId: row.workspaceId,
@@ -687,6 +702,7 @@ function mapCredentialBindingRow(row: {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     updatedByUserId: row.updatedByUserId,
+    isExpired,
   };
 }
 
@@ -704,6 +720,7 @@ type CredentialNavigationRequirement = {
 type CredentialNavigationBinding = {
   credentialId: string;
   kind: StoredCredentialKind;
+  isExpired?: boolean;
 };
 
 export function summarizeCredentialNavigationState(args: {
@@ -712,11 +729,14 @@ export function summarizeCredentialNavigationState(args: {
   workspaceBindings?: CredentialNavigationBinding[];
   isWorkspaceAdmin: boolean;
 }) {
+  const isConfigured = (binding: CredentialNavigationBinding) => !binding.isExpired;
   const userBindingKeys = new Set(
-    args.userBindings.map((binding) => credentialBindingKey(binding.credentialId, binding.kind)),
+    args.userBindings.filter(isConfigured).map((binding) => credentialBindingKey(binding.credentialId, binding.kind)),
   );
   const workspaceBindingKeys = new Set(
-    (args.workspaceBindings ?? []).map((binding) => credentialBindingKey(binding.credentialId, binding.kind)),
+    (args.workspaceBindings ?? [])
+      .filter(isConfigured)
+      .map((binding) => credentialBindingKey(binding.credentialId, binding.kind)),
   );
 
   let requiredUserScopedCount = 0;
@@ -807,7 +827,8 @@ async function listCredentialBindingsByScopeAndSubject(args: {
     )
     .collect();
 
-  return rows.sort((a, b) => b.updatedAt - a.updatedAt).map(mapCredentialBindingRow);
+  const sortedRows = rows.sort((a, b) => b.updatedAt - a.updatedAt);
+  return await Promise.all(sortedRows.map((row) => mapCredentialBindingRow(row)));
 }
 
 async function deleteCredentialBindings(args: {
