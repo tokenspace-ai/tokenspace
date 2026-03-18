@@ -179,7 +179,7 @@ export function AppSidebar({
   const executorState =
     assignedExecutorStatus === undefined ? null : deriveWorkspaceExecutorState(assignedExecutorStatus);
   const executorLabel = assignedExecutorStatus?.executor.name ?? "Unassigned";
-  const showCredentials = isWorkspaceAdmin || Boolean(credentialSummary && credentialSummary.hasUserScopedRequirements);
+  const showCredentials = isWorkspaceAdmin || Boolean(credentialSummary?.hasUserScopedRequirements);
   const credentialsDisabled = Boolean(
     isWorkspaceAdmin && credentialSummary !== undefined && !credentialSummary.hasAnyRequirements,
   );
