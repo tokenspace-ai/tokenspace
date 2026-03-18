@@ -123,8 +123,11 @@ function RequirementMeta({
           optional
         </Badge>
       ) : null}
-      {configured !== undefined ? (
-        <Badge variant={configured ? "default" : "destructive"} className="text-[10px]">
+      {configured !== undefined || configuredLabel !== undefined ? (
+        <Badge
+          variant={configured === undefined ? "secondary" : configured ? "default" : "destructive"}
+          className="text-[10px]"
+        >
           {configuredLabel ?? (configured ? "configured" : "not configured")}
         </Badge>
       ) : null}

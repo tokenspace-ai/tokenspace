@@ -670,25 +670,36 @@ async function mapCredentialBindingRow(row: CredentialBindingRow) {
   let isExpired = false;
 
   if (row.kind === "oauth") {
-    const context = buildCryptoContext({
-      workspaceId: row.workspaceId,
-      credentialId: row.credentialId,
-      scope: row.scope,
-      subject: row.subject,
-      kind: row.kind,
-      keyVersion: row.keyVersion,
-    });
-    const payload = parseOAuthPayload(
-      await decryptCredentialPayload<OAuthCredentialPayload>(
-        {
-          keyVersion: row.keyVersion,
-          iv: row.iv,
-          ciphertext: row.ciphertext,
-        },
-        context,
-      ),
-    );
-    isExpired = isOAuthCredentialExpired(payload);
+    try {
+      const context = buildCryptoContext({
+        workspaceId: row.workspaceId,
+        credentialId: row.credentialId,
+        scope: row.scope,
+        subject: row.subject,
+        kind: row.kind,
+        keyVersion: row.keyVersion,
+      });
+      const payload = parseOAuthPayload(
+        await decryptCredentialPayload<OAuthCredentialPayload>(
+          {
+            keyVersion: row.keyVersion,
+            iv: row.iv,
+            ciphertext: row.ciphertext,
+          },
+          context,
+        ),
+      );
+      isExpired = isOAuthCredentialExpired(payload);
+    } catch (error) {
+      console.error("[credentials] failed to read oauth binding row", {
+        workspaceId: row.workspaceId,
+        credentialId: row.credentialId,
+        scope: row.scope,
+        subject: row.subject,
+        error,
+      });
+      isExpired = true;
+    }
   }
 
   return {
