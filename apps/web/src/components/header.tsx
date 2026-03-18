@@ -14,16 +14,22 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { buildWorkspaceSlug, parseWorkspaceSlug } from "@/lib/workspace-slug";
 
-type RouteSection = "admin" | "chat";
+type RouteSection = "admin" | "app";
 
 function useCurrentRouteSection(): { section: RouteSection; subRoute?: string } {
   const pathname = typeof window !== "undefined" ? window.location.pathname : "";
 
-  if (pathname.includes("/admin/editor")) return { section: "admin", subRoute: "admin/editor" };
-  if (pathname.includes("/admin/revision-files")) return { section: "admin", subRoute: "admin/revision-files" };
-  if (pathname.includes("/admin/playground")) return { section: "admin", subRoute: "admin/playground" };
-  if (pathname.includes("/chat")) return { section: "chat", subRoute: "chat" };
-  return { section: "chat", subRoute: "chat" };
+  if (pathname.includes("/admin/")) {
+    return { section: "admin" };
+  }
+  if (pathname.includes("/playground")) return { section: "app", subRoute: "playground" };
+  if (pathname.includes("/schedules")) return { section: "app", subRoute: "schedules" };
+  if (pathname.includes("/events")) return { section: "app", subRoute: "events" };
+  if (pathname.includes("/capabilities")) return { section: "app", subRoute: "capabilities" };
+  if (pathname.includes("/credentials")) return { section: "app", subRoute: "credentials" };
+  if (pathname.includes("/audit-log")) return { section: "app", subRoute: "audit-log" };
+  if (pathname.includes("/chat")) return { section: "app", subRoute: "chat" };
+  return { section: "app" };
 }
 
 export default function Header() {
@@ -73,8 +79,11 @@ export default function Header() {
       branch.name,
       includeWorking ? workingStateHash : undefined,
     );
-    const route = subRoute ?? "chat";
-    navigate({ to: `/workspace/${newSlug}/${route}` });
+    if (subRoute) {
+      navigate({ to: `/workspace/${newSlug}/${subRoute}` });
+      return;
+    }
+    navigate({ to: `/workspace/${newSlug}` });
   };
 
   const handleToggleWorkingState = (include: boolean) => {
@@ -83,8 +92,11 @@ export default function Header() {
     if (!branch) return;
 
     const newSlug = buildWorkspaceSlug(parsedSlug.workspaceSlug, branch.name, include ? workingStateHash : undefined);
-    const route = subRoute ?? "chat";
-    navigate({ to: `/workspace/${newSlug}/${route}` });
+    if (subRoute) {
+      navigate({ to: `/workspace/${newSlug}/${subRoute}` });
+      return;
+    }
+    navigate({ to: `/workspace/${newSlug}` });
   };
 
   const handleSignOut = () => {

@@ -26,10 +26,16 @@ import { Route as AppWorkspaceSlugAdminSettingsRouteImport } from './routes/_app
 import { Route as AppWorkspaceSlugAdminRevisionFilesRouteImport } from './routes/_app/workspace.$slug.admin/revision-files'
 import { Route as AppWorkspaceSlugAdminModelsRouteImport } from './routes/_app/workspace.$slug.admin/models'
 import { Route as AppWorkspaceSlugAdminMembersRouteImport } from './routes/_app/workspace.$slug.admin/members'
+import { Route as AppWorkspaceSlugAdminGitSyncRouteImport } from './routes/_app/workspace.$slug.admin/git-sync'
 import { Route as AppWorkspaceSlugAdminExecutorRouteImport } from './routes/_app/workspace.$slug.admin/executor'
 import { Route as AppWorkspaceSlugAdminEditorRouteImport } from './routes/_app/workspace.$slug.admin/editor'
 import { Route as AppWorkspaceSlugAdminCredentialsRouteImport } from './routes/_app/workspace.$slug.admin/credentials'
+import { Route as AppWorkspaceSlugAppSchedulesRouteImport } from './routes/_app/workspace.$slug._app/schedules'
 import { Route as AppWorkspaceSlugAppPlaygroundRouteImport } from './routes/_app/workspace.$slug._app/playground'
+import { Route as AppWorkspaceSlugAppEventsRouteImport } from './routes/_app/workspace.$slug._app/events'
+import { Route as AppWorkspaceSlugAppCredentialsRouteImport } from './routes/_app/workspace.$slug._app/credentials'
+import { Route as AppWorkspaceSlugAppCapabilitiesRouteImport } from './routes/_app/workspace.$slug._app/capabilities'
+import { Route as AppWorkspaceSlugAppAuditLogRouteImport } from './routes/_app/workspace.$slug._app/audit-log'
 import { Route as AppWorkspaceSlugAppChatIndexRouteImport } from './routes/_app/workspace.$slug._app/chat.index'
 import { Route as AppWorkspaceSlugAppChatChatIdRouteImport } from './routes/_app/workspace.$slug._app/chat.$chatId'
 
@@ -123,6 +129,12 @@ const AppWorkspaceSlugAdminMembersRoute =
     path: '/members',
     getParentRoute: () => AppWorkspaceSlugAdminRouteRoute,
   } as any)
+const AppWorkspaceSlugAdminGitSyncRoute =
+  AppWorkspaceSlugAdminGitSyncRouteImport.update({
+    id: '/git-sync',
+    path: '/git-sync',
+    getParentRoute: () => AppWorkspaceSlugAdminRouteRoute,
+  } as any)
 const AppWorkspaceSlugAdminExecutorRoute =
   AppWorkspaceSlugAdminExecutorRouteImport.update({
     id: '/executor',
@@ -141,10 +153,40 @@ const AppWorkspaceSlugAdminCredentialsRoute =
     path: '/credentials',
     getParentRoute: () => AppWorkspaceSlugAdminRouteRoute,
   } as any)
+const AppWorkspaceSlugAppSchedulesRoute =
+  AppWorkspaceSlugAppSchedulesRouteImport.update({
+    id: '/schedules',
+    path: '/schedules',
+    getParentRoute: () => AppWorkspaceSlugAppRouteRoute,
+  } as any)
 const AppWorkspaceSlugAppPlaygroundRoute =
   AppWorkspaceSlugAppPlaygroundRouteImport.update({
     id: '/playground',
     path: '/playground',
+    getParentRoute: () => AppWorkspaceSlugAppRouteRoute,
+  } as any)
+const AppWorkspaceSlugAppEventsRoute =
+  AppWorkspaceSlugAppEventsRouteImport.update({
+    id: '/events',
+    path: '/events',
+    getParentRoute: () => AppWorkspaceSlugAppRouteRoute,
+  } as any)
+const AppWorkspaceSlugAppCredentialsRoute =
+  AppWorkspaceSlugAppCredentialsRouteImport.update({
+    id: '/credentials',
+    path: '/credentials',
+    getParentRoute: () => AppWorkspaceSlugAppRouteRoute,
+  } as any)
+const AppWorkspaceSlugAppCapabilitiesRoute =
+  AppWorkspaceSlugAppCapabilitiesRouteImport.update({
+    id: '/capabilities',
+    path: '/capabilities',
+    getParentRoute: () => AppWorkspaceSlugAppRouteRoute,
+  } as any)
+const AppWorkspaceSlugAppAuditLogRoute =
+  AppWorkspaceSlugAppAuditLogRouteImport.update({
+    id: '/audit-log',
+    path: '/audit-log',
     getParentRoute: () => AppWorkspaceSlugAppRouteRoute,
   } as any)
 const AppWorkspaceSlugAppChatIndexRoute =
@@ -171,10 +213,16 @@ export interface FileRoutesByFullPath {
   '/api/cli/config': typeof ApiCliConfigRoute
   '/workspace/$slug/admin': typeof AppWorkspaceSlugAdminRouteRouteWithChildren
   '/api/cli/auth/config': typeof ApiCliAuthConfigRoute
+  '/workspace/$slug/audit-log': typeof AppWorkspaceSlugAppAuditLogRoute
+  '/workspace/$slug/capabilities': typeof AppWorkspaceSlugAppCapabilitiesRoute
+  '/workspace/$slug/credentials': typeof AppWorkspaceSlugAppCredentialsRoute
+  '/workspace/$slug/events': typeof AppWorkspaceSlugAppEventsRoute
   '/workspace/$slug/playground': typeof AppWorkspaceSlugAppPlaygroundRoute
+  '/workspace/$slug/schedules': typeof AppWorkspaceSlugAppSchedulesRoute
   '/workspace/$slug/admin/credentials': typeof AppWorkspaceSlugAdminCredentialsRoute
   '/workspace/$slug/admin/editor': typeof AppWorkspaceSlugAdminEditorRoute
   '/workspace/$slug/admin/executor': typeof AppWorkspaceSlugAdminExecutorRoute
+  '/workspace/$slug/admin/git-sync': typeof AppWorkspaceSlugAdminGitSyncRoute
   '/workspace/$slug/admin/members': typeof AppWorkspaceSlugAdminMembersRoute
   '/workspace/$slug/admin/models': typeof AppWorkspaceSlugAdminModelsRoute
   '/workspace/$slug/admin/revision-files': typeof AppWorkspaceSlugAdminRevisionFilesRoute
@@ -194,10 +242,16 @@ export interface FileRoutesByTo {
   '/api/cli/config': typeof ApiCliConfigRoute
   '/workspace/$slug/admin': typeof AppWorkspaceSlugAdminRouteRouteWithChildren
   '/api/cli/auth/config': typeof ApiCliAuthConfigRoute
+  '/workspace/$slug/audit-log': typeof AppWorkspaceSlugAppAuditLogRoute
+  '/workspace/$slug/capabilities': typeof AppWorkspaceSlugAppCapabilitiesRoute
+  '/workspace/$slug/credentials': typeof AppWorkspaceSlugAppCredentialsRoute
+  '/workspace/$slug/events': typeof AppWorkspaceSlugAppEventsRoute
   '/workspace/$slug/playground': typeof AppWorkspaceSlugAppPlaygroundRoute
+  '/workspace/$slug/schedules': typeof AppWorkspaceSlugAppSchedulesRoute
   '/workspace/$slug/admin/credentials': typeof AppWorkspaceSlugAdminCredentialsRoute
   '/workspace/$slug/admin/editor': typeof AppWorkspaceSlugAdminEditorRoute
   '/workspace/$slug/admin/executor': typeof AppWorkspaceSlugAdminExecutorRoute
+  '/workspace/$slug/admin/git-sync': typeof AppWorkspaceSlugAdminGitSyncRoute
   '/workspace/$slug/admin/members': typeof AppWorkspaceSlugAdminMembersRoute
   '/workspace/$slug/admin/models': typeof AppWorkspaceSlugAdminModelsRoute
   '/workspace/$slug/admin/revision-files': typeof AppWorkspaceSlugAdminRevisionFilesRoute
@@ -219,10 +273,16 @@ export interface FileRoutesById {
   '/_app/workspace/$slug/_app': typeof AppWorkspaceSlugAppRouteRouteWithChildren
   '/_app/workspace/$slug/admin': typeof AppWorkspaceSlugAdminRouteRouteWithChildren
   '/api/cli/auth/config': typeof ApiCliAuthConfigRoute
+  '/_app/workspace/$slug/_app/audit-log': typeof AppWorkspaceSlugAppAuditLogRoute
+  '/_app/workspace/$slug/_app/capabilities': typeof AppWorkspaceSlugAppCapabilitiesRoute
+  '/_app/workspace/$slug/_app/credentials': typeof AppWorkspaceSlugAppCredentialsRoute
+  '/_app/workspace/$slug/_app/events': typeof AppWorkspaceSlugAppEventsRoute
   '/_app/workspace/$slug/_app/playground': typeof AppWorkspaceSlugAppPlaygroundRoute
+  '/_app/workspace/$slug/_app/schedules': typeof AppWorkspaceSlugAppSchedulesRoute
   '/_app/workspace/$slug/admin/credentials': typeof AppWorkspaceSlugAdminCredentialsRoute
   '/_app/workspace/$slug/admin/editor': typeof AppWorkspaceSlugAdminEditorRoute
   '/_app/workspace/$slug/admin/executor': typeof AppWorkspaceSlugAdminExecutorRoute
+  '/_app/workspace/$slug/admin/git-sync': typeof AppWorkspaceSlugAdminGitSyncRoute
   '/_app/workspace/$slug/admin/members': typeof AppWorkspaceSlugAdminMembersRoute
   '/_app/workspace/$slug/admin/models': typeof AppWorkspaceSlugAdminModelsRoute
   '/_app/workspace/$slug/admin/revision-files': typeof AppWorkspaceSlugAdminRevisionFilesRoute
@@ -244,10 +304,16 @@ export interface FileRouteTypes {
     | '/api/cli/config'
     | '/workspace/$slug/admin'
     | '/api/cli/auth/config'
+    | '/workspace/$slug/audit-log'
+    | '/workspace/$slug/capabilities'
+    | '/workspace/$slug/credentials'
+    | '/workspace/$slug/events'
     | '/workspace/$slug/playground'
+    | '/workspace/$slug/schedules'
     | '/workspace/$slug/admin/credentials'
     | '/workspace/$slug/admin/editor'
     | '/workspace/$slug/admin/executor'
+    | '/workspace/$slug/admin/git-sync'
     | '/workspace/$slug/admin/members'
     | '/workspace/$slug/admin/models'
     | '/workspace/$slug/admin/revision-files'
@@ -267,10 +333,16 @@ export interface FileRouteTypes {
     | '/api/cli/config'
     | '/workspace/$slug/admin'
     | '/api/cli/auth/config'
+    | '/workspace/$slug/audit-log'
+    | '/workspace/$slug/capabilities'
+    | '/workspace/$slug/credentials'
+    | '/workspace/$slug/events'
     | '/workspace/$slug/playground'
+    | '/workspace/$slug/schedules'
     | '/workspace/$slug/admin/credentials'
     | '/workspace/$slug/admin/editor'
     | '/workspace/$slug/admin/executor'
+    | '/workspace/$slug/admin/git-sync'
     | '/workspace/$slug/admin/members'
     | '/workspace/$slug/admin/models'
     | '/workspace/$slug/admin/revision-files'
@@ -291,10 +363,16 @@ export interface FileRouteTypes {
     | '/_app/workspace/$slug/_app'
     | '/_app/workspace/$slug/admin'
     | '/api/cli/auth/config'
+    | '/_app/workspace/$slug/_app/audit-log'
+    | '/_app/workspace/$slug/_app/capabilities'
+    | '/_app/workspace/$slug/_app/credentials'
+    | '/_app/workspace/$slug/_app/events'
     | '/_app/workspace/$slug/_app/playground'
+    | '/_app/workspace/$slug/_app/schedules'
     | '/_app/workspace/$slug/admin/credentials'
     | '/_app/workspace/$slug/admin/editor'
     | '/_app/workspace/$slug/admin/executor'
+    | '/_app/workspace/$slug/admin/git-sync'
     | '/_app/workspace/$slug/admin/members'
     | '/_app/workspace/$slug/admin/models'
     | '/_app/workspace/$slug/admin/revision-files'
@@ -434,6 +512,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceSlugAdminMembersRouteImport
       parentRoute: typeof AppWorkspaceSlugAdminRouteRoute
     }
+    '/_app/workspace/$slug/admin/git-sync': {
+      id: '/_app/workspace/$slug/admin/git-sync'
+      path: '/git-sync'
+      fullPath: '/workspace/$slug/admin/git-sync'
+      preLoaderRoute: typeof AppWorkspaceSlugAdminGitSyncRouteImport
+      parentRoute: typeof AppWorkspaceSlugAdminRouteRoute
+    }
     '/_app/workspace/$slug/admin/executor': {
       id: '/_app/workspace/$slug/admin/executor'
       path: '/executor'
@@ -455,11 +540,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceSlugAdminCredentialsRouteImport
       parentRoute: typeof AppWorkspaceSlugAdminRouteRoute
     }
+    '/_app/workspace/$slug/_app/schedules': {
+      id: '/_app/workspace/$slug/_app/schedules'
+      path: '/schedules'
+      fullPath: '/workspace/$slug/schedules'
+      preLoaderRoute: typeof AppWorkspaceSlugAppSchedulesRouteImport
+      parentRoute: typeof AppWorkspaceSlugAppRouteRoute
+    }
     '/_app/workspace/$slug/_app/playground': {
       id: '/_app/workspace/$slug/_app/playground'
       path: '/playground'
       fullPath: '/workspace/$slug/playground'
       preLoaderRoute: typeof AppWorkspaceSlugAppPlaygroundRouteImport
+      parentRoute: typeof AppWorkspaceSlugAppRouteRoute
+    }
+    '/_app/workspace/$slug/_app/events': {
+      id: '/_app/workspace/$slug/_app/events'
+      path: '/events'
+      fullPath: '/workspace/$slug/events'
+      preLoaderRoute: typeof AppWorkspaceSlugAppEventsRouteImport
+      parentRoute: typeof AppWorkspaceSlugAppRouteRoute
+    }
+    '/_app/workspace/$slug/_app/credentials': {
+      id: '/_app/workspace/$slug/_app/credentials'
+      path: '/credentials'
+      fullPath: '/workspace/$slug/credentials'
+      preLoaderRoute: typeof AppWorkspaceSlugAppCredentialsRouteImport
+      parentRoute: typeof AppWorkspaceSlugAppRouteRoute
+    }
+    '/_app/workspace/$slug/_app/capabilities': {
+      id: '/_app/workspace/$slug/_app/capabilities'
+      path: '/capabilities'
+      fullPath: '/workspace/$slug/capabilities'
+      preLoaderRoute: typeof AppWorkspaceSlugAppCapabilitiesRouteImport
+      parentRoute: typeof AppWorkspaceSlugAppRouteRoute
+    }
+    '/_app/workspace/$slug/_app/audit-log': {
+      id: '/_app/workspace/$slug/_app/audit-log'
+      path: '/audit-log'
+      fullPath: '/workspace/$slug/audit-log'
+      preLoaderRoute: typeof AppWorkspaceSlugAppAuditLogRouteImport
       parentRoute: typeof AppWorkspaceSlugAppRouteRoute
     }
     '/_app/workspace/$slug/_app/chat/': {
@@ -480,7 +600,12 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppWorkspaceSlugAppRouteRouteChildren {
+  AppWorkspaceSlugAppAuditLogRoute: typeof AppWorkspaceSlugAppAuditLogRoute
+  AppWorkspaceSlugAppCapabilitiesRoute: typeof AppWorkspaceSlugAppCapabilitiesRoute
+  AppWorkspaceSlugAppCredentialsRoute: typeof AppWorkspaceSlugAppCredentialsRoute
+  AppWorkspaceSlugAppEventsRoute: typeof AppWorkspaceSlugAppEventsRoute
   AppWorkspaceSlugAppPlaygroundRoute: typeof AppWorkspaceSlugAppPlaygroundRoute
+  AppWorkspaceSlugAppSchedulesRoute: typeof AppWorkspaceSlugAppSchedulesRoute
   AppWorkspaceSlugAppIndexRoute: typeof AppWorkspaceSlugAppIndexRoute
   AppWorkspaceSlugAppChatChatIdRoute: typeof AppWorkspaceSlugAppChatChatIdRoute
   AppWorkspaceSlugAppChatIndexRoute: typeof AppWorkspaceSlugAppChatIndexRoute
@@ -488,7 +613,12 @@ interface AppWorkspaceSlugAppRouteRouteChildren {
 
 const AppWorkspaceSlugAppRouteRouteChildren: AppWorkspaceSlugAppRouteRouteChildren =
   {
+    AppWorkspaceSlugAppAuditLogRoute: AppWorkspaceSlugAppAuditLogRoute,
+    AppWorkspaceSlugAppCapabilitiesRoute: AppWorkspaceSlugAppCapabilitiesRoute,
+    AppWorkspaceSlugAppCredentialsRoute: AppWorkspaceSlugAppCredentialsRoute,
+    AppWorkspaceSlugAppEventsRoute: AppWorkspaceSlugAppEventsRoute,
     AppWorkspaceSlugAppPlaygroundRoute: AppWorkspaceSlugAppPlaygroundRoute,
+    AppWorkspaceSlugAppSchedulesRoute: AppWorkspaceSlugAppSchedulesRoute,
     AppWorkspaceSlugAppIndexRoute: AppWorkspaceSlugAppIndexRoute,
     AppWorkspaceSlugAppChatChatIdRoute: AppWorkspaceSlugAppChatChatIdRoute,
     AppWorkspaceSlugAppChatIndexRoute: AppWorkspaceSlugAppChatIndexRoute,
@@ -503,6 +633,7 @@ interface AppWorkspaceSlugAdminRouteRouteChildren {
   AppWorkspaceSlugAdminCredentialsRoute: typeof AppWorkspaceSlugAdminCredentialsRoute
   AppWorkspaceSlugAdminEditorRoute: typeof AppWorkspaceSlugAdminEditorRoute
   AppWorkspaceSlugAdminExecutorRoute: typeof AppWorkspaceSlugAdminExecutorRoute
+  AppWorkspaceSlugAdminGitSyncRoute: typeof AppWorkspaceSlugAdminGitSyncRoute
   AppWorkspaceSlugAdminMembersRoute: typeof AppWorkspaceSlugAdminMembersRoute
   AppWorkspaceSlugAdminModelsRoute: typeof AppWorkspaceSlugAdminModelsRoute
   AppWorkspaceSlugAdminRevisionFilesRoute: typeof AppWorkspaceSlugAdminRevisionFilesRoute
@@ -515,6 +646,7 @@ const AppWorkspaceSlugAdminRouteRouteChildren: AppWorkspaceSlugAdminRouteRouteCh
       AppWorkspaceSlugAdminCredentialsRoute,
     AppWorkspaceSlugAdminEditorRoute: AppWorkspaceSlugAdminEditorRoute,
     AppWorkspaceSlugAdminExecutorRoute: AppWorkspaceSlugAdminExecutorRoute,
+    AppWorkspaceSlugAdminGitSyncRoute: AppWorkspaceSlugAdminGitSyncRoute,
     AppWorkspaceSlugAdminMembersRoute: AppWorkspaceSlugAdminMembersRoute,
     AppWorkspaceSlugAdminModelsRoute: AppWorkspaceSlugAdminModelsRoute,
     AppWorkspaceSlugAdminRevisionFilesRoute:

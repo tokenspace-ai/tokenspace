@@ -9,6 +9,7 @@ export type WorkspaceContextType = {
   workspaceId: Id<"workspaces">;
   workspaceSlug: string;
   workspaceName: string;
+  workspaceRole: "workspace_admin" | "member";
   branchId: Id<"branches"> | undefined;
   branchName: string;
   workingStateHash: string | undefined;
@@ -40,6 +41,7 @@ export function useWorkspaceContext(): WorkspaceContextType {
     workspaceId: workspaceContext.workspace._id,
     workspaceSlug,
     workspaceName: workspaceContext.workspace.name,
+    workspaceRole: workspaceContext.workspace.role,
     branchId: workspaceContext.branch?._id,
     branchName: workspaceContext.branch?.name ?? branchName,
     workingStateHash,

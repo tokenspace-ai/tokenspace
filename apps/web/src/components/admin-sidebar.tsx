@@ -4,6 +4,7 @@ import {
   BrainCircuitIcon,
   Code2,
   FolderOpen,
+  GitBranchIcon,
   KeyRoundIcon,
   ServerIcon,
   SettingsIcon,
@@ -32,7 +33,15 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-type AdminNavItem = "editor" | "revision-files" | "settings" | "credentials" | "members" | "models" | "executor";
+type AdminNavItem =
+  | "editor"
+  | "revision-files"
+  | "settings"
+  | "git-sync"
+  | "credentials"
+  | "members"
+  | "models"
+  | "executor";
 
 type AdminNavItemConfig = {
   id: AdminNavItem;
@@ -42,6 +51,7 @@ type AdminNavItemConfig = {
     | "/workspace/$slug/admin/editor"
     | "/workspace/$slug/admin/revision-files"
     | "/workspace/$slug/admin/settings"
+    | "/workspace/$slug/admin/git-sync"
     | "/workspace/$slug/admin/credentials"
     | "/workspace/$slug/admin/members"
     | "/workspace/$slug/admin/models"
@@ -49,16 +59,20 @@ type AdminNavItemConfig = {
 };
 
 const workspaceNavItems: AdminNavItemConfig[] = [
-  { id: "editor", label: "Editor", icon: Code2, to: "/workspace/$slug/admin/editor" },
-  { id: "revision-files", label: "Revision Files", icon: FolderOpen, to: "/workspace/$slug/admin/revision-files" },
+  { id: "settings", label: "General", icon: SettingsIcon, to: "/workspace/$slug/admin/settings" },
+  { id: "git-sync", label: "Git Sync", icon: GitBranchIcon, to: "/workspace/$slug/admin/git-sync" },
+  { id: "executor", label: "Execution Environment", icon: ServerIcon, to: "/workspace/$slug/admin/executor" },
+  { id: "members", label: "Members", icon: UsersIcon, to: "/workspace/$slug/admin/members" },
 ];
 
-const settingsNavItems: AdminNavItemConfig[] = [
-  { id: "settings", label: "General", icon: SettingsIcon, to: "/workspace/$slug/admin/settings" },
-  { id: "executor", label: "Execution Environment", icon: ServerIcon, to: "/workspace/$slug/admin/executor" },
+const accessNavItems: AdminNavItemConfig[] = [
   { id: "credentials", label: "Credentials", icon: KeyRoundIcon, to: "/workspace/$slug/admin/credentials" },
-  { id: "members", label: "Members", icon: UsersIcon, to: "/workspace/$slug/admin/members" },
+];
+
+const revisionNavItems: AdminNavItemConfig[] = [
+  { id: "editor", label: "Editor", icon: Code2, to: "/workspace/$slug/admin/editor" },
   { id: "models", label: "Models", icon: BrainCircuitIcon, to: "/workspace/$slug/admin/models" },
+  { id: "revision-files", label: "Revision Files", icon: FolderOpen, to: "/workspace/$slug/admin/revision-files" },
 ];
 
 function useCurrentAdminRoute(): AdminNavItem | undefined {
@@ -68,6 +82,7 @@ function useCurrentAdminRoute(): AdminNavItem | undefined {
   if (pathname.includes("/admin/revision-files")) return "revision-files";
   if (pathname.includes("/admin/members")) return "members";
   if (pathname.includes("/admin/settings")) return "settings";
+  if (pathname.includes("/admin/git-sync")) return "git-sync";
   if (pathname.includes("/admin/executor")) return "executor";
   if (pathname.includes("/admin/credentials")) return "credentials";
   if (pathname.includes("/admin/models")) return "models";
@@ -152,10 +167,10 @@ export function AdminSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup>
-          <SidebarGroupLabel>Settings</SidebarGroupLabel>
+          <SidebarGroupLabel>Workspace</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {settingsNavItems.map((item) => {
+              {workspaceNavItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = currentRoute === item.id;
                 return (
@@ -173,10 +188,31 @@ export function AdminSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup>
-          <SidebarGroupLabel>Tokenspace</SidebarGroupLabel>
+          <SidebarGroupLabel>Access &amp; Secrets</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {workspaceNavItems.map((item) => {
+              {accessNavItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = currentRoute === item.id;
+                return (
+                  <SidebarMenuItem key={item.id}>
+                    <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
+                      <Link to={item.to} params={{ slug: slug ?? "" }}>
+                        <Icon className="size-4" />
+                        <span>{item.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel>Current Revision</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {revisionNavItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = currentRoute === item.id;
                 return (

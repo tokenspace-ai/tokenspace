@@ -690,6 +690,85 @@ function mapCredentialBindingRow(row: {
   };
 }
 
+function credentialBindingKey(credentialId: string, kind: StoredCredentialKind) {
+  return `${credentialId}:${kind}`;
+}
+
+type CredentialNavigationRequirement = {
+  id: string;
+  kind: "secret" | "env" | "oauth";
+  scope: "workspace" | "session" | "user";
+  optional?: boolean;
+};
+
+type CredentialNavigationBinding = {
+  credentialId: string;
+  kind: StoredCredentialKind;
+};
+
+export function summarizeCredentialNavigationState(args: {
+  requirements: CredentialNavigationRequirement[];
+  userBindings: CredentialNavigationBinding[];
+  workspaceBindings?: CredentialNavigationBinding[];
+  isWorkspaceAdmin: boolean;
+}) {
+  const userBindingKeys = new Set(
+    args.userBindings.map((binding) => credentialBindingKey(binding.credentialId, binding.kind)),
+  );
+  const workspaceBindingKeys = new Set(
+    (args.workspaceBindings ?? []).map((binding) => credentialBindingKey(binding.credentialId, binding.kind)),
+  );
+
+  let requiredUserScopedCount = 0;
+  let requiredWorkspaceScopedCount = 0;
+  let missingUserScopedCount = 0;
+  let missingWorkspaceScopedCount = 0;
+  let hasUserScopedRequirements = false;
+  let hasWorkspaceScopedRequirements = false;
+  let hasSessionScopedRequirements = false;
+
+  for (const requirement of args.requirements) {
+    if (requirement.scope === "user") hasUserScopedRequirements = true;
+    if (requirement.scope === "workspace") hasWorkspaceScopedRequirements = true;
+    if (requirement.scope === "session") hasSessionScopedRequirements = true;
+
+    if (requirement.optional || requirement.kind === "env") {
+      continue;
+    }
+
+    const key = credentialBindingKey(requirement.id, requirement.kind);
+    if (requirement.scope === "user") {
+      requiredUserScopedCount += 1;
+      if (!userBindingKeys.has(key)) {
+        missingUserScopedCount += 1;
+      }
+      continue;
+    }
+
+    if (requirement.scope === "workspace") {
+      requiredWorkspaceScopedCount += 1;
+      if (args.isWorkspaceAdmin && !workspaceBindingKeys.has(key)) {
+        missingWorkspaceScopedCount += 1;
+      }
+    }
+  }
+
+  const missingActionableCount = missingUserScopedCount + (args.isWorkspaceAdmin ? missingWorkspaceScopedCount : 0);
+
+  return {
+    isWorkspaceAdmin: args.isWorkspaceAdmin,
+    hasAnyRequirements: args.requirements.length > 0,
+    hasUserScopedRequirements,
+    hasWorkspaceScopedRequirements,
+    hasSessionScopedRequirements,
+    requiredUserScopedCount,
+    requiredWorkspaceScopedCount,
+    missingUserScopedCount,
+    missingWorkspaceScopedCount,
+    missingActionableCount,
+  };
+}
+
 async function listCredentialBindingsByScopeAndSubject(args: {
   ctx: QueryCtx;
   workspaceId: Id<"workspaces">;
@@ -1363,6 +1442,37 @@ export const getCredentialRequirementsForRevision = query({
     }
     await requireWorkspaceMember(ctx, revision.workspaceId);
     return [...(revision.credentialRequirements ?? [])].map(redactCredentialRequirementForClient);
+  },
+});
+
+export const getCredentialNavigationSummary = query({
+  args: {
+    revisionId: v.id("revisions"),
+  },
+  handler: async (ctx, args) => {
+    const revision = await ctx.db.get(args.revisionId);
+    if (!revision) {
+      throw new Error("Revision not found");
+    }
+
+    const { membership, user } = await requireWorkspaceMember(ctx, revision.workspaceId);
+    const isWorkspaceAdmin = membership.role === "workspace_admin";
+    const userBindings = await listCredentialBindingsByScopeAndSubject({
+      ctx,
+      workspaceId: revision.workspaceId,
+      scope: "user",
+      subject: user.subject,
+    });
+    const workspaceBindings = isWorkspaceAdmin
+      ? await listWorkspaceCredentialBindingsImpl(ctx, revision.workspaceId)
+      : [];
+
+    return summarizeCredentialNavigationState({
+      requirements: [...(revision.credentialRequirements ?? [])].map(redactCredentialRequirementForClient),
+      userBindings,
+      workspaceBindings,
+      isWorkspaceAdmin,
+    });
   },
 });
 

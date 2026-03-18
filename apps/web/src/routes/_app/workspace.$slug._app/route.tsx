@@ -29,9 +29,11 @@ function WorkspaceAppLayout() {
   const {
     workspaceId,
     workspaceSlug: currentWorkspaceSlug,
+    workspaceRole,
     branchId,
     branchName,
     workingStateHash,
+    revisionId,
   } = useWorkspaceContext();
 
   const parsedSlug = parseWorkspaceSlug(slug);
@@ -212,6 +214,7 @@ function WorkspaceAppLayout() {
       <AppSidebar
         workspaces={workspaces}
         workspaceId={workspaceId}
+        revisionId={revisionId}
         branches={branches}
         currentWorkspaceSlug={parsedSlug.workspaceSlug}
         currentBranchId={currentBranchId}
@@ -222,6 +225,7 @@ function WorkspaceAppLayout() {
         onToggleWorkingState={handleToggleWorkingState}
         workingChanges={workingChanges}
         onCommitChanges={handleCommitChanges}
+        isWorkspaceAdmin={workspaceRole === "workspace_admin"}
         user={user}
         onSignOut={handleSignOut}
         threads={sortedThreads}
