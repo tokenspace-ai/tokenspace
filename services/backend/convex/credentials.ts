@@ -721,8 +721,12 @@ export function summarizeCredentialNavigationState(args: {
 
   let requiredUserScopedCount = 0;
   let requiredWorkspaceScopedCount = 0;
+  let configurableUserScopedCount = 0;
+  let configurableWorkspaceScopedCount = 0;
   let missingUserScopedCount = 0;
   let missingWorkspaceScopedCount = 0;
+  let missingConfigurableUserScopedCount = 0;
+  let missingConfigurableWorkspaceScopedCount = 0;
   let hasUserScopedRequirements = false;
   let hasWorkspaceScopedRequirements = false;
   let hasSessionScopedRequirements = false;
@@ -732,12 +736,19 @@ export function summarizeCredentialNavigationState(args: {
     if (requirement.scope === "workspace") hasWorkspaceScopedRequirements = true;
     if (requirement.scope === "session") hasSessionScopedRequirements = true;
 
-    if (requirement.optional || requirement.kind === "env") {
+    if (requirement.kind === "env") {
       continue;
     }
 
     const key = credentialBindingKey(requirement.id, requirement.kind);
     if (requirement.scope === "user") {
+      configurableUserScopedCount += 1;
+      if (!userBindingKeys.has(key)) {
+        missingConfigurableUserScopedCount += 1;
+      }
+      if (requirement.optional) {
+        continue;
+      }
       requiredUserScopedCount += 1;
       if (!userBindingKeys.has(key)) {
         missingUserScopedCount += 1;
@@ -746,6 +757,13 @@ export function summarizeCredentialNavigationState(args: {
     }
 
     if (requirement.scope === "workspace") {
+      configurableWorkspaceScopedCount += 1;
+      if (args.isWorkspaceAdmin && !workspaceBindingKeys.has(key)) {
+        missingConfigurableWorkspaceScopedCount += 1;
+      }
+      if (requirement.optional) {
+        continue;
+      }
       requiredWorkspaceScopedCount += 1;
       if (args.isWorkspaceAdmin && !workspaceBindingKeys.has(key)) {
         missingWorkspaceScopedCount += 1;
@@ -754,6 +772,8 @@ export function summarizeCredentialNavigationState(args: {
   }
 
   const missingActionableCount = missingUserScopedCount + (args.isWorkspaceAdmin ? missingWorkspaceScopedCount : 0);
+  const missingConfigurableCount =
+    missingConfigurableUserScopedCount + (args.isWorkspaceAdmin ? missingConfigurableWorkspaceScopedCount : 0);
 
   return {
     isWorkspaceAdmin: args.isWorkspaceAdmin,
@@ -761,8 +781,13 @@ export function summarizeCredentialNavigationState(args: {
     hasUserScopedRequirements,
     hasWorkspaceScopedRequirements,
     hasSessionScopedRequirements,
+    configurableUserScopedCount,
+    configurableWorkspaceScopedCount,
     requiredUserScopedCount,
     requiredWorkspaceScopedCount,
+    missingConfigurableUserScopedCount,
+    missingConfigurableWorkspaceScopedCount,
+    missingConfigurableCount,
     missingUserScopedCount,
     missingWorkspaceScopedCount,
     missingActionableCount,

@@ -15,9 +15,13 @@ describe("summarizeCredentialNavigationState", () => {
 
     expect(result.hasAnyRequirements).toBe(true);
     expect(result.hasUserScopedRequirements).toBe(true);
+    expect(result.configurableUserScopedCount).toBe(2);
     expect(result.requiredUserScopedCount).toBe(1);
+    expect(result.missingConfigurableUserScopedCount).toBe(2);
     expect(result.missingUserScopedCount).toBe(1);
+    expect(result.configurableWorkspaceScopedCount).toBe(1);
     expect(result.requiredWorkspaceScopedCount).toBe(1);
+    expect(result.missingConfigurableCount).toBe(2);
     expect(result.missingWorkspaceScopedCount).toBe(0);
     expect(result.missingActionableCount).toBe(1);
   });
@@ -37,8 +41,13 @@ describe("summarizeCredentialNavigationState", () => {
 
     expect(result.hasWorkspaceScopedRequirements).toBe(true);
     expect(result.hasSessionScopedRequirements).toBe(true);
+    expect(result.configurableUserScopedCount).toBe(1);
+    expect(result.configurableWorkspaceScopedCount).toBe(1);
     expect(result.requiredUserScopedCount).toBe(1);
     expect(result.requiredWorkspaceScopedCount).toBe(1);
+    expect(result.missingConfigurableUserScopedCount).toBe(0);
+    expect(result.missingConfigurableWorkspaceScopedCount).toBe(1);
+    expect(result.missingConfigurableCount).toBe(1);
     expect(result.missingUserScopedCount).toBe(0);
     expect(result.missingWorkspaceScopedCount).toBe(1);
     expect(result.missingActionableCount).toBe(1);
@@ -57,6 +66,7 @@ describe("summarizeCredentialNavigationState", () => {
 
     expect(result.missingUserScopedCount).toBe(0);
     expect(result.missingWorkspaceScopedCount).toBe(0);
+    expect(result.missingConfigurableCount).toBe(0);
     expect(result.missingActionableCount).toBe(0);
   });
 });

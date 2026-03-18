@@ -159,20 +159,30 @@ export function AppSidebar({
   const currentRoute = useCurrentAppRoute();
   const [threadsPopoverOpen, setThreadsPopoverOpen] = useState(false);
   const assignedExecutorStatus = useQuery(api.executors.getAssignedExecutorStatus, { workspaceId });
+  const resolvedRevisionId = useQuery(
+    api.workspace.getRevision,
+    revisionId || !currentBranchId
+      ? "skip"
+      : {
+          workspaceId,
+          branchId: currentBranchId as Id<"branches">,
+          workingStateHash,
+        },
+  );
+  const effectiveRevisionId = revisionId ?? resolvedRevisionId ?? undefined;
   const credentialSummary = useQuery(
     api.credentials.getCredentialNavigationSummary,
-    revisionId ? { revisionId } : "skip",
+    effectiveRevisionId ? { revisionId: effectiveRevisionId } : "skip",
   );
   const executorState =
     assignedExecutorStatus === undefined ? null : deriveWorkspaceExecutorState(assignedExecutorStatus);
   const executorLabel = assignedExecutorStatus?.executor.name ?? "Unassigned";
-  const showCredentials =
-    isWorkspaceAdmin || Boolean(credentialSummary && credentialSummary.requiredUserScopedCount > 0);
+  const showCredentials = isWorkspaceAdmin || Boolean(credentialSummary && credentialSummary.hasUserScopedRequirements);
   const credentialsDisabled = Boolean(
-    isWorkspaceAdmin && (!credentialSummary || !credentialSummary.hasAnyRequirements),
+    isWorkspaceAdmin && credentialSummary !== undefined && !credentialSummary.hasAnyRequirements,
   );
   const credentialsNeedAction = Boolean(
-    showCredentials && credentialSummary && credentialSummary.missingActionableCount > 0,
+    showCredentials && credentialSummary && credentialSummary.missingConfigurableCount > 0,
   );
 
   return (

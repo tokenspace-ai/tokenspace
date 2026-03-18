@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { WorkspaceAppCredentialsPage } from "@/components/credentials/workspace-app-credentials-page";
+import { useWorkspaceRevision } from "@/components/workspace-revision";
 import { useWorkspaceContext } from "./route";
 
 export const Route = createFileRoute("/_app/workspace/$slug/_app/credentials")({
@@ -8,7 +9,8 @@ export const Route = createFileRoute("/_app/workspace/$slug/_app/credentials")({
 });
 
 function WorkspaceCredentialsPage() {
-  const { workspaceId, revisionId, slug, workspaceRole } = useWorkspaceContext();
+  const { workspaceId, slug, workspaceRole } = useWorkspaceContext();
+  const revisionId = useWorkspaceRevision();
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto">
@@ -22,7 +24,7 @@ function WorkspaceCredentialsPage() {
 
         <WorkspaceAppCredentialsPage
           workspaceId={workspaceId}
-          revisionId={revisionId ?? null}
+          revisionId={revisionId}
           workspaceSlug={slug}
           isWorkspaceAdmin={workspaceRole === "workspace_admin"}
         />

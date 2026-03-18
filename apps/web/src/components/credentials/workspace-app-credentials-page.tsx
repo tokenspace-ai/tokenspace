@@ -338,14 +338,14 @@ export function WorkspaceAppCredentialsPage({
 
   return (
     <div className="space-y-8">
-      {summary.missingActionableCount > 0 ? (
+      {summary.missingConfigurableCount > 0 ? (
         <Alert variant="destructive">
           <InfoIcon />
           <AlertTitle>Action needed</AlertTitle>
           <AlertDescription>
-            {summary.missingActionableCount === 1
-              ? "At least one required credential still needs to be configured."
-              : `${summary.missingActionableCount} required credentials still need to be configured.`}
+            {summary.missingConfigurableCount === 1
+              ? "At least one credential still needs to be configured."
+              : `${summary.missingConfigurableCount} credentials still need to be configured.`}
           </AlertDescription>
         </Alert>
       ) : null}
