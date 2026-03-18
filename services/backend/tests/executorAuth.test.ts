@@ -46,12 +46,17 @@ describe("executorAuth", () => {
     expect(setup.heartbeatTimeoutMs).toBe(EXECUTOR_HEARTBEAT_TIMEOUT_MS);
     expect(setup.instanceTokenTtlMs).toBe(EXECUTOR_INSTANCE_TOKEN_TTL_MS);
     expect(setup.instanceTokenRefreshWindowMs).toBe(EXECUTOR_INSTANCE_TOKEN_REFRESH_WINDOW_MS);
+    expect(setup.snippets.compose).toContain("services:");
+    expect(setup.snippets.compose).toContain(EXECUTOR_BOOTSTRAP_ENV_VAR);
+    expect(setup.snippets.compose).toContain(bootstrapToken);
     expect(setup.snippets.docker).toContain(EXECUTOR_BOOTSTRAP_ENV_VAR);
     expect(setup.snippets.docker).toContain(bootstrapToken);
     expect(setup.snippets.raw).toContain("@tokenspace/executor");
     expect(setup.snippets.raw).toContain(bootstrapToken);
+    expect(setup.snippets.compose).toContain("https://example.convex.cloud");
     expect(setup.snippets.docker).toContain("https://example.convex.cloud");
     expect(setup.snippets.raw).toContain("https://example.convex.cloud");
+    expect(setup.snippets.compose).not.toContain("<your-convex-url>");
     expect(setup.snippets.docker).not.toContain("<your-convex-url>");
     expect(setup.snippets.raw).not.toContain("<your-convex-url>");
   });

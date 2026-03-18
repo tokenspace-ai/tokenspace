@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
 export type ExecutorSetupState = {
@@ -26,6 +27,7 @@ export type ExecutorSetupState = {
   setup: {
     requiredEnvVars: string[];
     snippets: {
+      compose: string;
       docker: string;
       raw: string;
     };
@@ -392,27 +394,49 @@ export function ExecutorSetupInstructionsCard({
         <Separator />
 
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Docker</Label>
-            <div className="overflow-hidden rounded-lg border">
-              <CodeBlock code={setupState.setup.snippets.docker} language="bash">
-                <CodeBlockCopyButton
-                  variant="outline"
-                  size="sm"
-                  onCopy={() => toast.success("Docker snippet copied")}
-                />
-              </CodeBlock>
-            </div>
-          </div>
+          <Label>Setup options</Label>
+          <Tabs defaultValue="raw" className="gap-4">
+            <TabsList className="w-fit max-w-full justify-start overflow-x-auto">
+              <TabsTrigger value="raw">CLI command</TabsTrigger>
+              <TabsTrigger value="docker">Docker</TabsTrigger>
+              <TabsTrigger value="compose">Docker Compose</TabsTrigger>
+            </TabsList>
 
-          <div className="space-y-2">
-            <Label>Raw CLI</Label>
-            <div className="overflow-hidden rounded-lg border">
-              <CodeBlock code={setupState.setup.snippets.raw} language="bash">
-                <CodeBlockCopyButton variant="outline" size="sm" onCopy={() => toast.success("CLI snippet copied")} />
-              </CodeBlock>
-            </div>
-          </div>
+            <TabsContent value="raw">
+              <div className="overflow-hidden rounded-lg border">
+                <CodeBlock code={setupState.setup.snippets.raw} language="bash">
+                  <CodeBlockCopyButton variant="outline" size="sm" onCopy={() => toast.success("CLI snippet copied")} />
+                </CodeBlock>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="docker">
+              <div className="overflow-hidden rounded-lg border">
+                <CodeBlock code={setupState.setup.snippets.docker} language="bash">
+                  <CodeBlockCopyButton
+                    variant="outline"
+                    size="sm"
+                    onCopy={() => toast.success("Docker snippet copied")}
+                  />
+                </CodeBlock>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="compose" className="space-y-3">
+              <div className="overflow-hidden rounded-lg border">
+                <CodeBlock code={setupState.setup.snippets.compose} language="yaml">
+                  <CodeBlockCopyButton
+                    variant="outline"
+                    size="sm"
+                    onCopy={() => toast.success("Docker Compose snippet copied")}
+                  />
+                </CodeBlock>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Start it with <code className="rounded bg-muted px-1 py-0.5 font-mono">docker compose up -d</code>.
+              </p>
+            </TabsContent>
+          </Tabs>
         </div>
       </CardContent>
     </Card>
