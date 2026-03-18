@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { MessageResponse } from "@/components/ai-elements/message";
+import { CredentialIcon } from "@/components/credentials/credential-icon";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ type CredentialRequirement = {
   kind: "secret" | "env" | "oauth";
   scope: "workspace" | "session" | "user";
   description?: string;
+  iconPath?: string;
   placeholder?: string;
   optional?: boolean;
   config?: unknown;
@@ -70,6 +72,30 @@ function requirementHint(requirement: CredentialRequirement): string | null {
     return "Workspace credentials are configured by workspace admins in admin settings.";
   }
   return null;
+}
+
+function RequirementHeading({
+  requirement,
+  revisionId,
+}: {
+  requirement: CredentialRequirement;
+  revisionId: Id<"revisions">;
+}) {
+  const displayName = requirementDisplayName(requirement);
+
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <CredentialIcon
+        name={displayName}
+        iconPath={requirement.iconPath}
+        revisionId={revisionId}
+        className="size-8 rounded-md border border-border/60 bg-background"
+        imageClassName="object-contain p-1"
+        fallbackClassName="text-xs"
+      />
+      <h3 className="min-w-0 text-sm font-medium">{displayName}</h3>
+    </div>
+  );
 }
 
 function groupRequirements(requirements: CredentialRequirement[]): CredentialGroup[] {
@@ -346,6 +372,8 @@ export function WorkspaceAppCredentialsPage({
     );
   }
 
+  const resolvedRevisionId = revisionId;
+
   return (
     <div className="space-y-8">
       {summary.missingConfigurableCount > 0 ? (
@@ -399,7 +427,7 @@ export function WorkspaceAppCredentialsPage({
                   }
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <h3 className="min-w-0 text-sm font-medium">{requirementDisplayName(requirement)}</h3>
+                    <RequirementHeading requirement={requirement} revisionId={resolvedRevisionId} />
                     <RequirementMeta
                       requirement={requirement}
                       configured={requirement.kind !== "env" ? isConfigured : undefined}
@@ -569,7 +597,7 @@ export function WorkspaceAppCredentialsPage({
                 return (
                   <div key={key} className="rounded-lg border bg-card p-4 space-y-3">
                     <div className="flex items-start justify-between gap-3">
-                      <h3 className="min-w-0 text-sm font-medium">{requirementDisplayName(requirement)}</h3>
+                      <RequirementHeading requirement={requirement} revisionId={resolvedRevisionId} />
                       <RequirementMeta
                         requirement={requirement}
                         configured={isWorkspaceAdmin && requirement.kind !== "env" ? isConfigured : undefined}
@@ -621,7 +649,7 @@ export function WorkspaceAppCredentialsPage({
             renderRequirement={(requirement) => (
               <div key={`${requirement.id}:${requirement.kind}`} className="rounded-lg border bg-card p-4 space-y-3">
                 <div className="flex items-start justify-between gap-3">
-                  <h3 className="min-w-0 text-sm font-medium">{requirementDisplayName(requirement)}</h3>
+                  <RequirementHeading requirement={requirement} revisionId={resolvedRevisionId} />
                   <RequirementMeta requirement={requirement} />
                 </div>
                 {requirement.description ? <CredentialDescription description={requirement.description} /> : null}

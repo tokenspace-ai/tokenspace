@@ -14,10 +14,22 @@ type ServedFile = {
   binary: boolean;
 };
 
-function errorResponse(status: number, message: string): Response {
+function corsHeaders(request: Request): HeadersInit {
+  const origin = request.headers.get("origin");
+  return {
+    "access-control-allow-origin": origin ?? "*",
+    "access-control-allow-methods": "GET, OPTIONS",
+    "access-control-allow-headers": "Authorization, Content-Type",
+    "access-control-max-age": "600",
+    vary: "Origin",
+  };
+}
+
+function errorResponse(request: Request, status: number, message: string): Response {
   return new Response(message, {
     status,
     headers: {
+      ...corsHeaders(request),
       "content-type": "text/plain; charset=utf-8",
       "cache-control": "private, no-store, max-age=0",
     },
@@ -151,11 +163,21 @@ async function resolveSessionFile(
 
 export const serveWorkspaceFile = httpAction(async (ctx, request) => {
   try {
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          ...corsHeaders(request),
+          "cache-control": "private, no-store, max-age=0",
+        },
+      });
+    }
+
     const url = new URL(request.url);
     const revisionId = url.searchParams.get("revisionId") as Id<"revisions"> | null;
     const sessionId = url.searchParams.get("sessionId") as Id<"sessions"> | null;
     if ((revisionId ? 1 : 0) + (sessionId ? 1 : 0) !== 1) {
-      return errorResponse(400, "Exactly one of revisionId or sessionId is required.");
+      return errorResponse(request, 400, "Exactly one of revisionId or sessionId is required.");
     }
 
     const requestedPath = normalizeRequestedPath(url.searchParams.get("path"));
@@ -164,17 +186,18 @@ export const serveWorkspaceFile = httpAction(async (ctx, request) => {
       : await resolveRevisionFile(ctx, revisionId!, requestedPath);
 
     if (!file) {
-      return errorResponse(404, "File not found.");
+      return errorResponse(request, 404, "File not found.");
     }
 
     const content = await loadFileContent(ctx, { content: file.content, blobId: file.blobId }, { binary: file.binary });
     if (content === undefined) {
-      return errorResponse(404, "File not found.");
+      return errorResponse(request, 404, "File not found.");
     }
 
     return new Response(file.binary ? new Blob([decodeBase64ToArrayBuffer(content)]) : content, {
       status: 200,
       headers: {
+        ...corsHeaders(request),
         "content-type": contentTypeForPath(requestedPath),
         "cache-control": "private, no-store, max-age=0",
         "x-content-type-options": "nosniff",
@@ -183,22 +206,28 @@ export const serveWorkspaceFile = httpAction(async (ctx, request) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message === "Unauthorized") {
-      return errorResponse(401, "Unauthorized");
+      return errorResponse(request, 401, "Unauthorized");
     }
     if (message === "Session not found" || message === "Revision not found") {
-      return errorResponse(404, message);
+      return errorResponse(request, 404, message);
     }
     if (message === "path is required" || message === "path is invalid") {
-      return errorResponse(400, message);
+      return errorResponse(request, 400, message);
     }
     console.error("Failed to serve workspace file:", error);
-    return errorResponse(500, "Internal server error");
+    return errorResponse(request, 500, "Internal server error");
   }
 });
 
 http.route({
   path: "/api/fs/file",
   method: "GET",
+  handler: serveWorkspaceFile,
+});
+
+http.route({
+  path: "/api/fs/file",
+  method: "OPTIONS",
   handler: serveWorkspaceFile,
 });
 

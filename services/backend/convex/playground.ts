@@ -3,6 +3,13 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { action, internalQuery, mutation, query } from "./_generated/server";
 import { requireAuthenticatedUser, requireSessionOwnership, requireWorkspaceMember } from "./authz";
+import {
+  type CapabilityExplorerEntry,
+  extractCapabilityMethodsFromDeclaration,
+  getCapabilityNamespace,
+  selectCapabilityIconPath,
+  stripLeadingMarkdownFrontmatter,
+} from "./capabilityExplorer";
 import { loadFileContent, resolveInlineContent } from "./fs/fileBlobs";
 
 /**
@@ -263,6 +270,79 @@ type Example = {
   label: string;
   code: string;
 };
+
+export const getCapabilityExplorerForRevision = action({
+  args: {
+    revisionId: v.id("revisions"),
+  },
+  handler: async (ctx, args): Promise<CapabilityExplorerEntry[]> => {
+    await requireAuthenticatedUser(ctx);
+    const revision = await ctx.runQuery(internal.revisions.getRevision, {
+      revisionId: args.revisionId,
+    });
+    if (!revision) {
+      throw new Error("Revision not found");
+    }
+    await requireWorkspaceMember(ctx, revision.workspaceId);
+
+    const capabilities = revision.capabilities ?? [];
+    const entries = await Promise.all(
+      capabilities.map(async (capability) => {
+        const namespace = getCapabilityNamespace(capability);
+        const [markdownEntry, declarationEntry, svgIconEntry, pngIconEntry] = await Promise.all([
+          ctx.runQuery(internal.fs.revision.readFileAtPath, {
+            revisionId: args.revisionId,
+            path: capability.path,
+          }),
+          ctx.runQuery(internal.fs.revision.readFileAtPath, {
+            revisionId: args.revisionId,
+            path: capability.typesPath,
+          }),
+          ctx.runQuery(internal.fs.revision.readFileAtPath, {
+            revisionId: args.revisionId,
+            path: `capabilities/${namespace}/icon.svg`,
+          }),
+          ctx.runQuery(internal.fs.revision.readFileAtPath, {
+            revisionId: args.revisionId,
+            path: `capabilities/${namespace}/icon.png`,
+          }),
+        ]);
+
+        if (!markdownEntry) {
+          return null;
+        }
+
+        const markdown = await loadFileContent(ctx, markdownEntry, { binary: false });
+        if (markdown === undefined) {
+          return null;
+        }
+
+        const declarationContent = declarationEntry
+          ? await loadFileContent(ctx, declarationEntry, { binary: false })
+          : undefined;
+
+        const iconPath = selectCapabilityIconPath(namespace, {
+          hasSvg: Boolean(svgIconEntry),
+          hasPng: Boolean(pngIconEntry),
+        });
+
+        return {
+          namespace,
+          name: capability.name,
+          description: capability.description,
+          capabilityPath: capability.path,
+          typesPath: capability.typesPath,
+          ...(iconPath ? { iconPath } : {}),
+          markdown: stripLeadingMarkdownFrontmatter(markdown),
+          declaration: declarationContent ?? "",
+          methods: declarationContent ? extractCapabilityMethodsFromDeclaration(declarationContent) : [],
+        };
+      }),
+    );
+
+    return entries.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+  },
+});
 
 /**
  * Get code examples from CAPABILITY.md files in a revision.
