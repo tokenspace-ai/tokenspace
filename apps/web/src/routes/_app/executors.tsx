@@ -2,8 +2,9 @@ import { convexQuery } from "@convex-dev/react-query";
 import { useQuery as useTanstackQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { api } from "@tokenspace/backend/convex/_generated/api";
+import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
-import { Loader2, PlusIcon, ServerIcon } from "lucide-react";
+import { KeyRoundIcon, Loader2, MoreHorizontalIcon, PencilIcon, PlusIcon, ServerIcon, Trash2Icon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -16,6 +17,15 @@ import {
 } from "@/components/executors/executor-management";
 import { UserMenu } from "@/components/header/user-menu";
 import { Logo } from "@/components/logo";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +37,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,10 +58,21 @@ function ExecutorsPage() {
   const healthCheck = useTanstackQuery(convexQuery(api.health.check, {}));
   const executorResponse = useQuery(api.executors.listManageableExecutors, {});
   const createExecutorUnassigned = useMutation(api.executors.createExecutorUnassigned);
+  const renameExecutor = useMutation(api.executors.renameExecutor);
+  const rotateExecutorBootstrapToken = useMutation(api.executors.rotateExecutorBootstrapToken);
+  const deleteExecutor = useMutation(api.executors.deleteExecutor);
   const [selectedExecutorId, setSelectedExecutorId] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [rotateDialogOpen, setRotateDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [dialogExecutorTarget, setDialogExecutorTarget] = useState<{ id: Id<"executors">; name: string } | null>(null);
   const [newExecutorName, setNewExecutorName] = useState("");
+  const [renameExecutorName, setRenameExecutorName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [isRotating, setIsRotating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [setupState, setSetupState] = useState<ExecutorSetupState | null>(null);
 
   const rows = useMemo(
@@ -75,6 +102,33 @@ function ExecutorsPage() {
     () => executorResponse?.executors.find((entry) => entry.executor._id === selectedExecutorId) ?? null,
     [executorResponse, selectedExecutorId],
   );
+  const selectedExecutorName = selectedExecutor?.executor.name ?? "";
+  const dialogExecutorId = dialogExecutorTarget?.id ?? null;
+  const dialogExecutorName = dialogExecutorTarget?.name ?? "";
+
+  useEffect(() => {
+    if (!renameDialogOpen) {
+      setRenameExecutorName(dialogExecutorName || selectedExecutorName);
+    }
+  }, [dialogExecutorName, renameDialogOpen, selectedExecutorName]);
+
+  const openExecutorDialog = (mode: "rename" | "rotate" | "delete") => {
+    if (!selectedExecutor) return;
+    setDialogExecutorTarget({
+      id: selectedExecutor.executor._id,
+      name: selectedExecutor.executor.name,
+    });
+    if (mode === "rename") {
+      setRenameExecutorName(selectedExecutor.executor.name);
+      setRenameDialogOpen(true);
+      return;
+    }
+    if (mode === "rotate") {
+      setRotateDialogOpen(true);
+      return;
+    }
+    setDeleteDialogOpen(true);
+  };
 
   const handleCreateExecutor = async () => {
     if (!newExecutorName.trim()) {
@@ -87,6 +141,7 @@ function ExecutorsPage() {
         name: newExecutorName.trim(),
       });
       setSetupState({
+        mode: "create",
         bootstrapToken: result.bootstrapToken,
         setup: result.setup,
       });
@@ -99,6 +154,72 @@ function ExecutorsPage() {
       console.error(error);
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleRenameExecutor = async () => {
+    if (!dialogExecutorId) return;
+    if (!renameExecutorName.trim()) {
+      toast.error("Executor name is required");
+      return;
+    }
+    setIsRenaming(true);
+    try {
+      await renameExecutor({
+        executorId: dialogExecutorId,
+        name: renameExecutorName.trim(),
+      });
+      setRenameDialogOpen(false);
+      setDialogExecutorTarget(null);
+      toast.success("Executor renamed");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to rename executor");
+      console.error(error);
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
+  const handleRotateBootstrapToken = async () => {
+    if (!dialogExecutorId) return;
+    setIsRotating(true);
+    try {
+      const result = await rotateExecutorBootstrapToken({
+        executorId: dialogExecutorId,
+      });
+      setSetupState({
+        mode: "rotate",
+        bootstrapToken: result.bootstrapToken,
+        setup: result.setup,
+      });
+      setRotateDialogOpen(false);
+      setDialogExecutorTarget(null);
+      toast.success("Bootstrap token rotated");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to rotate bootstrap token");
+      console.error(error);
+    } finally {
+      setIsRotating(false);
+    }
+  };
+
+  const handleDeleteExecutor = async () => {
+    if (!dialogExecutorId) return;
+    setIsDeleting(true);
+    try {
+      await deleteExecutor({
+        executorId: dialogExecutorId,
+      });
+      setSelectedExecutorId((current) => (current === dialogExecutorId ? null : current));
+      setSetupState(null);
+      setDeleteDialogOpen(false);
+      setDialogExecutorTarget(null);
+      toast.success("Executor deleted");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete executor");
+      console.error(error);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -205,11 +326,35 @@ function ExecutorsPage() {
                             Instance heartbeat and capacity snapshots for this executor.
                           </CardDescription>
                         </div>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <ExecutorAvailabilityBadge executor={selectedExecutor.executor} className="text-[10px]" />
                           <Badge variant="outline" className="text-[10px] capitalize">
                             {selectedExecutor.executor.status}
                           </Badge>
+                          {selectedExecutor.executor.canManageLifecycle ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="size-8">
+                                  <MoreHorizontalIcon className="size-4" />
+                                  <span className="sr-only">Executor actions</span>
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onSelect={() => openExecutorDialog("rename")}>
+                                  <PencilIcon className="size-4" />
+                                  Rename executor
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => openExecutorDialog("rotate")}>
+                                  <KeyRoundIcon className="size-4" />
+                                  Rotate bootstrap token
+                                </DropdownMenuItem>
+                                <DropdownMenuItem variant="destructive" onSelect={() => openExecutorDialog("delete")}>
+                                  <Trash2Icon className="size-4" />
+                                  Delete executor
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : null}
                         </div>
                       </div>
                     </CardHeader>
@@ -274,11 +419,122 @@ function ExecutorsPage() {
             <ExecutorSetupInstructionsCard
               setupState={setupState}
               title="New Executor Bootstrap"
-              description="The plaintext bootstrap token is only shown immediately after creation."
+              description={`The plaintext bootstrap token is only shown immediately after ${setupState.mode === "rotate" ? "rotation" : "creation"}.`}
             />
           ) : null}
         </div>
       </main>
+
+      <Dialog
+        open={renameDialogOpen}
+        onOpenChange={(open) => {
+          setRenameDialogOpen(open);
+          if (!open) {
+            setRenameExecutorName("");
+            setDialogExecutorTarget(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename executor</DialogTitle>
+            <DialogDescription>
+              Update the display name for {dialogExecutorName ? `"${dialogExecutorName}"` : "this executor fleet"}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2 py-2">
+            <Label htmlFor="rename-executor-name">Executor name</Label>
+            <Input
+              id="rename-executor-name"
+              value={renameExecutorName}
+              onChange={(event) => setRenameExecutorName(event.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleRenameExecutor} disabled={isRenaming || !renameExecutorName.trim()}>
+              {isRenaming ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={rotateDialogOpen}
+        onOpenChange={(open) => {
+          setRotateDialogOpen(open);
+          if (!open) {
+            setDialogExecutorTarget(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Rotate bootstrap token</AlertDialogTitle>
+            <AlertDialogDescription>
+              This issues a new bootstrap token for {dialogExecutorName ? `"${dialogExecutorName}"` : "this executor"},
+              invalidates the current bootstrap token, and marks all online instances offline. Any executor process that
+              should continue serving jobs must restart and register again with the new token.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button variant="destructive" onClick={handleRotateBootstrapToken} disabled={isRotating}>
+              {isRotating ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Rotating...
+                </>
+              ) : (
+                "Rotate token"
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open) {
+            setDialogExecutorTarget(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete executor</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes {dialogExecutorName ? `"${dialogExecutorName}"` : "the executor"} and all
+              recorded instance rows. Any workspaces assigned to it will be unassigned immediately, and deletion is
+              blocked while runtime or compile jobs are still pending or running.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button variant="destructive" onClick={handleDeleteExecutor} disabled={isDeleting}>
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete executor"
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog
         open={createDialogOpen}

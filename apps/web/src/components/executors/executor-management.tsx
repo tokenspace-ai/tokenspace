@@ -1,10 +1,18 @@
-import { AlertCircleIcon, CheckCircle2Icon, KeyRoundIcon, ServerIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import {
+  AlertCircleIcon,
+  CheckCircle2Icon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  KeyRoundIcon,
+  ServerIcon,
+} from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { CodeBlock, CodeBlockCopyButton } from "@/components/ai-elements/code-block";
 import { RelativeTime } from "@/components/relative-time";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -240,58 +248,97 @@ export function ExecutorStatusTable({
 export function ExecutorInstancesTable({
   instances,
   emptyMessage = "No instances have registered yet.",
+  initialVisibleCount = 5,
 }: {
   instances: ExecutorInstanceRecord[];
   emptyMessage?: string;
+  initialVisibleCount?: number;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const instanceSetKey = useMemo(
+    () =>
+      instances
+        .map((instance) => instance._id)
+        .sort()
+        .join(":"),
+    [instances],
+  );
+
+  useEffect(() => {
+    setExpanded(false);
+  }, [instanceSetKey]);
+
   if (instances.length === 0) {
     return <div className="px-4 py-6 text-sm text-muted-foreground">{emptyMessage}</div>;
   }
 
+  const visibleInstances = expanded ? instances : instances.slice(0, initialVisibleCount);
+  const hasHiddenInstances = instances.length > initialVisibleCount;
+
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Health</TableHead>
-          <TableHead>Host</TableHead>
-          <TableHead>Version</TableHead>
-          <TableHead>Last Heartbeat</TableHead>
-          <TableHead>Registered</TableHead>
-          <TableHead>Capacity</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {instances.map((instance) => (
-          <TableRow key={instance._id}>
-            <TableCell>
-              <Badge
-                variant="outline"
-                className={cn(
-                  "text-[10px]",
-                  instance.health === "online"
-                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                    : "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
-                )}
-              >
-                {instance.health === "online" ? "Online" : "Offline"}
-              </Badge>
-            </TableCell>
-            <TableCell>{instance.hostname ?? "Unknown host"}</TableCell>
-            <TableCell>{instance.version ?? "Unknown version"}</TableCell>
-            <TableCell>
-              <div className="font-medium">
-                <RelativeTime timestamp={instance.lastHeartbeatAt} />
-              </div>
-              <div className="text-xs text-muted-foreground">{formatExecutorDateTime(instance.lastHeartbeatAt)}</div>
-            </TableCell>
-            <TableCell className="text-muted-foreground">{formatExecutorDateTime(instance.registeredAt)}</TableCell>
-            <TableCell className="text-muted-foreground">
-              {formatExecutorCapacity(instance.maxConcurrentRuntimeJobs, instance.maxConcurrentCompileJobs)}
-            </TableCell>
+    <div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Health</TableHead>
+            <TableHead>Host</TableHead>
+            <TableHead>Version</TableHead>
+            <TableHead>Last Heartbeat</TableHead>
+            <TableHead>Registered</TableHead>
+            <TableHead>Capacity</TableHead>
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {visibleInstances.map((instance) => (
+            <TableRow key={instance._id}>
+              <TableCell>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "text-[10px]",
+                    instance.health === "online"
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                      : "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
+                  )}
+                >
+                  {instance.health === "online" ? "Online" : "Offline"}
+                </Badge>
+              </TableCell>
+              <TableCell>{instance.hostname ?? "Unknown host"}</TableCell>
+              <TableCell>{instance.version ?? "Unknown version"}</TableCell>
+              <TableCell>
+                <div className="font-medium">
+                  <RelativeTime timestamp={instance.lastHeartbeatAt} />
+                </div>
+                <div className="text-xs text-muted-foreground">{formatExecutorDateTime(instance.lastHeartbeatAt)}</div>
+              </TableCell>
+              <TableCell className="text-muted-foreground">{formatExecutorDateTime(instance.registeredAt)}</TableCell>
+              <TableCell className="text-muted-foreground">
+                {formatExecutorCapacity(instance.maxConcurrentRuntimeJobs, instance.maxConcurrentCompileJobs)}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+
+      {hasHiddenInstances ? (
+        <div className="border-t px-4 py-3">
+          <Button variant="ghost" size="sm" aria-expanded={expanded} onClick={() => setExpanded((current) => !current)}>
+            {expanded ? (
+              <>
+                <ChevronUpIcon className="mr-2 size-4" />
+                Show less
+              </>
+            ) : (
+              <>
+                <ChevronDownIcon className="mr-2 size-4" />
+                Show {instances.length - initialVisibleCount} more
+              </>
+            )}
+          </Button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

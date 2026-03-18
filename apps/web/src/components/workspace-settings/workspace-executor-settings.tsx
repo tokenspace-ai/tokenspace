@@ -6,8 +6,10 @@ import {
   KeyRoundIcon,
   Loader2,
   MoreHorizontalIcon,
+  PencilIcon,
   PlusIcon,
   ServerIcon,
+  Trash2Icon,
   UnplugIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -69,18 +71,25 @@ export function WorkspaceExecutorSettings({
   );
   const assignWorkspaceExecutor = useMutation(api.executors.assignWorkspaceExecutor);
   const createExecutor = useMutation(api.executors.createExecutor);
+  const renameExecutor = useMutation(api.executors.renameExecutor);
   const rotateExecutorBootstrapToken = useMutation(api.executors.rotateExecutorBootstrapToken);
+  const deleteExecutor = useMutation(api.executors.deleteExecutor);
 
   const [selectedExecutorId, setSelectedExecutorId] = useState<string>("");
   const [newExecutorName, setNewExecutorName] = useState("");
+  const [renameExecutorName, setRenameExecutorName] = useState("");
   const [isAssigning, setIsAssigning] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
   const [isUnassigning, setIsUnassigning] = useState(false);
+  const [isDeletingExecutor, setIsDeletingExecutor] = useState(false);
   const [setupState, setSetupState] = useState<ExecutorSetupState | null>(null);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [rotateDialogOpen, setRotateDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [unassignDialogOpen, setUnassignDialogOpen] = useState(false);
 
   const currentExecutorId = assignableExecutors?.currentExecutorId ?? assignedStatus?.currentExecutorId ?? null;
@@ -88,6 +97,10 @@ export function WorkspaceExecutorSettings({
   useEffect(() => {
     setSelectedExecutorId(currentExecutorId ?? "");
   }, [currentExecutorId]);
+
+  useEffect(() => {
+    setRenameExecutorName(assignedStatus?.executor.name ?? "");
+  }, [assignedStatus?.executor.name]);
 
   const executorState = deriveWorkspaceExecutorState(assignedStatus ?? null);
 
@@ -188,6 +201,28 @@ export function WorkspaceExecutorSettings({
     }
   };
 
+  const handleRenameExecutor = async () => {
+    if (!assignedStatus?.currentExecutorId) return;
+    if (!renameExecutorName.trim()) {
+      toast.error("Executor name is required");
+      return;
+    }
+    setIsRenaming(true);
+    try {
+      await renameExecutor({
+        executorId: assignedStatus.currentExecutorId,
+        name: renameExecutorName.trim(),
+      });
+      setRenameDialogOpen(false);
+      toast.success("Executor renamed");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to rename executor");
+      console.error(error);
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
   const handleRotateBootstrapToken = async () => {
     if (!assignedStatus?.currentExecutorId) return;
     setIsRotating(true);
@@ -207,6 +242,24 @@ export function WorkspaceExecutorSettings({
       console.error(error);
     } finally {
       setIsRotating(false);
+    }
+  };
+
+  const handleDeleteExecutor = async () => {
+    if (!assignedStatus?.currentExecutorId) return;
+    setIsDeletingExecutor(true);
+    try {
+      await deleteExecutor({
+        executorId: assignedStatus.currentExecutorId,
+      });
+      setSetupState(null);
+      setDeleteDialogOpen(false);
+      toast.success("Executor deleted");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete executor");
+      console.error(error);
+    } finally {
+      setIsDeletingExecutor(false);
     }
   };
 
@@ -250,7 +303,7 @@ export function WorkspaceExecutorSettings({
             </div>
             <div className="flex items-center gap-2">
               <ExecutorStateBadge state={executorState} />
-              {isWorkspaceAdmin && (
+              {(isWorkspaceAdmin || assignedStatus?.executor.canManageLifecycle) && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="size-8">
@@ -259,27 +312,43 @@ export function WorkspaceExecutorSettings({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={() => setAssignDialogOpen(true)}>
-                      <ServerIcon className="size-4" />
-                      Change executor
-                    </DropdownMenuItem>
+                    {assignedStatus?.executor.canManageLifecycle ? (
+                      <DropdownMenuItem onSelect={() => setRenameDialogOpen(true)}>
+                        <PencilIcon className="size-4" />
+                        Rename executor
+                      </DropdownMenuItem>
+                    ) : null}
+                    {isWorkspaceAdmin ? (
+                      <DropdownMenuItem onSelect={() => setAssignDialogOpen(true)}>
+                        <ServerIcon className="size-4" />
+                        Change executor
+                      </DropdownMenuItem>
+                    ) : null}
                     {assignedStatus?.executor.canManageLifecycle && (
                       <DropdownMenuItem onSelect={() => setRotateDialogOpen(true)}>
                         <KeyRoundIcon className="size-4" />
                         Rotate bootstrap token
                       </DropdownMenuItem>
                     )}
-                    {assignedStatus ? (
+                    {assignedStatus?.executor.canManageLifecycle ? (
+                      <DropdownMenuItem variant="destructive" onSelect={() => setDeleteDialogOpen(true)}>
+                        <Trash2Icon className="size-4" />
+                        Delete executor
+                      </DropdownMenuItem>
+                    ) : null}
+                    {isWorkspaceAdmin && assignedStatus ? (
                       <DropdownMenuItem variant="destructive" onSelect={() => setUnassignDialogOpen(true)}>
                         <UnplugIcon className="size-4" />
                         Unassign executor
                       </DropdownMenuItem>
                     ) : null}
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onSelect={() => setCreateDialogOpen(true)}>
-                      <PlusIcon className="size-4" />
-                      Create new executor
-                    </DropdownMenuItem>
+                    {isWorkspaceAdmin ? (
+                      <DropdownMenuItem onSelect={() => setCreateDialogOpen(true)}>
+                        <PlusIcon className="size-4" />
+                        Create new executor
+                      </DropdownMenuItem>
+                    ) : null}
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
@@ -473,6 +542,46 @@ export function WorkspaceExecutorSettings({
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={renameDialogOpen}
+        onOpenChange={(open) => {
+          setRenameDialogOpen(open);
+          if (!open) {
+            setRenameExecutorName(assignedStatus?.executor.name ?? "");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename executor</DialogTitle>
+            <DialogDescription>Update the display name for the currently assigned executor.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2 py-2">
+            <Label htmlFor="assigned-executor-name">Executor name</Label>
+            <Input
+              id="assigned-executor-name"
+              value={renameExecutorName}
+              onChange={(event) => setRenameExecutorName(event.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleRenameExecutor} disabled={isRenaming || !renameExecutorName.trim()}>
+              {isRenaming ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog open={rotateDialogOpen} onOpenChange={setRotateDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -493,6 +602,32 @@ export function WorkspaceExecutorSettings({
                 </>
               ) : (
                 "Rotate token"
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete executor</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes the assigned executor and all recorded instance rows. Any workspaces assigned to
+              it will be unassigned immediately, execution will stop until a new executor is assigned, and deletion is
+              blocked while runtime or compile jobs are still pending or running.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button variant="destructive" onClick={handleDeleteExecutor} disabled={isDeletingExecutor}>
+              {isDeletingExecutor ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete executor"
               )}
             </Button>
           </AlertDialogFooter>

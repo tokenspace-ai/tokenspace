@@ -36,6 +36,8 @@ type AssignedWorkspaceRef = Pick<WorkspaceDoc, "_id" | "name" | "slug">;
 
 export const LOCAL_DEV_EXECUTOR_NAME = "Local Dev Executor";
 export const LOCAL_DEV_EXECUTOR_CREATED_BY = "dev-seed";
+export const EXECUTOR_INACTIVE_INSTANCE_RETENTION_MS = 24 * 60 * 60_000;
+const EXECUTOR_INSTANCE_CLEANUP_BATCH_SIZE = 128;
 
 function getConvexUrl(): string {
   const url = process.env.CONVEX_URL?.trim() || process.env.CONVEX_CLOUD_URL?.trim();
@@ -219,6 +221,80 @@ async function listExecutorsByMarker(
   );
 }
 
+export async function cleanupStaleExecutorInstancesInternalImpl(
+  ctx: ExecutorWriteCtx,
+  args?: { now?: number },
+): Promise<{ deletedCount: number }> {
+  const now = args?.now ?? Date.now();
+  const cutoff = now - EXECUTOR_INACTIVE_INSTANCE_RETENTION_MS;
+  let deletedCount = 0;
+
+  while (true) {
+    const staleInstances = await ctx.db
+      .query("executorInstances")
+      .withIndex("by_expires_at", (q) => q.lt("expiresAt", cutoff))
+      .take(EXECUTOR_INSTANCE_CLEANUP_BATCH_SIZE);
+    if (staleInstances.length === 0) {
+      break;
+    }
+
+    for (const instance of staleInstances) {
+      const [pendingJobs, runningJobs, pendingCompileJobs, runningCompileJobs] = await Promise.all([
+        ctx.db
+          .query("jobs")
+          .withIndex("by_assigned_instance_status", (q) =>
+            q.eq("assignedInstanceId", instance._id).eq("status", "pending"),
+          )
+          .collect(),
+        ctx.db
+          .query("jobs")
+          .withIndex("by_assigned_instance_status", (q) =>
+            q.eq("assignedInstanceId", instance._id).eq("status", "running"),
+          )
+          .collect(),
+        ctx.db
+          .query("compileJobs")
+          .withIndex("by_assigned_instance_status", (q) =>
+            q.eq("assignedInstanceId", instance._id).eq("status", "pending"),
+          )
+          .collect(),
+        ctx.db
+          .query("compileJobs")
+          .withIndex("by_assigned_instance_status", (q) =>
+            q.eq("assignedInstanceId", instance._id).eq("status", "running"),
+          )
+          .collect(),
+      ]);
+      for (const job of [...pendingJobs, ...runningJobs]) {
+        await ctx.db.patch(job._id, {
+          assignedInstanceId: undefined,
+          assignmentUpdatedAt: now,
+        });
+      }
+      for (const job of [...pendingCompileJobs, ...runningCompileJobs]) {
+        await ctx.db.patch(job._id, {
+          assignedInstanceId: undefined,
+          assignmentUpdatedAt: now,
+        });
+      }
+
+      const assignments = await ctx.db
+        .query("sessionExecutorAssignments")
+        .withIndex("by_instance", (q) => q.eq("assignedInstanceId", instance._id))
+        .collect();
+      for (const assignment of assignments) {
+        await ctx.db.delete(assignment._id);
+      }
+      await ctx.db.delete(instance._id);
+    }
+    deletedCount += staleInstances.length;
+  }
+
+  return {
+    deletedCount,
+  };
+}
+
 export async function setWorkspaceExecutorInternalImpl(
   ctx: ExecutorWriteCtx,
   args: {
@@ -395,6 +471,95 @@ export async function rotateExecutorBootstrapTokenImpl(ctx: MutationCtx, args: {
     executor: await buildExecutorSummaryForUser(user, updated, updatedInstances, now),
     bootstrapToken: rotated.bootstrapToken,
     setup: buildExecutorSetupPayload(rotated.bootstrapToken, getConvexUrl()),
+  };
+}
+
+export async function renameExecutorImpl(
+  ctx: MutationCtx,
+  args: { executorId: Id<"executors">; name: string },
+): Promise<{ executor: Awaited<ReturnType<typeof buildExecutorSummaryForUser>> }> {
+  const { executor, user } = await requireExecutorLifecycleManager(ctx, args.executorId);
+  if (executor.name === LOCAL_DEV_EXECUTOR_NAME && executor.createdBy === LOCAL_DEV_EXECUTOR_CREATED_BY) {
+    throw new Error("Local dev executor cannot be renamed");
+  }
+  const name = normalizeExecutorName(args.name);
+  const updatedAt = Date.now();
+  await ctx.db.patch(executor._id, {
+    name,
+    updatedAt,
+  });
+  const updated = await ctx.db.get(executor._id);
+  if (!updated) {
+    throw new Error("Executor not found after rename");
+  }
+  const instances = await ctx.db
+    .query("executorInstances")
+    .withIndex("by_executor", (q) => q.eq("executorId", executor._id))
+    .collect();
+  return {
+    executor: await buildExecutorSummaryForUser(user, updated, instances, updatedAt),
+  };
+}
+
+export async function deleteExecutorImpl(
+  ctx: MutationCtx,
+  args: { executorId: Id<"executors"> },
+): Promise<{ deleted: true; clearedWorkspaceCount: number; deletedInstanceCount: number }> {
+  await requireExecutorLifecycleManager(ctx, args.executorId);
+  const now = Date.now();
+  const [workspaces, instances, pendingJobs, runningJobs, pendingCompileJobs, runningCompileJobs] = await Promise.all([
+    ctx.db
+      .query("workspaces")
+      .withIndex("by_executor", (q) => q.eq("executorId", args.executorId))
+      .collect(),
+    ctx.db
+      .query("executorInstances")
+      .withIndex("by_executor", (q) => q.eq("executorId", args.executorId))
+      .collect(),
+    ctx.db
+      .query("jobs")
+      .withIndex("by_target_executor_status", (q) => q.eq("targetExecutorId", args.executorId).eq("status", "pending"))
+      .collect(),
+    ctx.db
+      .query("jobs")
+      .withIndex("by_target_executor_status", (q) => q.eq("targetExecutorId", args.executorId).eq("status", "running"))
+      .collect(),
+    ctx.db
+      .query("compileJobs")
+      .withIndex("by_target_executor_status", (q) => q.eq("targetExecutorId", args.executorId).eq("status", "pending"))
+      .collect(),
+    ctx.db
+      .query("compileJobs")
+      .withIndex("by_target_executor_status", (q) => q.eq("targetExecutorId", args.executorId).eq("status", "running"))
+      .collect(),
+  ]);
+  const nonterminalCount =
+    pendingJobs.length + runningJobs.length + pendingCompileJobs.length + runningCompileJobs.length;
+  if (nonterminalCount > 0) {
+    throw new Error(
+      `Cannot delete executor while it has ${nonterminalCount} pending/running job(s). Wait for them to complete or cancel them first.`,
+    );
+  }
+
+  await clearSessionExecutorAssignmentsForExecutor(ctx, {
+    executorId: args.executorId,
+  });
+
+  for (const workspace of workspaces) {
+    await ctx.db.patch(workspace._id, {
+      executorId: undefined,
+      updatedAt: now,
+    });
+  }
+  for (const instance of instances) {
+    await ctx.db.delete(instance._id);
+  }
+  await ctx.db.delete(args.executorId);
+
+  return {
+    deleted: true,
+    clearedWorkspaceCount: workspaces.length,
+    deletedInstanceCount: instances.length,
   };
 }
 
@@ -735,24 +900,7 @@ export const renameExecutor = mutation({
     name: v.string(),
   },
   handler: async (ctx, args) => {
-    const { executor, user } = await requireExecutorLifecycleManager(ctx, args.executorId);
-    const name = normalizeExecutorName(args.name);
-    const updatedAt = Date.now();
-    await ctx.db.patch(executor._id, {
-      name,
-      updatedAt,
-    });
-    const updated = await ctx.db.get(executor._id);
-    if (!updated) {
-      throw new Error("Executor not found after rename");
-    }
-    const instances = await ctx.db
-      .query("executorInstances")
-      .withIndex("by_executor", (q) => q.eq("executorId", executor._id))
-      .collect();
-    return {
-      executor: await buildExecutorSummaryForUser(user, updated, instances, updatedAt),
-    };
+    return await renameExecutorImpl(ctx, args);
   },
 });
 
@@ -810,72 +958,16 @@ export const deleteExecutor = mutation({
     executorId: v.id("executors"),
   },
   handler: async (ctx, args) => {
-    await requireExecutorLifecycleManager(ctx, args.executorId);
-    const now = Date.now();
-    const [workspaces, instances, pendingJobs, runningJobs, pendingCompileJobs, runningCompileJobs] = await Promise.all(
-      [
-        ctx.db
-          .query("workspaces")
-          .withIndex("by_executor", (q) => q.eq("executorId", args.executorId))
-          .collect(),
-        ctx.db
-          .query("executorInstances")
-          .withIndex("by_executor", (q) => q.eq("executorId", args.executorId))
-          .collect(),
-        ctx.db
-          .query("jobs")
-          .withIndex("by_target_executor_status", (q) =>
-            q.eq("targetExecutorId", args.executorId).eq("status", "pending"),
-          )
-          .collect(),
-        ctx.db
-          .query("jobs")
-          .withIndex("by_target_executor_status", (q) =>
-            q.eq("targetExecutorId", args.executorId).eq("status", "running"),
-          )
-          .collect(),
-        ctx.db
-          .query("compileJobs")
-          .withIndex("by_target_executor_status", (q) =>
-            q.eq("targetExecutorId", args.executorId).eq("status", "pending"),
-          )
-          .collect(),
-        ctx.db
-          .query("compileJobs")
-          .withIndex("by_target_executor_status", (q) =>
-            q.eq("targetExecutorId", args.executorId).eq("status", "running"),
-          )
-          .collect(),
-      ],
-    );
-    const nonterminalCount =
-      pendingJobs.length + runningJobs.length + pendingCompileJobs.length + runningCompileJobs.length;
-    if (nonterminalCount > 0) {
-      throw new Error(
-        `Cannot delete executor while it has ${nonterminalCount} pending/running job(s). Wait for them to complete or cancel them first.`,
-      );
-    }
+    return await deleteExecutorImpl(ctx, args);
+  },
+});
 
-    await clearSessionExecutorAssignmentsForExecutor(ctx, {
-      executorId: args.executorId,
-    });
-
-    for (const workspace of workspaces) {
-      await ctx.db.patch(workspace._id, {
-        executorId: undefined,
-        updatedAt: now,
-      });
-    }
-    for (const instance of instances) {
-      await ctx.db.delete(instance._id);
-    }
-    await ctx.db.delete(args.executorId);
-
-    return {
-      deleted: true,
-      clearedWorkspaceCount: workspaces.length,
-      deletedInstanceCount: instances.length,
-    };
+export const cleanupStaleExecutorInstancesInternal = internalMutation({
+  args: {
+    now: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    return await cleanupStaleExecutorInstancesInternalImpl(ctx, args);
   },
 });
 
