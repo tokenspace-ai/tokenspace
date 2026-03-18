@@ -14,10 +14,15 @@ export type CredentialRequirementSummary = {
   kind: "secret" | "env" | "oauth";
   scope: "workspace" | "session" | "user";
   description?: string;
+  iconPath?: string;
   placeholder?: string;
   optional?: boolean;
   fallback?: string;
   config?: Record<string, unknown>;
+};
+
+export type ExtractedCredentialRequirement = Omit<CredentialRequirementSummary, "iconPath"> & {
+  icon?: string;
 };
 
 type CredentialScope = "workspace" | "session" | "user";
@@ -129,7 +134,7 @@ function normalizeCredentialValue(
   exportName: string,
   value: unknown,
   sourcePath: string,
-): CredentialRequirementSummary {
+): ExtractedCredentialRequirement {
   const source = `${sourcePath}: export "${exportName}"`;
   if (!isRecord(value)) {
     throw new Error(`${source} is not an object`);
@@ -140,6 +145,7 @@ function normalizeCredentialValue(
   const label = normalizeOptionalMetadataString(readOptionalString(value.label, `${source}.label`));
   const group = normalizeOptionalMetadataString(readOptionalString(value.group, `${source}.group`));
   const description = readOptionalString(value.description, `${source}.description`);
+  const icon = normalizeOptionalMetadataString(readOptionalString(value.icon, `${source}.icon`));
   const optional = readOptionalBoolean(value.optional, `${source}.optional`);
   const fallback = readOptionalString(value.fallback, `${source}.fallback`);
 
@@ -154,6 +160,7 @@ function normalizeCredentialValue(
       kind,
       scope: assertScope(value.scope, source),
       description,
+      ...(icon ? { icon } : {}),
       placeholder,
       optional,
       fallback,
@@ -182,6 +189,7 @@ function normalizeCredentialValue(
       kind,
       scope,
       description,
+      ...(icon ? { icon } : {}),
       optional,
       fallback,
       config,
@@ -202,6 +210,7 @@ function normalizeCredentialValue(
     kind,
     scope: assertScope(value.scope, source),
     description,
+    ...(icon ? { icon } : {}),
     optional,
     fallback,
     config: {
@@ -351,7 +360,7 @@ export async function extractCredentialRequirementsFromWorkspace(
   options?: {
     timeoutMs?: number;
   },
-): Promise<CredentialRequirementSummary[]> {
+): Promise<ExtractedCredentialRequirement[]> {
   const sourcePath = path.join(workspaceDir, WORKSPACE_CREDENTIALS_SOURCE_PATH);
 
   try {
@@ -373,7 +382,7 @@ export async function extractCredentialRequirementsFromWorkspace(
   const exportOrder = collectCredentialExportOrder(sourceText, sourcePath);
   const exportOrderIndex = new Map(exportOrder.map((exportName, index) => [exportName, index]));
   const byCredentialId = new Map<string, string>();
-  const requirements: CredentialRequirementSummary[] = [];
+  const requirements: ExtractedCredentialRequirement[] = [];
 
   for (const item of payload.credentials) {
     if (!isRecord(item)) {

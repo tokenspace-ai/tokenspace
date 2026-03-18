@@ -82,6 +82,7 @@ export const credentials: {
     label?: string;
     group?: string;
     description?: string;
+    icon?: string;
     scope: "workspace" | "session" | "user";
     optional?: boolean;
     fallback?: CredentialId;
@@ -90,6 +91,7 @@ export const credentials: {
     id: string;
     label?: string;
     group?: string;
+    icon?: string;
     variableName: string;
     description?: string;
     optional?: boolean;
@@ -100,6 +102,7 @@ export const credentials: {
     label?: string;
     group?: string;
     description?: string;
+    icon?: string;
     scope: "workspace" | "session" | "user";
     optional?: boolean;
     config: {

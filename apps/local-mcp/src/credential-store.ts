@@ -12,6 +12,8 @@ type LocalCredentialSummaryBase = {
   label?: string;
   group?: string;
   description?: string;
+  iconPath?: string;
+  iconUrl?: string;
   kind: CredentialRequirementSummary["kind"];
   scope: CredentialRequirementSummary["scope"];
   optional: boolean;
@@ -337,6 +339,33 @@ function secretStorageAddress(workspaceDir: string, credentialId: string): { ser
   };
 }
 
+function encodeUtf8ToBase64(value: string): string {
+  return Buffer.from(value, "utf8").toString("base64");
+}
+
+function resolveCredentialIconUrl(
+  revisionFiles: LocalSession["buildResult"]["revisionFs"]["files"],
+  iconPath: string | undefined,
+): string | undefined {
+  if (!iconPath) {
+    return undefined;
+  }
+
+  const iconFile = revisionFiles.find((file) => file.path === iconPath);
+  if (!iconFile) {
+    return undefined;
+  }
+
+  const ext = path.extname(iconPath).toLowerCase();
+  if (ext === ".svg" && !iconFile.binary) {
+    return `data:image/svg+xml;base64,${encodeUtf8ToBase64(iconFile.content)}`;
+  }
+  if (ext === ".png") {
+    return `data:image/png;base64,${iconFile.content}`;
+  }
+  return undefined;
+}
+
 function sortCredentials(left: CredentialRequirementSummary, right: CredentialRequirementSummary): number {
   const leftGroup = left.group ?? "Other";
   const rightGroup = right.group ?? "Other";
@@ -365,6 +394,10 @@ export function createLocalCredentialManager(
 ): LocalCredentialManager {
   const requirements = [...session.buildResult.metadata.credentialRequirements].sort(sortCredentials);
   const requirementsById = new Map(requirements.map((entry) => [entry.id, entry]));
+  const revisionFiles = session.buildResult.revisionFs?.files ?? [];
+  const iconUrlByCredentialId = new Map(
+    requirements.map((entry) => [entry.id, resolveCredentialIconUrl(revisionFiles, entry.iconPath)]),
+  );
   const workspaceDir = session.manifest.workspaceDir;
   const secretsStore = options?.secretsStore ?? defaultSecretsStore;
 
@@ -419,6 +452,8 @@ export function createLocalCredentialManager(
         label: requirement.label,
         group: requirement.group,
         description: requirement.description,
+        iconPath: requirement.iconPath,
+        iconUrl: iconUrlByCredentialId.get(requirement.id),
         kind: "secret",
         scope: requirement.scope,
         optional: requirement.optional === true,
@@ -438,6 +473,8 @@ export function createLocalCredentialManager(
         label: requirement.label,
         group: requirement.group,
         description: requirement.description,
+        iconPath: requirement.iconPath,
+        iconUrl: iconUrlByCredentialId.get(requirement.id),
         kind: "env",
         scope: requirement.scope,
         optional: requirement.optional === true,
@@ -454,6 +491,8 @@ export function createLocalCredentialManager(
       label: requirement.label,
       group: requirement.group,
       description: requirement.description,
+      iconPath: requirement.iconPath,
+      iconUrl: iconUrlByCredentialId.get(requirement.id),
       kind: "oauth",
       scope: requirement.scope,
       optional: requirement.optional === true,

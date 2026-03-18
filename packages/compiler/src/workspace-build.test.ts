@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildWorkspace, fingerprintWorkspaceSource, loadBuiltWorkspace } from "./workspace-build";
@@ -123,6 +123,93 @@ export const broken = token;
       expect(loaded.metadata.tokenspaceMd).toBe(built.metadata.tokenspaceMd);
       expect(loaded.revisionFs.declarations.length).toBe(built.revisionFs.declarations.length);
     } finally {
+      await rm(outDir, { recursive: true, force: true });
+    }
+  });
+
+  it("normalizes credential icon paths into revision filesystem paths and warns on invalid icons", async () => {
+    const workspaceDir = await mkdtemp(path.join(tmpdir(), "tokenspace-compiler-icon-workspace-"));
+    const outDir = await mkdtemp(path.join(tmpdir(), "tokenspace-compiler-icon-build-"));
+
+    try {
+      await mkdir(path.join(workspaceDir, "src/capabilities/demo"), { recursive: true });
+      await mkdir(path.join(workspaceDir, "docs"), { recursive: true });
+      await mkdir(path.join(workspaceDir, "node_modules/@tokenspace"), { recursive: true });
+      await symlink(path.join(REPO_ROOT, "packages/sdk"), path.join(workspaceDir, "node_modules/@tokenspace/sdk"));
+      await writeFile(
+        path.join(workspaceDir, "src/capabilities/demo/capability.ts"),
+        `
+export const noop = true;
+`,
+        "utf8",
+      );
+      await writeFile(
+        path.join(workspaceDir, "src/capabilities/demo/icon.svg"),
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"></svg>\n`,
+        "utf8",
+      );
+      await writeFile(
+        path.join(workspaceDir, "docs/oauth.svg"),
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"></svg>\n`,
+        "utf8",
+      );
+      await writeFile(path.join(workspaceDir, "docs/not-an-image.txt"), "nope\n", "utf8");
+      await writeFile(
+        path.join(workspaceDir, "src/credentials.ts"),
+        `
+import { credentials } from "@tokenspace/sdk";
+
+export const sourceIcon = credentials.secret({
+  id: "source-icon",
+  scope: "workspace",
+  icon: "./capabilities/demo/icon.svg",
+});
+
+export const docsIcon = credentials.oauth({
+  id: "docs-icon",
+  scope: "workspace",
+  icon: "../docs/oauth.svg",
+  config: {
+    grantType: "authorization_code",
+    clientId: "client-id",
+    clientSecret: "client-secret",
+    authorizeUrl: "https://example.com/authorize",
+    tokenUrl: "https://example.com/token",
+    scopes: ["read"],
+  },
+});
+
+export const missingIcon = credentials.secret({
+  id: "missing-icon",
+  scope: "workspace",
+  icon: "../docs/missing.svg",
+});
+
+export const invalidIcon = credentials.secret({
+  id: "invalid-icon",
+  scope: "workspace",
+  icon: "../docs/not-an-image.txt",
+});
+`,
+        "utf8",
+      );
+
+      const result = await buildWorkspace({
+        workspaceDir,
+        outDir,
+        mode: "local",
+      });
+
+      const byId = new Map(result.metadata.credentialRequirements.map((credential) => [credential.id, credential]));
+      expect(byId.get("source-icon")?.iconPath).toBe("capabilities/demo/icon.svg");
+      expect(byId.get("docs-icon")?.iconPath).toBe("docs/oauth.svg");
+      expect(byId.get("missing-icon")?.iconPath).toBeUndefined();
+      expect(byId.get("invalid-icon")?.iconPath).toBeUndefined();
+      expect(result.diagnostics.warnings).toEqual(
+        expect.arrayContaining([expect.stringContaining("missing.svg"), expect.stringContaining("not-an-image.txt")]),
+      );
+    } finally {
+      await rm(workspaceDir, { recursive: true, force: true });
       await rm(outDir, { recursive: true, force: true });
     }
   });

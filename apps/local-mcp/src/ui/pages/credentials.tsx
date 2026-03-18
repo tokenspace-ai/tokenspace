@@ -1,5 +1,5 @@
 import { Info, Key, Pencil, ShieldOff, Trash2, Variable, X } from "lucide-react";
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { StatusBadge } from "@/ui/components/status-badge";
 import { Badge } from "@/ui/components/ui/badge";
 import { Button } from "@/ui/components/ui/button";
@@ -114,9 +114,15 @@ function CredentialRow({ credential, nonce, isEditing, onEdit, onCancel, onMutat
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [iconErrored, setIconErrored] = useState(false);
 
   const title = credential.label ?? credential.id;
   const KindIcon = kindIcons[credential.kind] ?? Key;
+  const showIconImage = Boolean(credential.iconUrl) && !iconErrored;
+
+  useEffect(() => {
+    setIconErrored(false);
+  }, [credential.iconUrl]);
 
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
@@ -168,7 +174,16 @@ function CredentialRow({ credential, nonce, isEditing, onEdit, onCancel, onMutat
       <tr className="border-b border-border last:border-b-0 hover:bg-muted/30 transition-colors">
         <td className="px-3 py-2">
           <div className="flex items-center gap-2 min-w-0">
-            <KindIcon className="size-3.5 text-muted-foreground shrink-0" />
+            {showIconImage ? (
+              <img
+                src={credential.iconUrl}
+                alt=""
+                className="size-5 shrink-0 rounded-sm border border-border/60 bg-background object-contain p-0.5"
+                onError={() => setIconErrored(true)}
+              />
+            ) : (
+              <KindIcon className="size-3.5 text-muted-foreground shrink-0" />
+            )}
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="font-medium truncate">{title}</span>

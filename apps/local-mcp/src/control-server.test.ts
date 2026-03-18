@@ -98,6 +98,8 @@ describe("local control server", () => {
             kind: "oauth",
             status: "unsupported",
             supported: false,
+            iconPath: "docs/workspace-oauth.svg",
+            iconUrl: expect.stringContaining("data:image/svg+xml;base64,"),
           }),
           expect.objectContaining({
             id: "workspace-secret",
@@ -105,6 +107,8 @@ describe("local control server", () => {
             scope: "workspace",
             effectiveScope: "workspace",
             configured: false,
+            iconPath: "capabilities/credentials/workspace-secret.svg",
+            iconUrl: expect.stringContaining("data:image/svg+xml;base64,"),
           }),
           expect.objectContaining({
             id: "session-secret",

@@ -40,6 +40,7 @@ import type * as fs_overlay from "../fs/overlay.js";
 import type * as fs_revision from "../fs/revision.js";
 import type * as fs_working from "../fs/working.js";
 import type * as health from "../health.js";
+import type * as http from "../http.js";
 import type * as playground from "../playground.js";
 import type * as resend from "../resend.js";
 import type * as revisionBuild from "../revisionBuild.js";
@@ -92,6 +93,7 @@ declare const fullApi: ApiFromModules<{
   "fs/revision": typeof fs_revision;
   "fs/working": typeof fs_working;
   health: typeof health;
+  http: typeof http;
   playground: typeof playground;
   resend: typeof resend;
   revisionBuild: typeof revisionBuild;

@@ -184,6 +184,41 @@ export const token = credentials.secret({
     );
   });
 
+  it("captures raw icon metadata for later build normalization", async () => {
+    await withTempWorkspace(
+      {
+        "src/credentials.ts": `
+import { credentials } from "@tokenspace/sdk";
+
+export const token = credentials.secret({
+  id: "workspace-token",
+  scope: "workspace",
+  icon: "./capabilities/demo/icon.svg",
+});
+`,
+      },
+      async (workspaceDir) => {
+        const requirements = await extractCredentialRequirementsFromWorkspace(workspaceDir);
+        expect(requirements).toEqual([
+          {
+            path: "src/credentials.ts",
+            exportName: "token",
+            id: "workspace-token",
+            label: undefined,
+            group: undefined,
+            kind: "secret",
+            scope: "workspace",
+            description: undefined,
+            icon: "./capabilities/demo/icon.svg",
+            placeholder: undefined,
+            optional: undefined,
+            fallback: undefined,
+          },
+        ]);
+      },
+    );
+  });
+
   it("throws when duplicate credential ids are exported", async () => {
     await withTempWorkspace(
       {
