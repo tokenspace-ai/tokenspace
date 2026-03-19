@@ -145,3 +145,7 @@ To fix it:
 - retry once the page shows `Online`
 
 If you are using Docker, also confirm the container is still running and that `TOKENSPACE_API_URL` and `TOKENSPACE_TOKEN` are set correctly.
+
+## Maintainer note
+
+The published executor container image is intended to support both `linux/amd64` and `linux/arm64`. Maintainers should publish it through the `Publish Executor Image` GitHub Actions workflow so the registry receives a multi-platform manifest instead of a single host-architecture image.
