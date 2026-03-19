@@ -360,8 +360,12 @@ function resolveCredentialIconUrl(
   if (ext === ".svg" && !iconFile.binary) {
     return `data:image/svg+xml;base64,${encodeUtf8ToBase64(iconFile.content)}`;
   }
-  if (ext === ".png") {
+  if (ext === ".png" && iconFile.binary) {
     return `data:image/png;base64,${iconFile.content}`;
+  }
+  if (ext === ".png") {
+    console.warn(`Ignoring non-binary PNG credential icon for local MCP: ${iconPath}`);
+    return undefined;
   }
   console.warn(`Unsupported credential icon format for local MCP: ${iconPath}`);
   return undefined;

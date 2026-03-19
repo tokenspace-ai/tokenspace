@@ -270,6 +270,49 @@ describe("local credential manager", () => {
     ]);
   });
 
+  it("ignores non-binary png icons", async () => {
+    const manager = createLocalCredentialManager(
+      {
+        manifest: {
+          workspaceDir: `/tmp/tokenspace-local-mcp-${randomUUID()}`,
+        },
+        buildResult: {
+          revisionFs: {
+            files: [
+              {
+                path: "docs/icon.png",
+                content: "not-base64-png-bytes",
+                binary: false,
+              },
+            ],
+          },
+          metadata: {
+            credentialRequirements: [
+              {
+                path: "src/credentials.ts",
+                exportName: "pngSecret",
+                id: "png-secret",
+                kind: "secret",
+                scope: "workspace",
+                iconPath: "docs/icon.png",
+              },
+            ],
+          },
+        },
+      } as unknown as LocalSession,
+      { secretsStore: createMemorySecretsStore() },
+    );
+
+    const [listed] = await manager.listCredentials();
+    expect(listed).toEqual(
+      expect.objectContaining({
+        id: "png-secret",
+        iconPath: "docs/icon.png",
+        iconUrl: undefined,
+      }),
+    );
+  });
+
   it("treats session and user secrets as workspace-local entries", async () => {
     const manager = createCredentialManager([
       {
