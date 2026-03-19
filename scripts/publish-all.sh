@@ -10,4 +10,5 @@ bun run release:pack-smoke
 echo "LOGIN TO NPM..."
 npm login
 bun run release:publish
-bun run release:executor-image
+echo "Executor image publish now runs from GitHub Actions."
+echo "Trigger the 'Publish Executor Image' workflow with the package version you want to publish."

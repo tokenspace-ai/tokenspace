@@ -19,6 +19,16 @@ docker run \
   ghcr.io/tokenspace-ai/executor:latest
 ``` 
 
+## Publishing the Docker image
+
+The executor image is published as a multi-arch image for `linux/amd64` and `linux/arm64`.
+
+Maintainers should use the `Publish Executor Image` GitHub Actions workflow as the primary publish path. The local fallback command uses Docker Buildx and verifies that both platforms were published:
+
+```bash
+bun run release:executor-image --version 0.2.2 --latest true
+```
+
 ## CLI options
 
 | Flag | Env var | Description |
