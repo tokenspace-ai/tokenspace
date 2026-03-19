@@ -32,6 +32,7 @@ export type CredentialRequirementSummary = {
   kind: "secret" | "env" | "oauth";
   scope: "workspace" | "session" | "user";
   description?: string;
+  iconPath?: string;
   placeholder?: string;
   optional?: boolean;
   fallback?: string;
@@ -69,6 +70,7 @@ export const vCredentialRequirementSummary = v.object({
   kind: v.union(v.literal("secret"), v.literal("env"), v.literal("oauth")),
   scope: v.union(v.literal("workspace"), v.literal("session"), v.literal("user")),
   description: v.optional(v.string()),
+  iconPath: v.optional(v.string()),
   placeholder: v.optional(v.string()),
   optional: v.optional(v.boolean()),
   fallback: v.optional(v.string()),

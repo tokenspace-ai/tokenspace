@@ -18,6 +18,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ApprovalRequestCard } from "@/components/chat/approval-request";
+import { ResolvedCredentialIcon } from "@/components/credentials/credential-icon";
 import { CredentialResolutionDialog } from "@/components/credentials/credential-resolution-dialog";
 import { SandboxEditor } from "@/components/sandbox-editor";
 import { SessionTerminal, SessionTerminalEmpty } from "@/components/session/index";
@@ -1156,10 +1157,21 @@ function OutputPanel({
               <AlertCircleIcon className="size-4 text-orange-400" />
               <p className="text-sm font-medium text-orange-400">Credential unavailable</p>
             </div>
-            <p className="mt-2 text-sm text-foreground">
-              {credentialMissing.credential.label ?? credentialMissing.credential.id} (
-              {credentialMissing.credential.scope}/{credentialMissing.credential.kind})
-            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <ResolvedCredentialIcon
+                credentialId={credentialMissing.credential.id}
+                name={credentialMissing.credential.label ?? credentialMissing.credential.id}
+                sessionId={sessionId}
+                revisionId={revisionId}
+                className="size-7 rounded-md border border-orange-500/20 bg-background/80"
+                imageClassName="object-contain p-1"
+                fallbackClassName="text-[10px]"
+              />
+              <p className="text-sm text-foreground">
+                {credentialMissing.credential.label ?? credentialMissing.credential.id} (
+                {credentialMissing.credential.scope}/{credentialMissing.credential.kind})
+              </p>
+            </div>
             <p className="mt-1 text-xs text-muted-foreground">Reason: {credentialMissing.credential.reason}</p>
             <p className="mt-2 text-xs text-muted-foreground">
               {credentialMissingHint(credentialMissing, "click Run again")}

@@ -12,6 +12,7 @@ import {
   createLocalFileSecretsStore,
   LocalCredentialBackendError,
 } from "./credential-store";
+import { createMemorySecretsStore } from "./test-utils";
 import type { LocalSession } from "./types";
 
 const cleanupCallbacks: Array<() => Promise<void>> = [];
@@ -32,11 +33,14 @@ function createCredentialManager(requirements: CredentialRequirementSummary[]) {
         workspaceDir,
       },
       buildResult: {
+        revisionFs: {
+          files: [],
+        },
         metadata: {
           credentialRequirements: requirements,
         },
       },
-    } as LocalSession,
+    } as unknown as LocalSession,
     { secretsStore },
   );
 
@@ -196,6 +200,117 @@ describe("local credential manager", () => {
         supported: false,
       }),
     ]);
+  });
+
+  it("includes icon metadata and resolves local data URLs from revision files", async () => {
+    const manager = createLocalCredentialManager(
+      {
+        manifest: {
+          workspaceDir: `/tmp/tokenspace-local-mcp-${randomUUID()}`,
+        },
+        buildResult: {
+          revisionFs: {
+            files: [
+              {
+                path: "capabilities/demo/icon.svg",
+                content: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"></svg>`,
+              },
+              {
+                path: "docs/icon.png",
+                content: Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64"),
+                binary: true,
+              },
+            ],
+          },
+          metadata: {
+            credentialRequirements: [
+              {
+                path: "src/credentials.ts",
+                exportName: "svgSecret",
+                id: "svg-secret",
+                kind: "secret",
+                scope: "workspace",
+                iconPath: "capabilities/demo/icon.svg",
+              },
+              {
+                path: "src/credentials.ts",
+                exportName: "pngOauth",
+                id: "png-oauth",
+                kind: "oauth",
+                scope: "workspace",
+                iconPath: "docs/icon.png",
+                config: {
+                  grantType: "authorization_code",
+                  clientId: "client-id",
+                  clientSecret: "client-secret",
+                  authorizeUrl: "https://example.com/authorize",
+                  tokenUrl: "https://example.com/token",
+                  scopes: ["read"],
+                },
+              },
+            ],
+          },
+        },
+      } as unknown as LocalSession,
+      { secretsStore: createMemorySecretsStore() },
+    );
+
+    const listed = await manager.listCredentials();
+    expect(listed).toEqual([
+      expect.objectContaining({
+        id: "png-oauth",
+        iconPath: "docs/icon.png",
+        iconUrl: expect.stringContaining("data:image/png;base64,"),
+      }),
+      expect.objectContaining({
+        id: "svg-secret",
+        iconPath: "capabilities/demo/icon.svg",
+        iconUrl: expect.stringContaining("data:image/svg+xml;base64,"),
+      }),
+    ]);
+  });
+
+  it("ignores non-binary png icons", async () => {
+    const manager = createLocalCredentialManager(
+      {
+        manifest: {
+          workspaceDir: `/tmp/tokenspace-local-mcp-${randomUUID()}`,
+        },
+        buildResult: {
+          revisionFs: {
+            files: [
+              {
+                path: "docs/icon.png",
+                content: "not-base64-png-bytes",
+                binary: false,
+              },
+            ],
+          },
+          metadata: {
+            credentialRequirements: [
+              {
+                path: "src/credentials.ts",
+                exportName: "pngSecret",
+                id: "png-secret",
+                kind: "secret",
+                scope: "workspace",
+                iconPath: "docs/icon.png",
+              },
+            ],
+          },
+        },
+      } as unknown as LocalSession,
+      { secretsStore: createMemorySecretsStore() },
+    );
+
+    const [listed] = await manager.listCredentials();
+    expect(listed).toEqual(
+      expect.objectContaining({
+        id: "png-secret",
+        iconPath: "docs/icon.png",
+        iconUrl: undefined,
+      }),
+    );
   });
 
   it("treats session and user secrets as workspace-local entries", async () => {

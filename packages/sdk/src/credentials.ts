@@ -9,6 +9,7 @@ export type CredentialDef = {
   label?: string;
   group?: string;
   description?: string;
+  icon?: string;
   scope: "workspace" | "session" | "user";
   optional?: boolean;
   // Forward-compatibility field. Runtime fallback behavior is intentionally not implemented yet.
@@ -37,6 +38,7 @@ export function secret(def: {
   label?: string;
   group?: string;
   description?: string;
+  icon?: string;
   placeholder?: string;
   scope: "workspace" | "session" | "user";
   optional?: boolean;
@@ -48,6 +50,7 @@ export function secret(def: {
     label: def.label,
     group: def.group,
     description: def.description,
+    icon: def.icon,
     placeholder: def.placeholder,
     scope: def.scope,
     kind: "secret",
@@ -64,6 +67,7 @@ export function env<O extends boolean>(def: {
   id: string;
   label?: string;
   group?: string;
+  icon?: string;
   variableName: string;
   description?: string;
   optional?: O;
@@ -75,6 +79,7 @@ export function env<O extends boolean>(def: {
     id: def.id,
     label: def.label,
     group: def.group,
+    icon: def.icon,
     variableName: def.variableName,
     description: def.description,
     scope: "workspace",
@@ -97,6 +102,7 @@ export function oauth(def: {
   label?: string;
   group?: string;
   description?: string;
+  icon?: string;
   scope: "workspace" | "session" | "user";
   optional?: boolean;
   // Forward-compatibility field. Stored in the definition but ignored by runtime resolution for now.
@@ -115,6 +121,7 @@ export function oauth(def: {
     label: def.label,
     group: def.group,
     description: def.description,
+    icon: def.icon,
     scope: def.scope,
     kind: "oauth",
     grantType: def.config.grantType,

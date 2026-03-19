@@ -1,0 +1,18 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="64" height="64" rx="18" fill="#5B3FD0"/>
+  <rect x="8" y="8" width="48" height="48" rx="14" fill="url(#dd_bg)"/>
+  <path
+    d="M19 39.5C21 30.4 26.9 25 34.9 25C40.9 25 45.6 27.8 47.9 33.4C49 36.2 49 39.6 49 43H19V39.5Z"
+    fill="white"
+  />
+  <rect x="22" y="31" width="4.5" height="8" rx="2.25" fill="#5B3FD0"/>
+  <rect x="29.75" y="27" width="4.5" height="12" rx="2.25" fill="#5B3FD0"/>
+  <rect x="37.5" y="23" width="4.5" height="16" rx="2.25" fill="#5B3FD0"/>
+  <circle cx="46" cy="22" r="4" fill="#A7F3D0"/>
+  <defs>
+    <linearGradient id="dd_bg" x1="14" y1="10" x2="52" y2="54" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6D4BFF"/>
+      <stop offset="1" stop-color="#4A2DB8"/>
+    </linearGradient>
+  </defs>
+</svg>

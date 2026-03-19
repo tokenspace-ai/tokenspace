@@ -46,6 +46,8 @@ export type CredentialSummary = {
   label?: string;
   group?: string;
   description?: string;
+  iconPath?: string;
+  iconUrl?: string;
   kind: CredentialKind;
   scope: string;
   optional: boolean;

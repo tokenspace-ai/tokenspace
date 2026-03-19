@@ -5,6 +5,7 @@ export const workspaceSecret = credentials.secret({
   label: "Workspace Secret",
   group: "Secrets",
   description: "Workspace secret for local MCP integration tests",
+  icon: "./capabilities/credentials/workspace-secret.svg",
   scope: "workspace",
 });
 
@@ -37,6 +38,7 @@ export const workspaceOauth = credentials.oauth({
   label: "Workspace OAuth",
   group: "OAuth",
   description: "Workspace oauth for local MCP integration tests",
+  icon: "../docs/workspace-oauth.svg",
   scope: "workspace",
   config: {
     grantType: "authorization_code",

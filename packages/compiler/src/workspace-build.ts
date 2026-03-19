@@ -213,6 +213,14 @@ function normalizePath(value: string): string {
   return value.replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+/, "");
 }
 
+function normalizeWorkspaceRelativePath(workspaceDir: string, absolutePath: string): string | null {
+  const relativePath = normalizePath(path.relative(workspaceDir, absolutePath));
+  if (!relativePath || relativePath === "." || relativePath.startsWith("../")) {
+    return null;
+  }
+  return relativePath;
+}
+
 function sha256(content: string | Uint8Array): string {
   const hash = createHash("sha256");
   hash.update(content);
@@ -222,6 +230,38 @@ function sha256(content: string | Uint8Array): string {
 function isBinaryPath(filePath: string): boolean {
   const ext = path.extname(filePath).toLowerCase();
   return BINARY_EXTENSIONS.has(ext);
+}
+
+function normalizeCredentialIconPath(args: {
+  workspaceDir: string;
+  credentialSourcePath: string;
+  rawIconPath: string;
+  revisionFilesBySourcePath: ReadonlyMap<string, string>;
+}): { iconPath?: string; warning?: string } {
+  const iconExt = path.extname(args.rawIconPath).toLowerCase();
+  if (iconExt !== ".png" && iconExt !== ".svg") {
+    return {
+      warning: `Credential icon "${args.rawIconPath}" must be a PNG or SVG file.`,
+    };
+  }
+
+  const credentialSourceDir = path.dirname(path.join(args.workspaceDir, args.credentialSourcePath));
+  const absoluteIconPath = path.resolve(credentialSourceDir, args.rawIconPath);
+  const workspaceRelativePath = normalizeWorkspaceRelativePath(args.workspaceDir, absoluteIconPath);
+  if (!workspaceRelativePath) {
+    return {
+      warning: `Credential icon "${args.rawIconPath}" resolves outside the workspace and will be ignored.`,
+    };
+  }
+
+  const revisionPath = args.revisionFilesBySourcePath.get(workspaceRelativePath);
+  if (!revisionPath) {
+    return {
+      warning: `Credential icon "${args.rawIconPath}" does not resolve to an included workspace file and will be ignored.`,
+    };
+  }
+
+  return { iconPath: revisionPath };
 }
 
 function assertValidCapabilityNamespace(capabilityName: string): void {
@@ -712,6 +752,7 @@ export async function buildWorkspace(options: BuildWorkspaceOptions): Promise<Bu
   const capabilityEntrypoints = new Set<string>();
   const bundleSources: Array<{ path: string; content: string }> = [];
   const passthroughFiles: Array<{ path: string; content: string; binary?: boolean }> = [];
+  const revisionFilesBySourcePath = new Map<string, string>();
 
   for (const file of allFiles) {
     if (file.path.startsWith("src/") && file.path.endsWith(".ts")) {
@@ -726,11 +767,13 @@ export async function buildWorkspace(options: BuildWorkspaceOptions): Promise<Bu
     }
 
     if (file.path.startsWith("src/")) {
+      const revisionPath = file.path.replace(/^src\//, "");
       passthroughFiles.push({
-        path: file.path.replace(/^src\//, ""),
+        path: revisionPath,
         content: file.content,
         binary: file.binary,
       });
+      revisionFilesBySourcePath.set(file.path, revisionPath);
       continue;
     }
 
@@ -741,6 +784,7 @@ export async function buildWorkspace(options: BuildWorkspaceOptions): Promise<Bu
       file.path === "TOKENSPACE.md"
     ) {
       passthroughFiles.push({ path: file.path, content: file.content, binary: file.binary });
+      revisionFilesBySourcePath.set(file.path, file.path);
     }
   }
 
@@ -824,8 +868,43 @@ export async function buildWorkspace(options: BuildWorkspaceOptions): Promise<Bu
     message: "Extracting credential requirements",
   });
   const t4 = Date.now();
-  const credentialRequirements = await extractCredentialRequirementsFromWorkspace(workspaceDir, {
+  const extractedCredentialRequirements = await extractCredentialRequirementsFromWorkspace(workspaceDir, {
     timeoutMs: credentialEvalTimeoutMs,
+  });
+  const credentialRequirements: CredentialRequirementSummary[] = extractedCredentialRequirements.map((credential) => {
+    const normalizedBase: CredentialRequirementSummary = {
+      path: credential.path,
+      exportName: credential.exportName,
+      id: credential.id,
+      label: credential.label,
+      group: credential.group,
+      kind: credential.kind,
+      scope: credential.scope,
+      description: credential.description,
+      placeholder: credential.placeholder,
+      optional: credential.optional,
+      fallback: credential.fallback,
+      config: credential.config,
+    };
+
+    if (!credential.icon) {
+      return normalizedBase;
+    }
+
+    const { iconPath, warning } = normalizeCredentialIconPath({
+      workspaceDir,
+      credentialSourcePath: credential.path,
+      rawIconPath: credential.icon,
+      revisionFilesBySourcePath,
+    });
+    if (warning) {
+      warnings.push(`${credential.path}: export "${credential.exportName}": ${warning}`);
+    }
+
+    return {
+      ...normalizedBase,
+      iconPath,
+    };
   });
   timingsMs.extractCredentialRequirements = Date.now() - t4;
   reportProgress({

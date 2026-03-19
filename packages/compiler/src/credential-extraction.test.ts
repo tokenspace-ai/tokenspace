@@ -184,6 +184,79 @@ export const token = credentials.secret({
     );
   });
 
+  it("captures raw icon metadata for later build normalization", async () => {
+    await withTempWorkspace(
+      {
+        "src/credentials.ts": `
+import { credentials } from "@tokenspace/sdk";
+
+export const token = credentials.secret({
+  id: "workspace-token",
+  scope: "workspace",
+  icon: "./capabilities/demo/icon.svg",
+});
+`,
+      },
+      async (workspaceDir) => {
+        const requirements = await extractCredentialRequirementsFromWorkspace(workspaceDir);
+        expect(requirements).toEqual([
+          {
+            path: "src/credentials.ts",
+            exportName: "token",
+            id: "workspace-token",
+            label: undefined,
+            group: undefined,
+            kind: "secret",
+            scope: "workspace",
+            description: undefined,
+            icon: "./capabilities/demo/icon.svg",
+            placeholder: undefined,
+            optional: undefined,
+            fallback: undefined,
+          },
+        ]);
+      },
+    );
+  });
+
+  it("preserves the defining module path for re-exported credentials", async () => {
+    await withTempWorkspace(
+      {
+        "src/integrations/github/credentials.ts": `
+import { credentials } from "@tokenspace/sdk";
+
+export const githubToken = credentials.secret({
+  id: "github-token",
+  scope: "workspace",
+  icon: "./icon.svg",
+});
+`,
+        "src/credentials.ts": `
+export { githubToken } from "./integrations/github/credentials";
+`,
+      },
+      async (workspaceDir) => {
+        const requirements = await extractCredentialRequirementsFromWorkspace(workspaceDir);
+        expect(requirements).toEqual([
+          {
+            path: "src/integrations/github/credentials.ts",
+            exportName: "githubToken",
+            id: "github-token",
+            label: undefined,
+            group: undefined,
+            kind: "secret",
+            scope: "workspace",
+            description: undefined,
+            icon: "./icon.svg",
+            placeholder: undefined,
+            optional: undefined,
+            fallback: undefined,
+          },
+        ]);
+      },
+    );
+  });
+
   it("throws when duplicate credential ids are exported", async () => {
     await withTempWorkspace(
       {

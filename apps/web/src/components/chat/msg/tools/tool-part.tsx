@@ -4,6 +4,7 @@ import type { ToolUIPart } from "ai";
 import { useQuery } from "convex/react";
 import { AlertCircleIcon, BotIcon, FileIcon, FileSearchIcon, TerminalIcon, TvMinimalPlayIcon } from "lucide-react";
 import { useMemo, useState } from "react";
+import { ResolvedCredentialIcon } from "@/components/credentials/credential-icon";
 import { CredentialResolutionDialog } from "@/components/credentials/credential-resolution-dialog";
 import { Button } from "@/components/ui/button";
 import { credentialMissingHint, parseCredentialMissingPayload } from "@/lib/credential-missing";
@@ -97,10 +98,21 @@ export function ToolPart({ part }: { part: ToolUIPart<AgentTools>; isLastMessage
       ) : null}
       {credentialMissing ? (
         <div className="ml-6 mt-1 mb-2 rounded-md border border-orange-500/20 bg-orange-500/10 px-3 py-2 text-xs">
-          <p className="font-medium text-orange-500">
-            Credential unavailable: {credentialMissing.credential.label ?? credentialMissing.credential.id} (
-            {credentialMissing.credential.scope}/{credentialMissing.credential.kind})
-          </p>
+          <div className="flex items-center gap-2">
+            <ResolvedCredentialIcon
+              credentialId={credentialMissing.credential.id}
+              name={credentialMissing.credential.label ?? credentialMissing.credential.id}
+              sessionId={sidebar?.sessionId}
+              revisionId={sessionInfo?.revisionId ?? null}
+              className="size-6 rounded-md border border-orange-500/20 bg-background/80"
+              imageClassName="object-contain p-1"
+              fallbackClassName="text-[10px]"
+            />
+            <p className="font-medium text-orange-500">
+              Credential unavailable: {credentialMissing.credential.label ?? credentialMissing.credential.id} (
+              {credentialMissing.credential.scope}/{credentialMissing.credential.kind})
+            </p>
+          </div>
           <p className="mt-1 text-muted-foreground">{credentialMissingHint(credentialMissing, "re-run")}</p>
           <Button
             size="sm"

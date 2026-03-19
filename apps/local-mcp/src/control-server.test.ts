@@ -5,9 +5,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createLocalApprovalStore } from "./approvals";
 import { createLocalControlServer } from "./control-server";
-import type { LocalSecretsStore } from "./credential-store";
 import { createLocalCredentialManager } from "./credential-store";
 import { createLocalSession } from "./session";
+import { createMemorySecretsStore } from "./test-utils";
 
 const REPO_ROOT = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const CREDENTIAL_WORKSPACE_DIR = path.join(REPO_ROOT, "apps/local-mcp/fixtures/credential-workspace");
@@ -26,19 +26,6 @@ function nonceFromApprovalUrl(approvalUrl: string): string {
   const nonce = new URL(approvalUrl).searchParams.get("nonce");
   if (!nonce) throw new Error(`Missing nonce in ${approvalUrl}`);
   return nonce;
-}
-
-function createMemorySecretsStore(): LocalSecretsStore {
-  const entries = new Map<string, string>();
-  const key = ({ service, name }: { service: string; name: string }) => `${service}:${name}`;
-
-  return {
-    get: async (address) => entries.get(key(address)) ?? null,
-    set: async ({ service, name, value }) => {
-      entries.set(`${service}:${name}`, value);
-    },
-    delete: async (address) => entries.delete(key(address)),
-  };
 }
 
 describe("local control server", () => {
@@ -98,6 +85,8 @@ describe("local control server", () => {
             kind: "oauth",
             status: "unsupported",
             supported: false,
+            iconPath: "docs/workspace-oauth.svg",
+            iconUrl: expect.stringContaining("data:image/svg+xml;base64,"),
           }),
           expect.objectContaining({
             id: "workspace-secret",
@@ -105,6 +94,8 @@ describe("local control server", () => {
             scope: "workspace",
             effectiveScope: "workspace",
             configured: false,
+            iconPath: "capabilities/credentials/workspace-secret.svg",
+            iconUrl: expect.stringContaining("data:image/svg+xml;base64,"),
           }),
           expect.objectContaining({
             id: "session-secret",

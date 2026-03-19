@@ -405,6 +405,8 @@ async function startServices({ shouldSeed }: StartServicesOptions) {
   const seedPrefix = c.magenta("seed".padEnd(LOG_PREFIX_LENGTH, " "));
   const log = (message: string) => console.log(`${seedPrefix} ${message}`);
   const convexUrl = process.env.CONVEX_URL!;
+  const convexSiteUrl = new URL(convexUrl);
+  convexSiteUrl.port = String(ports.convexPort + 1);
   const adminKey = getAdminKey();
   const seedResult = await seedConfiguredWorkspaces({
     convexUrl,
@@ -420,7 +422,7 @@ async function startServices({ shouldSeed }: StartServicesOptions) {
 
   runCommand("webapp", c.cyan, ["bun", "run", "dev"], {
     cwd: "apps/web",
-    env: { VITE_CONVEX_URL: process.env.CONVEX_URL! },
+    env: { VITE_CONVEX_URL: convexUrl, VITE_CONVEX_SITE_URL: convexSiteUrl.toString() },
   });
   runCommand("executor", c.yellow, ["bun", "run", "dev"], {
     cwd: "services/executor",

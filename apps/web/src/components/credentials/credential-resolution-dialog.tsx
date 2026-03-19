@@ -5,6 +5,7 @@ import { useAction, useMutation } from "convex/react";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { ResolvedCredentialIcon } from "@/components/credentials/credential-icon";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -175,7 +176,20 @@ export function CredentialResolutionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Resolve Credential</DialogTitle>
+          <DialogTitle className="flex items-center gap-3">
+            {payload ? (
+              <ResolvedCredentialIcon
+                credentialId={payload.credential.id}
+                name={payload.credential.label ?? payload.credential.id}
+                sessionId={sessionId}
+                revisionId={revisionId}
+                className="size-8 rounded-md border border-border/60 bg-background"
+                imageClassName="object-contain p-1"
+                fallbackClassName="text-xs"
+              />
+            ) : null}
+            <span>Resolve Credential</span>
+          </DialogTitle>
           <DialogDescription>
             {payload
               ? `${payload.credential.label ?? payload.credential.id} (${payload.credential.scope}/${payload.credential.kind})`
