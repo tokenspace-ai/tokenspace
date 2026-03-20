@@ -9,6 +9,10 @@ export function buildRevisionUrl(workspaceSlug: string, revisionId: string): str
   return `${getAppUrl()}/workspace/${workspaceSlug}@${revisionId}/playground`;
 }
 
+export function buildChatUrl(workspaceSlug: string, chatId: string): string {
+  return `${getAppUrl()}/workspace/${workspaceSlug}/chat/${chatId}`;
+}
+
 export async function openUrl(url: string): Promise<void> {
   const platform = os.platform();
   const command =

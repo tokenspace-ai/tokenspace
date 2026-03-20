@@ -5,6 +5,7 @@
 import { createRequire } from "node:module";
 import { program } from "commander";
 import { login, logout, requireAuth, setVerbose } from "./auth.js";
+import { getChat, listChats, sendMessageToChat, startChat } from "./commands/chat.js";
 import { compileWorkspace } from "./commands/compile.js";
 import { listCredentials, setWorkspaceCredential } from "./commands/credentials.js";
 import { initWorkspace } from "./commands/init.js";
@@ -174,6 +175,7 @@ program
   });
 
 const credentials = program.command("credentials").description("List and set workspace credentials");
+const chat = program.command("chat").description("Start, inspect, list, and continue chats");
 
 credentials
   .command("list")
@@ -198,6 +200,98 @@ credentials
       await requireAuth();
       await setWorkspaceCredential(credentialId, {
         stdin: options.stdin,
+      });
+    } catch (error) {
+      console.error("Error:", error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  });
+
+chat
+  .command("start")
+  .description("Start a new chat in the linked tokenspace")
+  .argument("[prompt]", "Initial user prompt")
+  .option("--stdin", "Read the initial prompt from stdin")
+  .option("--model <modelId>", "Override the selected model for the new chat")
+  .option("--open", "Open the chat in the browser")
+  .option("--follow", "Follow the chat in the terminal after sending the initial prompt")
+  .option("--json", "Print the chat snapshot as JSON")
+  .option("--ndjson", "Print follow output as newline-delimited JSON")
+  .action(async (prompt: string | undefined, options) => {
+    try {
+      await requireAuth();
+      await startChat(prompt, {
+        stdin: options.stdin,
+        model: options.model,
+        open: options.open,
+        follow: options.follow,
+        json: options.json,
+        ndjson: options.ndjson,
+      });
+    } catch (error) {
+      console.error("Error:", error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  });
+
+chat
+  .command("list")
+  .description("List chats for the linked tokenspace")
+  .option("--limit <n>", "Maximum number of chats to show", "20")
+  .option("--all", "List all chats")
+  .option("--json", "Print chats as JSON")
+  .action(async (options) => {
+    try {
+      await requireAuth();
+      await listChats({
+        limit: Number.parseInt(options.limit, 10),
+        all: options.all,
+        json: options.json,
+      });
+    } catch (error) {
+      console.error("Error:", error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  });
+
+chat
+  .command("get")
+  .description("Show a chat transcript and metadata")
+  .argument("<chat-id>", "Chat id")
+  .option("--follow", "Follow the chat in the terminal")
+  .option("--json", "Print the chat snapshot as JSON")
+  .option("--ndjson", "Print follow output as newline-delimited JSON")
+  .action(async (chatId: string, options) => {
+    try {
+      await requireAuth();
+      await getChat(chatId, {
+        follow: options.follow,
+        json: options.json,
+        ndjson: options.ndjson,
+      });
+    } catch (error) {
+      console.error("Error:", error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  });
+
+chat
+  .command("send")
+  .description("Send another user message to an existing chat")
+  .argument("<chat-id>", "Chat id")
+  .argument("[prompt]", "User prompt")
+  .option("--stdin", "Read the prompt from stdin")
+  .option("--follow", "Follow the chat in the terminal")
+  .option("--json", "Print the chat snapshot as JSON")
+  .option("--ndjson", "Print follow output as newline-delimited JSON")
+  .action(async (chatId: string, prompt: string | undefined, options) => {
+    try {
+      await requireAuth();
+      await sendMessageToChat(chatId, prompt, {
+        stdin: options.stdin,
+        follow: options.follow,
+        json: options.json,
+        ndjson: options.ndjson,
       });
     } catch (error) {
       console.error("Error:", error instanceof Error ? error.message : error);

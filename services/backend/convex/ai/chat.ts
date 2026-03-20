@@ -1095,6 +1095,7 @@ export const getChatDetails = query({
     id: Id<"chats">;
     threadId: string;
     sessionId: Id<"sessions">;
+    workspaceId: Id<"workspaces">;
     title: string;
     summary: string | undefined;
     status: ChatStatus | undefined;
@@ -1125,6 +1126,7 @@ export const getChatDetails = query({
       id: chat._id,
       threadId: chat.threadId,
       sessionId: chat.sessionId,
+      workspaceId: chat.workspaceId,
       title: chat.title ?? "",
       summary: chat.summary,
       status: chat.status,

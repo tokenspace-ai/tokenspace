@@ -93,6 +93,42 @@ tokenspace compile
 tokenspace compile --out-dir build/tokenspace
 ```
 
+### Chat from the CLI
+
+Start a new chat in the linked workspace:
+
+```bash
+tokenspace chat start "Summarize the credential setup"
+tokenspace chat start --stdin --follow
+tokenspace chat start "Investigate the failing test" --open
+```
+
+List recent chats:
+
+```bash
+tokenspace chat list
+tokenspace chat list --limit 50
+tokenspace chat list --all --json
+```
+
+Inspect a chat or follow it in the terminal:
+
+```bash
+tokenspace chat get <chat-id>
+tokenspace chat get <chat-id> --follow
+tokenspace chat get <chat-id> --json
+tokenspace chat get <chat-id> --follow --ndjson
+```
+
+Send another user message to an existing chat:
+
+```bash
+tokenspace chat send <chat-id> "Continue from the last result"
+tokenspace chat send <chat-id> --stdin --follow
+```
+
+These commands require a linked workspace and an existing compiled revision. If the linked tokenspace has not been pushed yet, the CLI will ask you to run `tokenspace push` first.
+
 ## Environment
 
 `tokenspace login` is self-configuring. To authenticate against a local web app during development, pass the app URL explicitly:

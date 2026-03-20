@@ -147,6 +147,90 @@ export type WorkspaceCredentialBinding = {
   updatedByUserId?: string;
 };
 
+export type ChatStatus =
+  | "streaming"
+  | "awaiting_tool_results"
+  | "completed"
+  | "failed"
+  | "stopped"
+  | "waiting_for_approval";
+
+export type ChatSummary = {
+  id: Id<"chats">;
+  title: string;
+  summary?: string;
+  userId?: string;
+  status?: ChatStatus;
+  createdAt: number;
+  messageCount: number;
+  isStarred: boolean;
+};
+
+export type ChatUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  reasoningTokens?: number;
+  cachedInputTokens?: number;
+  cacheWriteInputTokens?: number;
+};
+
+export type ChatDetails = {
+  id: Id<"chats">;
+  threadId: string;
+  sessionId: Id<"sessions">;
+  workspaceId?: Id<"workspaces">;
+  title: string;
+  summary?: string | null;
+  status?: ChatStatus;
+  userId?: string;
+  createdAt?: number;
+  errorMessage?: string;
+  usage?: ChatUsage;
+  modelId?: string;
+  messageCount?: number;
+  lastUserMessageAt?: number;
+  isStarred: boolean;
+};
+
+export type ChatThread = {
+  _id: string;
+  _creationTime: number;
+  status: "streaming" | "awaiting_tool_results" | "completed" | "failed" | "stopped";
+  stopSignal: boolean;
+  streamId?: string | null;
+  streamFnHandle: string;
+  retryState?: {
+    scope: "stream";
+    attempt: number;
+    maxAttempts: number;
+    nextRetryAt: number;
+    error: string;
+    kind?: string;
+    retryable: boolean;
+    requiresExplicitHandling: boolean;
+  };
+};
+
+export type ChatMessagePart = {
+  type?: string;
+  text?: string;
+  toolName?: string;
+  state?: string;
+  [key: string]: unknown;
+};
+
+export type ChatMessage = {
+  _id: string;
+  _creationTime: number;
+  threadId: string;
+  committedSeq?: number;
+  id: string;
+  role: "system" | "user" | "assistant";
+  parts: ChatMessagePart[];
+  metadata?: unknown;
+};
+
 /**
  * Get workspace by slug
  */
@@ -461,4 +545,63 @@ export async function upsertWorkspaceSecretCredential(
       value,
     },
   });
+}
+
+export async function createChat(
+  revisionId: Id<"revisions">,
+  modelId?: string,
+): Promise<{ chatId: Id<"chats">; threadId: string; sessionId: Id<"sessions"> }> {
+  const c = await getClient();
+  return await c.mutation(api.ai.chat.createChat, {
+    revisionId,
+    modelId,
+  });
+}
+
+export async function sendChatMessage(chatId: string, prompt: string): Promise<void> {
+  const c = await getClient();
+  await c.mutation(api.ai.chat.sendChatMessage, {
+    chatId: chatId as Id<"chats">,
+    prompt,
+  });
+}
+
+export async function getChatDetails(chatId: string): Promise<ChatDetails | null> {
+  const c = await getClient();
+  return await c.query(api.ai.chat.getChatDetails, {
+    chatId: chatId as Id<"chats">,
+  });
+}
+
+export async function getChatThread(threadId: string): Promise<ChatThread | null> {
+  const c = await getClient();
+  return await c.query(api.ai.chat.getThread, {
+    threadId,
+  });
+}
+
+export async function listChatMessages(threadId: string): Promise<ChatMessage[]> {
+  const c = await getClient();
+  return await c.query(api.ai.chat.listMessages, {
+    threadId,
+  });
+}
+
+export async function listChatsForWorkspace(
+  workspaceId: Id<"workspaces">,
+  options: { limit?: number; cursor?: string | null } = {},
+): Promise<{ chats: ChatSummary[]; isDone: boolean; continueCursor?: string }> {
+  const c = await getClient();
+  const result = await c.query(api.ai.chat.listChats, {
+    workspaceId,
+    paginationOpts: {
+      numItems: options.limit ?? 20,
+      cursor: options.cursor ?? null,
+    },
+  });
+  return {
+    chats: result.page,
+    isDone: result.isDone,
+    continueCursor: result.continueCursor,
+  };
 }
