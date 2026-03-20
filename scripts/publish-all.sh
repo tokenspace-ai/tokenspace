@@ -10,5 +10,8 @@ bun run release:pack-smoke
 echo "LOGIN TO NPM..."
 npm login
 bun run release:publish
-echo "Executor image publish now runs from GitHub Actions."
-echo "Trigger the 'Publish Executor Image' workflow with the package version you want to publish."
+EXECUTOR_VERSION="$(node -p "require('./services/executor/package.json').version")"
+echo "Triggering 'Publish Executor Image' workflow for version $EXECUTOR_VERSION..."
+gh workflow run publish-executor-image.yml \
+  -f version="$EXECUTOR_VERSION" \
+  -f publish_latest=true
