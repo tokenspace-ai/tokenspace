@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { rewriteRevisionPackageJsonWorkspaceDeps } from "./revision-env";
+import { resolveRevisionPackageLinkTarget, rewriteRevisionPackageJsonWorkspaceDeps } from "./revision-env";
 
 describe("rewriteRevisionPackageJsonWorkspaceDeps", () => {
   it("strips workspace deps from every dependency block while deduplicating link targets", async () => {
@@ -29,5 +29,12 @@ describe("rewriteRevisionPackageJsonWorkspaceDeps", () => {
       { name: "@tokenspace/sdk", target: "/monorepo/@tokenspace/sdk" },
       { name: "@tokenspace/compiler", target: "/monorepo/@tokenspace/compiler" },
     ]);
+  });
+
+  it("resolves installed package directories for executor runtime dependencies", async () => {
+    const resolved = await resolveRevisionPackageLinkTarget("@tokenspace/sdk");
+
+    expect(resolved).toBeTruthy();
+    expect(resolved?.endsWith("/sdk")).toBe(true);
   });
 });
