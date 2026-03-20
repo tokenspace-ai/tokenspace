@@ -311,90 +311,106 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter className="">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild isActive={currentRoute === "schedules"} tooltip="Schedules">
-              <Link to="/workspace/$slug/schedules" params={{ slug: slug ?? "" }}>
-                <CalendarClockIcon className="size-4" />
-                <span>Schedules</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild isActive={currentRoute === "events"} tooltip="Events">
-              <Link to="/workspace/$slug/events" params={{ slug: slug ?? "" }}>
-                <WebhookIcon className="size-4" />
-                <span>Events</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-
-          {showCredentials ? (
-            <SidebarMenuItem>
-              {credentialsDisabled ? (
-                <SidebarMenuButton disabled tooltip="No credentials defined in this workspace">
-                  <KeyRoundIcon className="size-4" />
-                  <span>Credentials</span>
-                </SidebarMenuButton>
-              ) : (
-                <SidebarMenuButton
-                  asChild
-                  isActive={currentRoute === "credentials"}
-                  tooltip={credentialsNeedAction ? "Credentials (action needed)" : "Credentials"}
-                >
-                  <Link to="/workspace/$slug/credentials" params={{ slug: slug ?? "" }}>
-                    {credentialsNeedAction ? (
-                      <AlertTriangleIcon className="size-4 text-destructive" />
-                    ) : (
-                      <KeyRoundIcon className="size-4" />
-                    )}
-                    <span>Credentials</span>
+        <SidebarGroup className="p-0">
+          <SidebarGroupLabel>Automation</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={currentRoute === "schedules"} tooltip="Schedules">
+                  <Link to="/workspace/$slug/schedules" params={{ slug: slug ?? "" }}>
+                    <CalendarClockIcon className="size-4" />
+                    <span>Schedules</span>
                   </Link>
                 </SidebarMenuButton>
-              )}
-              {!credentialsDisabled && credentialsNeedAction ? (
-                <SidebarMenuBadge className="text-[10px] text-destructive uppercase">Action</SidebarMenuBadge>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={currentRoute === "events"} tooltip="Events">
+                  <Link to="/workspace/$slug/events" params={{ slug: slug ?? "" }}>
+                    <WebhookIcon className="size-4" />
+                    <span>Events</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup className="p-0">
+          <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {showCredentials ? (
+                <SidebarMenuItem>
+                  {credentialsDisabled ? (
+                    <SidebarMenuButton disabled tooltip="No credentials defined in this workspace">
+                      <KeyRoundIcon className="size-4" />
+                      <span>Credentials</span>
+                    </SidebarMenuButton>
+                  ) : (
+                    <SidebarMenuButton
+                      asChild
+                      isActive={currentRoute === "credentials"}
+                      tooltip={credentialsNeedAction ? "Credentials (action needed)" : "Credentials"}
+                    >
+                      <Link to="/workspace/$slug/credentials" params={{ slug: slug ?? "" }}>
+                        {credentialsNeedAction ? (
+                          <AlertTriangleIcon className="size-4 text-destructive" />
+                        ) : (
+                          <KeyRoundIcon className="size-4" />
+                        )}
+                        <span>Credentials</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  )}
+                  {!credentialsDisabled && credentialsNeedAction ? (
+                    <SidebarMenuBadge className="text-[10px] text-destructive uppercase">Action</SidebarMenuBadge>
+                  ) : null}
+                </SidebarMenuItem>
               ) : null}
-            </SidebarMenuItem>
-          ) : null}
 
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild isActive={currentRoute === "capabilities"} tooltip="Capabilities">
-              <Link to="/workspace/$slug/capabilities" params={{ slug: slug ?? "" }}>
-                <Layers3Icon className="size-4" />
-                <span>Capabilities</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={currentRoute === "capabilities"} tooltip="Capabilities">
+                  <Link to="/workspace/$slug/capabilities" params={{ slug: slug ?? "" }}>
+                    <Layers3Icon className="size-4" />
+                    <span>Capabilities</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
 
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild isActive={currentRoute === "audit-log"} tooltip="Audit Log">
-              <Link to="/workspace/$slug/audit-log" params={{ slug: slug ?? "" }}>
-                <ClipboardListIcon className="size-4" />
-                <span>Audit Log</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={currentRoute === "audit-log"} tooltip="Audit Log">
+                  <Link to="/workspace/$slug/audit-log" params={{ slug: slug ?? "" }}>
+                    <ClipboardListIcon className="size-4" />
+                    <span>Audit Log</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
 
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild isActive={currentRoute === "playground"} tooltip="Playground">
-              <Link to="/workspace/$slug/playground" params={{ slug: slug ?? "" }}>
-                <TerminalSquareIcon className="size-4" />
-                <span>Playground</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={currentRoute === "playground"} tooltip="Playground">
+                  <Link to="/workspace/$slug/playground" params={{ slug: slug ?? "" }}>
+                    <TerminalSquareIcon className="size-4" />
+                    <span>Playground</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
 
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip="Admin">
-              <Link to="/workspace/$slug/admin/settings" params={{ slug: slug ?? "" }}>
-                <CogIcon className="size-4" />
-                <span>Settings</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip="Settings">
+                  <Link to="/workspace/$slug/admin/settings" params={{ slug: slug ?? "" }}>
+                    <CogIcon className="size-4" />
+                    <span>Settings</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
 
+        <SidebarSeparator />
+
+        <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild
@@ -412,6 +428,7 @@ export function AppSidebar({
             {executorState ? <SidebarMenuBadge>{executorState.label}</SidebarMenuBadge> : null}
           </SidebarMenuItem>
         </SidebarMenu>
+
         <SidebarSeparator />
         {user && <UserMenu user={user} onSignOut={onSignOut} variant="sidebar" collapsed={collapsed} />}
       </SidebarFooter>
