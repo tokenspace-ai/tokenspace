@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstat, mkdir, open, readdir, readFile, rm, stat, symlink, unlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 
 type RevisionDepsArtifact = {
   packageJson?: string;
@@ -103,6 +104,16 @@ function getMonorepoRoot(): string {
 }
 
 const WORKSPACE_DIRS = ["apps", "examples", "packages", "services"];
+const require = createRequire(import.meta.url);
+
+function resolveInstalledPackage(packageName: string): string | null {
+  try {
+    const packageJsonPath = require.resolve(`${packageName}/package.json`);
+    return dirname(packageJsonPath);
+  } catch {
+    return null;
+  }
+}
 
 async function findWorkspacePackage(monorepoRoot: string, packageName: string): Promise<string | null> {
   for (const dir of WORKSPACE_DIRS) {
@@ -127,6 +138,15 @@ async function findWorkspacePackage(monorepoRoot: string, packageName: string): 
   return null;
 }
 
+export async function resolveRevisionPackageLinkTarget(packageName: string): Promise<string | null> {
+  const installedPackage = resolveInstalledPackage(packageName);
+  if (installedPackage) {
+    return installedPackage;
+  }
+
+  return await findWorkspacePackage(getMonorepoRoot(), packageName);
+}
+
 const DEPENDENCY_FIELDS = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"] as const;
 
 export async function rewriteRevisionPackageJsonWorkspaceDeps(
@@ -148,7 +168,7 @@ export async function rewriteRevisionPackageJsonWorkspaceDeps(
         if (!pkgDir) {
           pkgDir = await resolveWorkspacePackage(name);
           if (!pkgDir) {
-            throw new Error(`Unable to resolve workspace dependency "${name}" from monorepo root`);
+            throw new Error(`Unable to resolve workspace dependency "${name}" from executor runtime or monorepo root`);
           }
           linkTargetMap.set(name, pkgDir);
         }
@@ -190,14 +210,10 @@ async function resolveWorkspaceDeps(
 ): Promise<{ stripped: boolean; linkTargets: Array<{ name: string; target: string }> }> {
   const raw = await readFile(packageJsonPath, "utf8");
   const pkg = JSON.parse(raw) as Record<string, unknown>;
-  const monorepoRoot = getMonorepoRoot();
-  const { stripped, linkTargets } = await rewriteRevisionPackageJsonWorkspaceDeps(pkg, async (name) => {
-    const pkgDir = await findWorkspacePackage(monorepoRoot, name);
-    if (!pkgDir) {
-      return null;
-    }
-    return pkgDir;
-  });
+  const { stripped, linkTargets } = await rewriteRevisionPackageJsonWorkspaceDeps(
+    pkg,
+    resolveRevisionPackageLinkTarget,
+  );
 
   if (stripped) {
     await writeFile(packageJsonPath, JSON.stringify(pkg, null, 2), "utf8");
