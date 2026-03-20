@@ -1,5 +1,6 @@
 import type { Readable } from "node:stream";
 import pc from "picocolors";
+import { getDefaultWorkspaceSlug } from "../auth.js";
 import { buildChatUrl, openUrl } from "../browser.js";
 import {
   type Branch,
@@ -33,7 +34,8 @@ const DEFAULT_LIST_LIMIT = 20;
 const FOLLOW_POLL_INTERVAL_MS = 750;
 
 type LinkedWorkspaceContext = {
-  resolvedDir: string;
+  resolvedDir?: string;
+  resolution: "linked" | "default" | "flag";
   workspace: Workspace;
 };
 
@@ -58,6 +60,7 @@ export type ChatSnapshot = {
 };
 
 export type StartChatOptions = {
+  workspace?: string;
   stdin?: boolean;
   model?: string;
   open?: boolean;
@@ -69,12 +72,14 @@ export type StartChatOptions = {
 };
 
 export type ListChatsOptions = {
+  workspace?: string;
   limit?: number;
   all?: boolean;
   json?: boolean;
 };
 
 export type GetChatOptions = {
+  workspace?: string;
   follow?: boolean;
   json?: boolean;
   ndjson?: boolean;
@@ -82,6 +87,7 @@ export type GetChatOptions = {
 };
 
 export type SendChatOptions = {
+  workspace?: string;
   stdin?: boolean;
   follow?: boolean;
   json?: boolean;
@@ -150,30 +156,70 @@ async function readPromptInput(
   return await readStdinValue(options.input);
 }
 
-async function loadLinkedWorkspaceContext(): Promise<LinkedWorkspaceContext> {
-  const resolvedDir = await findNearestLinkedWorkspaceRoot(process.cwd());
-  if (!resolvedDir) {
-    exitWithError("No linked tokenspace found. Run `tokenspace link` first.");
+function printWorkspaceSource(context: LinkedWorkspaceContext): void {
+  if (context.resolution === "linked" && context.resolvedDir) {
+    printWorkspaceResolution("Workspace", context.resolvedDir);
+    return;
   }
 
-  const linked = await readLinkedWorkspaceConfig(resolvedDir);
-  if (!linked) {
-    exitWithError("Linked tokenspace metadata is missing or invalid.");
-  }
-
-  const workspace = await getWorkspaceBySlug(linked.workspaceSlug);
-  if (!workspace) {
-    exitWithError(`Tokenspace '${linked.workspaceSlug}' not found`);
-  }
-
-  return {
-    resolvedDir,
-    workspace,
-  };
+  const prefix = context.resolution === "default" ? "  Default workspace: " : "  Workspace: ";
+  console.log(pc.dim(`${prefix}${context.workspace.slug}`));
 }
 
-async function loadLinkedWorkspaceRevisionContext(): Promise<LinkedWorkspaceRevisionContext> {
-  const context = await loadLinkedWorkspaceContext();
+async function loadLinkedWorkspaceContext(workspaceSlug?: string): Promise<LinkedWorkspaceContext> {
+  const explicitWorkspaceSlug = workspaceSlug?.trim();
+  if (explicitWorkspaceSlug) {
+    const workspace = await getWorkspaceBySlug(explicitWorkspaceSlug);
+    if (!workspace) {
+      exitWithError(`Tokenspace '${explicitWorkspaceSlug}' not found`);
+    }
+    return {
+      resolution: "flag",
+      workspace,
+    };
+  }
+
+  const resolvedDir = await findNearestLinkedWorkspaceRoot(process.cwd());
+  if (resolvedDir) {
+    const linked = await readLinkedWorkspaceConfig(resolvedDir);
+    if (!linked) {
+      exitWithError("Linked tokenspace metadata is missing or invalid.");
+    }
+
+    const workspace = await getWorkspaceBySlug(linked.workspaceSlug);
+    if (!workspace) {
+      exitWithError(`Tokenspace '${linked.workspaceSlug}' not found`);
+    }
+
+    return {
+      resolvedDir,
+      resolution: "linked",
+      workspace,
+    };
+  }
+
+  const defaultWorkspaceSlug = getDefaultWorkspaceSlug();
+  if (defaultWorkspaceSlug) {
+    const workspace = await getWorkspaceBySlug(defaultWorkspaceSlug);
+    if (!workspace) {
+      exitWithError(
+        `Default tokenspace '${defaultWorkspaceSlug}' was not found. Run \`tokenspace use <slug>\` to choose another.`,
+      );
+    }
+
+    return {
+      resolution: "default",
+      workspace,
+    };
+  }
+
+  exitWithError(
+    "No linked tokenspace found and no default workspace is configured. Use `--workspace <slug>` or run `tokenspace use <slug>`.",
+  );
+}
+
+async function loadLinkedWorkspaceRevisionContext(workspaceSlug?: string): Promise<LinkedWorkspaceRevisionContext> {
+  const context = await loadLinkedWorkspaceContext(workspaceSlug);
   const branch = await getDefaultBranch(context.workspace._id);
   if (!branch) {
     exitWithError(`No default branch found in tokenspace '${context.workspace.slug}'`);
@@ -248,7 +294,7 @@ function printTranscriptEntry(entry: TranscriptEntry): void {
 function printChatHeader(args: { context: LinkedWorkspaceContext; snapshot: ChatSnapshot }): void {
   const { context, snapshot } = args;
   console.log(pc.cyan(`Chat ${pc.bold(snapshot.chat.id)}`));
-  printWorkspaceResolution("Workspace", context.resolvedDir);
+  printWorkspaceSource(context);
   console.log(pc.dim(`  URL: ${snapshot.url}`));
   console.log(pc.dim(`  Title: ${snapshot.chat.title || "Untitled"}`));
   console.log(pc.dim(`  Status: ${statusLabel(snapshot.chat.status)}`));
@@ -267,7 +313,7 @@ function printStartOrSendSummary(args: {
 }): void {
   const { action, context, snapshot } = args;
   console.log(pc.cyan(`${action} chat ${pc.bold(snapshot.chat.id)}`));
-  printWorkspaceResolution("Workspace", context.resolvedDir);
+  printWorkspaceSource(context);
   console.log(pc.dim(`  URL: ${snapshot.url}`));
   console.log(pc.dim(`  Status: ${statusLabel(snapshot.chat.status)}`));
   console.log(pc.dim(`  Title: ${snapshot.chat.title || "Untitled"}`));
@@ -276,7 +322,7 @@ function printStartOrSendSummary(args: {
 function printListTable(args: { context: LinkedWorkspaceContext; chats: ChatSummary[] }): void {
   const { context, chats } = args;
   console.log(pc.cyan(`Listing chats for ${pc.bold(context.workspace.slug)}`));
-  printWorkspaceResolution("Workspace", context.resolvedDir);
+  printWorkspaceSource(context);
   console.log("");
 
   if (chats.length === 0) {
@@ -519,7 +565,7 @@ export async function startChat(promptArg: string | undefined, options: StartCha
     exitWithError("`--follow` requires an initial prompt. Provide a prompt argument or `--stdin`.");
   }
 
-  const context = await loadLinkedWorkspaceRevisionContext();
+  const context = await loadLinkedWorkspaceRevisionContext(options.workspace);
   const created = await createChat(context.revisionId, options.model);
   if (isPromptPresent(prompt)) {
     await sendChatMessage(created.chatId, prompt!);
@@ -579,7 +625,7 @@ export async function startChat(promptArg: string | undefined, options: StartCha
 }
 
 export async function listChats(options: ListChatsOptions = {}): Promise<void> {
-  const context = await loadLinkedWorkspaceContext();
+  const context = await loadLinkedWorkspaceContext(options.workspace);
   const chats = await collectChats(context, options);
 
   if (options.json) {
@@ -607,7 +653,7 @@ export async function listChats(options: ListChatsOptions = {}): Promise<void> {
 
 export async function getChat(chatId: string, options: GetChatOptions = {}): Promise<void> {
   validateStructuredOutputFlags(options);
-  const context = await loadLinkedWorkspaceContext();
+  const context = await loadLinkedWorkspaceContext(options.workspace);
   const snapshot = await loadChatSnapshot(chatId, context.workspace.slug);
   assertChatBelongsToWorkspace(snapshot.chat, context.workspace);
 
@@ -671,7 +717,7 @@ export async function sendMessageToChat(
     exitWithError("A prompt is required. Provide a prompt argument or `--stdin`.");
   }
 
-  const context = await loadLinkedWorkspaceContext();
+  const context = await loadLinkedWorkspaceContext(options.workspace);
   const existing = await getChatDetails(chatId);
   if (!existing) {
     exitWithError(`Chat '${chatId}' not found.`);

@@ -2,7 +2,14 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { DEFAULT_WEB_APP_URL, ensureStoredAuthDiscovery, resolveLoginWebAppUrl, tryRefreshToken } from "./auth.js";
+import {
+  DEFAULT_WEB_APP_URL,
+  ensureStoredAuthDiscovery,
+  getDefaultWorkspaceSlug,
+  resolveLoginWebAppUrl,
+  setDefaultWorkspaceSlug,
+  tryRefreshToken,
+} from "./auth.js";
 
 type FetchInput = string | URL | Request;
 
@@ -136,5 +143,49 @@ describe("auth discovery helpers", () => {
     const stored = JSON.parse(await readFile(path.join(configDir, "auth.json"), "utf8")) as Record<string, string>;
     expect(stored.workosClientId).toBe("client_stored");
     expect(stored.refreshToken).toBe("refresh-token-2");
+  });
+
+  it("stores and preserves the default workspace slug", async () => {
+    const accessToken = createJwt(3600);
+    await writeAuthFile(configDir, {
+      accessToken,
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() + 3600_000,
+      webAppUrl: DEFAULT_WEB_APP_URL,
+      workosClientId: "client_stored",
+      convexUrl: "https://tokenspace.convex.cloud",
+      deviceAuthScope: "openid profile email",
+    });
+
+    setDefaultWorkspaceSlug("demo-workspace");
+    expect(getDefaultWorkspaceSlug()).toBe("demo-workspace");
+
+    globalThis.fetch = (async (input: FetchInput, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url === `${DEFAULT_WEB_APP_URL}/api/cli/config`) {
+        return Response.json({
+          version: 1,
+          webAppUrl: DEFAULT_WEB_APP_URL,
+          workosClientId: "client_stored",
+          deviceAuthScope: "openid profile email",
+        });
+      }
+      if (url === `${DEFAULT_WEB_APP_URL}/api/cli/auth/config`) {
+        expect(init?.headers).toMatchObject({
+          Accept: "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        });
+        return Response.json({
+          version: 1,
+          convexUrl: "https://tokenspace.convex.cloud",
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }) as typeof fetch;
+
+    await ensureStoredAuthDiscovery({ requireConvexUrl: true });
+
+    const stored = JSON.parse(await readFile(path.join(configDir, "auth.json"), "utf8")) as Record<string, string>;
+    expect(stored.defaultWorkspaceSlug).toBe("demo-workspace");
   });
 });

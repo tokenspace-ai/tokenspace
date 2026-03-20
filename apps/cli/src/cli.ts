@@ -12,6 +12,7 @@ import { initWorkspace } from "./commands/init.js";
 import { linkWorkspace } from "./commands/link.js";
 import { pull } from "./commands/pull.js";
 import { push } from "./commands/push.js";
+import { useWorkspace } from "./commands/use.js";
 import { whoami } from "./commands/whoami.js";
 
 const require = createRequire(import.meta.url);
@@ -82,6 +83,20 @@ program
   .action(async () => {
     try {
       await logout();
+    } catch (error) {
+      console.error("Error:", error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("use")
+  .description("Set the default tokenspace used outside linked workspace directories")
+  .argument("[slug]", "Tokenspace slug")
+  .action(async (slug: string | undefined) => {
+    try {
+      await requireAuth();
+      await useWorkspace(slug);
     } catch (error) {
       console.error("Error:", error instanceof Error ? error.message : error);
       process.exit(1);
@@ -209,8 +224,9 @@ credentials
 
 chat
   .command("start")
-  .description("Start a new chat in the linked tokenspace")
+  .description("Start a new chat in the selected tokenspace")
   .argument("[prompt]", "Initial user prompt")
+  .option("-w, --workspace <slug>", "Tokenspace slug when not using the linked or default workspace")
   .option("--stdin", "Read the initial prompt from stdin")
   .option("--model <modelId>", "Override the selected model for the new chat")
   .option("--open", "Open the chat in the browser")
@@ -221,6 +237,7 @@ chat
     try {
       await requireAuth();
       await startChat(prompt, {
+        workspace: options.workspace,
         stdin: options.stdin,
         model: options.model,
         open: options.open,
@@ -236,7 +253,8 @@ chat
 
 chat
   .command("list")
-  .description("List chats for the linked tokenspace")
+  .description("List chats for the selected tokenspace")
+  .option("-w, --workspace <slug>", "Tokenspace slug when not using the linked or default workspace")
   .option("--limit <n>", "Maximum number of chats to show", "20")
   .option("--all", "List all chats")
   .option("--json", "Print chats as JSON")
@@ -244,6 +262,7 @@ chat
     try {
       await requireAuth();
       await listChats({
+        workspace: options.workspace,
         limit: Number.parseInt(options.limit, 10),
         all: options.all,
         json: options.json,
@@ -258,6 +277,7 @@ chat
   .command("get")
   .description("Show a chat transcript and metadata")
   .argument("<chat-id>", "Chat id")
+  .option("-w, --workspace <slug>", "Tokenspace slug when not using the linked or default workspace")
   .option("--follow", "Follow the chat in the terminal")
   .option("--json", "Print the chat snapshot as JSON")
   .option("--ndjson", "Print follow output as newline-delimited JSON")
@@ -265,6 +285,7 @@ chat
     try {
       await requireAuth();
       await getChat(chatId, {
+        workspace: options.workspace,
         follow: options.follow,
         json: options.json,
         ndjson: options.ndjson,
@@ -280,6 +301,7 @@ chat
   .description("Send another user message to an existing chat")
   .argument("<chat-id>", "Chat id")
   .argument("[prompt]", "User prompt")
+  .option("-w, --workspace <slug>", "Tokenspace slug when not using the linked or default workspace")
   .option("--stdin", "Read the prompt from stdin")
   .option("--follow", "Follow the chat in the terminal")
   .option("--json", "Print the chat snapshot as JSON")
@@ -288,6 +310,7 @@ chat
     try {
       await requireAuth();
       await sendMessageToChat(chatId, prompt, {
+        workspace: options.workspace,
         stdin: options.stdin,
         follow: options.follow,
         json: options.json,

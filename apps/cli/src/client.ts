@@ -239,6 +239,11 @@ export async function getWorkspaceBySlug(slug: string): Promise<Workspace | null
   return await c.query(api.workspace.getBySlug, { slug });
 }
 
+export async function listWorkspaces(): Promise<Workspace[]> {
+  const c = await getClient();
+  return await c.query(api.workspace.list);
+}
+
 /**
  * Get default branch for a workspace
  */

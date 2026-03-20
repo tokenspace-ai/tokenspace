@@ -4,6 +4,7 @@ import { Readable } from "node:stream";
 let linkedWorkspaceRoot: string | null;
 let linkedWorkspaceConfig: { version: 1; workspaceSlug: string } | null;
 let workspace: any;
+let defaultWorkspaceSlug: string | null;
 let defaultBranch: any;
 let workingStateHash: string | null;
 let revisionId: string | null;
@@ -158,6 +159,10 @@ mock.module("../client.js", () => ({
   },
 }));
 
+mock.module("../auth.js", () => ({
+  getDefaultWorkspaceSlug: () => defaultWorkspaceSlug,
+}));
+
 mock.module("../browser.js", () => ({
   buildChatUrl: (workspaceSlug: string, chatId: string) =>
     `https://app.example.test/workspace/${workspaceSlug}/chat/${chatId}`,
@@ -198,6 +203,7 @@ beforeEach(() => {
     isDefault: true,
   };
   workingStateHash = "working_hash";
+  defaultWorkspaceSlug = null;
   revisionId = "revision_1";
   createdChat = {
     chatId: "chat_new",
@@ -283,6 +289,17 @@ describe("chat start", () => {
     expect(output.chat.id).toBe("chat_new");
     expect(output.url).toBe("https://app.example.test/workspace/demo-workspace/chat/chat_new");
     expect(output.messages).toHaveLength(2);
+  });
+
+  it("uses the configured default workspace when not in a linked directory", async () => {
+    linkedWorkspaceRoot = null;
+    defaultWorkspaceSlug = "demo-workspace";
+
+    await startChat("hello", { json: true });
+
+    expect(createChatCalls).toEqual([{ revisionId: "revision_1", modelId: undefined }]);
+    const output = JSON.parse(getConsoleText(logMock));
+    expect(output.chat.id).toBe("chat_new");
   });
 });
 

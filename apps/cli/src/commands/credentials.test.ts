@@ -63,6 +63,9 @@ mock.module("../prompts.js", () => ({
     promptSecretCalls.push(question);
     return promptSecretValue;
   },
+  promptSelect: async () => {
+    throw new Error("promptSelect should not be called in credentials tests");
+  },
 }));
 
 const {
