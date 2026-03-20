@@ -1,6 +1,6 @@
 {
   "name": "@tokenspace/runtime-core",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -41,7 +41,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@tokenspace/sdk": "^0.2.2",
+    "@tokenspace/sdk": "^0.3.0",
     "just-bash": "^2.13.0"
   },
   "devDependencies": {
