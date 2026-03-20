@@ -14,7 +14,7 @@
     },
     "apps/cli": {
       "name": "tokenspace",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "bin": {
         "tokenspace": "./dist/cli.js",
       },
@@ -61,7 +61,7 @@
     },
     "apps/local-mcp": {
       "name": "@tokenspace/local-mcp",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "bin": {
         "tokenspace-local-mcp": "./dist/cli.js",
       },
@@ -220,7 +220,7 @@
     },
     "packages/compiler": {
       "name": "@tokenspace/compiler",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "bin": {
         "tokenspace-compiler": "./dist/cli.js",
       },
@@ -272,7 +272,7 @@
     },
     "packages/runtime-core": {
       "name": "@tokenspace/runtime-core",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "dependencies": {
         "@tokenspace/sdk": "^0.2.2",
         "just-bash": "^2.13.0",
@@ -284,7 +284,7 @@
     },
     "packages/sdk": {
       "name": "@tokenspace/sdk",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "dependencies": {
         "google-auth-library": "^10.5.0",
       },
@@ -295,7 +295,7 @@
     },
     "packages/session-fs": {
       "name": "@tokenspace/session-fs",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "dependencies": {
         "@tokenspace/backend": "^0.2.2",
         "just-bash": "^2.13.0",
@@ -311,7 +311,7 @@
     },
     "packages/system-content": {
       "name": "@tokenspace/system-content",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "devDependencies": {
         "@types/bun": "^1.3.10",
         "typescript": "^5.8.3",
@@ -331,7 +331,7 @@
     },
     "packages/types": {
       "name": "@tokenspace/types",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "devDependencies": {
         "@types/bun": "^1.3.10",
         "typescript": "^5.8.3",
@@ -355,7 +355,7 @@
     },
     "services/backend": {
       "name": "@tokenspace/backend",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "devDependencies": {
         "@ai-sdk/anthropic": "^3.0.58",
         "@ai-sdk/google": "^3.0.43",
@@ -380,7 +380,7 @@
     },
     "services/executor": {
       "name": "@tokenspace/executor",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "bin": {
         "tokenspace-executor": "./dist/main.js",
       },

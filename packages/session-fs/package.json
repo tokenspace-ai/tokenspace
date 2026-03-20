@@ -1,6 +1,6 @@
 {
   "name": "@tokenspace/session-fs",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -38,7 +38,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@tokenspace/backend": "^0.2.2",
+    "@tokenspace/backend": "^0.3.0",
     "just-bash": "^2.13.0"
   },
   "peerDependencies": {
