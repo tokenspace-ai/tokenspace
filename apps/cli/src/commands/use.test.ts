@@ -25,6 +25,15 @@ mock.module("../auth.js", () => ({
 }));
 
 mock.module("../prompts.js", () => ({
+  prompt: async () => {
+    throw new Error("prompt should not be called in use workspace tests");
+  },
+  confirm: async () => {
+    throw new Error("confirm should not be called in use workspace tests");
+  },
+  promptSecret: async () => {
+    throw new Error("promptSecret should not be called in use workspace tests");
+  },
   promptSelect: async (question: string, options: Array<{ label: string; value: string }>) => {
     promptSelectCalls.push({ question, options });
     return promptSelectValue;

@@ -353,8 +353,8 @@ function printListTable(args: { context: LinkedWorkspaceContext; chats: ChatSumm
 }
 
 function assertChatBelongsToWorkspace(chat: ChatDetails, workspace: Workspace): void {
-  if (chat.workspaceId && chat.workspaceId !== workspace._id) {
-    exitWithError(`Chat '${chat.id}' does not belong to linked tokenspace '${workspace.slug}'.`);
+  if (!chat.workspaceId || chat.workspaceId !== workspace._id) {
+    exitWithError(`Chat '${chat.id}' does not belong to tokenspace '${workspace.slug}'.`);
   }
 }
 

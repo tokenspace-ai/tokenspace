@@ -179,9 +179,9 @@ export type ChatDetails = {
   id: Id<"chats">;
   threadId: string;
   sessionId: Id<"sessions">;
-  workspaceId?: Id<"workspaces">;
+  workspaceId: Id<"workspaces">;
   title: string;
-  summary?: string | null;
+  summary: string | undefined;
   status?: ChatStatus;
   userId?: string;
   createdAt?: number;
