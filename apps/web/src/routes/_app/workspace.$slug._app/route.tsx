@@ -6,6 +6,7 @@ import { useAction, useMutation, usePaginatedQuery, useQuery } from "convex/reac
 import { useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import { AppSidebar } from "@/components/app-sidebar";
+import { ChatCommandMenuProvider } from "@/components/chat-command-menu/chat-command-menu-provider";
 import type { Branch, RevisionState, Workspace } from "@/components/sidebar-workspace-selector";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { WorkspaceRevisionProvider } from "@/components/workspace-revision";
@@ -211,36 +212,38 @@ function WorkspaceAppLayout() {
 
   return (
     <SidebarProvider>
-      <AppSidebar
-        workspaces={workspaces}
-        workspaceId={workspaceId}
-        revisionId={revisionId}
-        branches={branches}
-        currentWorkspaceSlug={parsedSlug.workspaceSlug}
-        currentBranchId={currentBranchId}
-        includeWorkingState={includeWorkingState}
-        workingStateHash={workingStateHash}
-        revisionState={revisionState}
-        onBranchChange={handleBranchChange}
-        onToggleWorkingState={handleToggleWorkingState}
-        workingChanges={workingChanges}
-        onCommitChanges={handleCommitChanges}
-        isWorkspaceAdmin={workspaceRole === "workspace_admin"}
-        user={user}
-        onSignOut={handleSignOut}
-        threads={sortedThreads}
-        threadsStatus={threadsStatus}
-        loadMoreThreads={() => loadMore(20)}
-        currentChatId={currentChatId}
-        onDeleteThread={handleDeleteThread}
-        onRenameThread={handleRenameThread}
-        onToggleStar={handleToggleStar}
-      />
-      <SidebarInset className="max-h-screen overflow-y-auto">
-        <WorkspaceRevisionProvider>
-          <Outlet />
-        </WorkspaceRevisionProvider>
-      </SidebarInset>
+      <ChatCommandMenuProvider threads={sortedThreads} workspaceSlug={slug}>
+        <AppSidebar
+          workspaces={workspaces}
+          workspaceId={workspaceId}
+          revisionId={revisionId}
+          branches={branches}
+          currentWorkspaceSlug={parsedSlug.workspaceSlug}
+          currentBranchId={currentBranchId}
+          includeWorkingState={includeWorkingState}
+          workingStateHash={workingStateHash}
+          revisionState={revisionState}
+          onBranchChange={handleBranchChange}
+          onToggleWorkingState={handleToggleWorkingState}
+          workingChanges={workingChanges}
+          onCommitChanges={handleCommitChanges}
+          isWorkspaceAdmin={workspaceRole === "workspace_admin"}
+          user={user}
+          onSignOut={handleSignOut}
+          threads={sortedThreads}
+          threadsStatus={threadsStatus}
+          loadMoreThreads={() => loadMore(20)}
+          currentChatId={currentChatId}
+          onDeleteThread={handleDeleteThread}
+          onRenameThread={handleRenameThread}
+          onToggleStar={handleToggleStar}
+        />
+        <SidebarInset className="max-h-screen overflow-y-auto">
+          <WorkspaceRevisionProvider>
+            <Outlet />
+          </WorkspaceRevisionProvider>
+        </SidebarInset>
+      </ChatCommandMenuProvider>
     </SidebarProvider>
   );
 }

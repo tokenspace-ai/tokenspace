@@ -24,6 +24,7 @@ import {
   ThreadListItem,
   ThreadListItemCompact,
 } from "@/components/chat/thread/chat-thread-list";
+import { ChatCommandMenuTrigger } from "@/components/chat-command-menu/chat-command-menu-trigger";
 import { UserMenu } from "@/components/header/user-menu";
 import {
   type Branch,
@@ -222,6 +223,8 @@ export function AppSidebar({
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        <ChatCommandMenuTrigger />
 
         <SidebarGroup>
           <SidebarGroupLabel className="flex items-center justify-between">
