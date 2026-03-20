@@ -43,6 +43,10 @@ async function readExecutorVersion(): Promise<string> {
   return pkg.version;
 }
 
+async function readGitRevision(): Promise<string> {
+  return await run(["git", "rev-parse", "HEAD"], REPO_ROOT);
+}
+
 async function verifyManifest(imageRef: string, platforms: string): Promise<void> {
   const inspect = await run(["docker", "buildx", "imagetools", "inspect", imageRef], REPO_ROOT);
   const missingPlatforms = platforms
@@ -61,6 +65,8 @@ async function main(): Promise<void> {
       version: { type: "string" },
       latest: { type: "string", default: "true" },
       platforms: { type: "string", default: DEFAULT_PLATFORMS },
+      revision: { type: "string" },
+      "build-date": { type: "string" },
     },
     strict: true,
     allowPositionals: false,
@@ -68,6 +74,8 @@ async function main(): Promise<void> {
   const version = values.version ?? (await readExecutorVersion());
   const publishLatest = parseBoolean(values.latest, "latest");
   const platforms = values.platforms ?? DEFAULT_PLATFORMS;
+  const revision = values.revision ?? (await readGitRevision());
+  const buildDate = values["build-date"] ?? new Date().toISOString();
   const tags = [`${IMAGE}:${version}`];
   if (publishLatest) {
     tags.push(`${IMAGE}:latest`);
@@ -84,6 +92,10 @@ async function main(): Promise<void> {
       platforms,
       "--build-arg",
       `EXECUTOR_VERSION=${version}`,
+      "--build-arg",
+      `VCS_REF=${revision}`,
+      "--build-arg",
+      `BUILD_DATE=${buildDate}`,
       "-f",
       DOCKERFILE,
       ...tags.flatMap((tag) => ["-t", tag]),

@@ -56,4 +56,9 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push multi-arch executor image
-        run: bun run scripts/publish-executor-image.ts --version "${{ steps.version.outputs.version }}" --latest "${{ inputs.publish_latest }}"
+        run: |
+          bun run scripts/publish-executor-image.ts \
+            --version "${{ steps.version.outputs.version }}" \
+            --latest "${{ inputs.publish_latest }}" \
+            --revision "${{ github.sha }}" \
+            --build-date "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
