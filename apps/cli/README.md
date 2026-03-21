@@ -31,6 +31,15 @@ The CLI discovers the active WorkOS client ID and Convex deployment from the sel
 tokenspace whoami
 ```
 
+### Choose a default workspace
+
+```bash
+tokenspace use my-workspace
+tokenspace use
+```
+
+This stores your default workspace slug in `~/.tokenspace/auth.json`. Commands like `tokenspace chat ...` will use it automatically when you are not inside a linked workspace directory, unless you pass `--workspace`.
+
 ### Logout
 
 ```bash
@@ -92,6 +101,46 @@ tokenspace push --open
 tokenspace compile
 tokenspace compile --out-dir build/tokenspace
 ```
+
+### Chat from the CLI
+
+Start a new chat in the linked workspace:
+
+```bash
+tokenspace chat start "Summarize the credential setup"
+tokenspace chat start --stdin --follow
+tokenspace chat start "Investigate the failing test" --open
+tokenspace chat start --workspace my-workspace "Review the latest logs"
+```
+
+List recent chats:
+
+```bash
+tokenspace chat list
+tokenspace chat list --workspace my-workspace
+tokenspace chat list --limit 50
+tokenspace chat list --all --json
+```
+
+Inspect a chat or follow it in the terminal:
+
+```bash
+tokenspace chat get <chat-id>
+tokenspace chat get <chat-id> --workspace my-workspace
+tokenspace chat get <chat-id> --follow
+tokenspace chat get <chat-id> --json
+tokenspace chat get <chat-id> --follow --ndjson
+```
+
+Send another user message to an existing chat:
+
+```bash
+tokenspace chat send <chat-id> "Continue from the last result"
+tokenspace chat send <chat-id> --workspace my-workspace "Continue from the last result"
+tokenspace chat send <chat-id> --stdin --follow
+```
+
+These commands require an existing compiled revision for the selected workspace. They resolve the workspace in this order: `--workspace`, current linked workspace, then the default set by `tokenspace use`. If the selected tokenspace has not been pushed yet, the CLI will ask you to run `tokenspace push` first.
 
 ## Environment
 

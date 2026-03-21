@@ -58,6 +58,7 @@ export interface StoredAuth {
   workosClientId?: string;
   convexUrl?: string;
   deviceAuthScope?: string;
+  defaultWorkspaceSlug?: string;
 }
 
 function getConfigDir(): string {
@@ -223,6 +224,28 @@ export function getStoredWebAppUrl(): string | null {
   return stored?.webAppUrl ? normalizeWebAppUrl(stored.webAppUrl) : null;
 }
 
+export function getDefaultWorkspaceSlug(): string | null {
+  const stored = getStoredAuthRaw();
+  return stored?.defaultWorkspaceSlug?.trim() || null;
+}
+
+export function setDefaultWorkspaceSlug(workspaceSlug: string): void {
+  const stored = getStoredAuthRaw();
+  if (!stored) {
+    throw new Error("Not logged in. Run 'tokenspace login' to authenticate.");
+  }
+
+  const nextSlug = workspaceSlug.trim();
+  if (!nextSlug) {
+    throw new Error("Workspace slug is required.");
+  }
+
+  storeAuth({
+    ...stored,
+    defaultWorkspaceSlug: nextSlug,
+  });
+}
+
 export function resolveLoginWebAppUrl(explicitUrl?: string): string {
   if (explicitUrl) {
     return normalizeWebAppUrl(explicitUrl);
@@ -259,6 +282,7 @@ function buildStoredAuth(
     workosClientId: existing.workosClientId,
     convexUrl: existing.convexUrl,
     deviceAuthScope: existing.deviceAuthScope,
+    defaultWorkspaceSlug: existing.defaultWorkspaceSlug,
   };
 }
 

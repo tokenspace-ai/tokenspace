@@ -30,6 +30,15 @@ tokenspace logout
 
 Auth state is stored locally in `~/.tokenspace/auth.json`. The CLI remembers the selected web app URL, discovers the matching WorkOS client ID and Convex URL automatically, and reuses that target for future commands and generated links.
 
+Choose a default workspace for commands run outside a linked workspace directory:
+
+```bash
+tokenspace use my-workspace
+tokenspace use
+```
+
+`tokenspace use` stores the default workspace slug in `~/.tokenspace/auth.json`. Commands that support workspace selection, such as `tokenspace chat ...`, resolve the workspace in this order: `--workspace`, current linked workspace, then the default set by `tokenspace use`.
+
 ## Standard workflow
 
 For a hosted tokenspace workflow:
@@ -86,6 +95,59 @@ Compile the current local tokenspace into revision artifacts:
 ```bash
 tokenspace compile
 tokenspace compile --out-dir build/tokenspace
+```
+
+## Chat from the CLI
+
+Start a new chat:
+
+```bash
+tokenspace chat start "Summarize the credential setup"
+tokenspace chat start --stdin --follow
+tokenspace chat start --workspace my-workspace "Review the latest logs"
+```
+
+List chats:
+
+```bash
+tokenspace chat list
+tokenspace chat list --workspace my-workspace
+tokenspace chat list --all --json
+```
+
+Inspect a chat or follow it in the terminal:
+
+```bash
+tokenspace chat get <chat-id>
+tokenspace chat get <chat-id> --follow
+tokenspace chat get <chat-id> --json
+tokenspace chat get <chat-id> --follow --ndjson
+```
+
+Send another user message to an existing chat:
+
+```bash
+tokenspace chat send <chat-id> "Continue from the last result"
+tokenspace chat send <chat-id> --stdin --follow
+```
+
+These commands require an existing compiled revision for the selected workspace. If the selected tokenspace has not been pushed yet, run `tokenspace push` first.
+
+Human-readable chat output is transcript-first and follows the same step order as the web UI. The CLI renders:
+
+- user messages in blue
+- assistant messages in your terminal's normal foreground color
+- reasoning in dim gray
+- tool calls in dim gray with a leading `•` and simplified labels like `Read /sandbox/README.md` or `Running code`
+
+Example:
+
+```text
+Inspect the repo
+  Looking through the files
+  • Read /sandbox/README.md
+  • Check the compiled artifact
+Found the relevant section.
 ```
 
 ## Manage credentials
