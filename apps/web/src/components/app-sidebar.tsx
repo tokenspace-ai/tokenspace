@@ -128,6 +128,7 @@ interface AppSidebarProps {
   onDeleteThread: (threadId: Id<"chats">, e: React.MouseEvent) => void;
   onRenameThread: (threadId: Id<"chats">, newTitle: string) => void;
   onToggleStar: (threadId: Id<"chats">, isStarred: boolean, e: React.MouseEvent) => void;
+  showBranchControls?: boolean;
 }
 
 export function AppSidebar({
@@ -154,6 +155,7 @@ export function AppSidebar({
   onDeleteThread,
   onRenameThread,
   onToggleStar,
+  showBranchControls = true,
 }: AppSidebarProps) {
   const params = useParams({ strict: false }) as { slug?: string };
   const slug = params.slug;
@@ -164,7 +166,7 @@ export function AppSidebar({
   const assignedExecutorStatus = useQuery(api.executors.getAssignedExecutorStatus, { workspaceId });
   const resolvedRevisionId = useQuery(
     api.workspace.getRevision,
-    revisionId || !currentBranchId
+    revisionId || !currentBranchId || !showBranchControls
       ? "skip"
       : {
           workspaceId,
@@ -204,6 +206,7 @@ export function AppSidebar({
           workingChanges={workingChanges}
           onCommitChanges={onCommitChanges}
           collapsed={collapsed}
+          showBranchControls={showBranchControls}
         />
       </SidebarHeader>
 

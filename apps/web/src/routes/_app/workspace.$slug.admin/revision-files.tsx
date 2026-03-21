@@ -2,9 +2,10 @@ import Editor from "@monaco-editor/react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { api } from "@tokenspace/backend/convex/_generated/api";
 import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
-import { useAction, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { AlertCircle, FolderOpen, Package } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { FileTree, type FileTreeNode } from "@/components/workspace-editor";
@@ -114,6 +115,7 @@ function SandboxExplorerPage() {
 
   const ensureRevisionFilesMaterialized = useAction(api.fs.operations.ensureMaterialized);
   const getRevisionBuildDetails = useAction(api.compile.getRevisionBuildDetails);
+  const setActiveRevision = useMutation(api.workspace.setActiveRevision);
   const [buildDetails, setBuildDetails] = useState<RevisionBuildDetails | null>(null);
   const [buildDetailsLoading, setBuildDetailsLoading] = useState(false);
   const [buildDetailsError, setBuildDetailsError] = useState<string | null>(null);
@@ -219,6 +221,23 @@ function SandboxExplorerPage() {
     }
   };
 
+  const handlePublish = async () => {
+    if (!workspace || !revision?._id) {
+      toast.error("No revision available to publish");
+      return;
+    }
+    try {
+      await setActiveRevision({
+        workspaceId: workspace._id,
+        revisionId: revision._id as Id<"revisions">,
+      });
+      toast.success("Revision published");
+    } catch (error) {
+      toast.error("Failed to publish revision");
+      console.error(error);
+    }
+  };
+
   if (!workspace) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -294,7 +313,14 @@ function SandboxExplorerPage() {
       </div>
 
       <div className="border-b bg-muted/10 px-4 py-3">
-        <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Revision Build</div>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Revision Build</div>
+          {revision && (
+            <Button variant="outline" size="sm" onClick={handlePublish}>
+              Publish Revision
+            </Button>
+          )}
+        </div>
         {buildDetailsLoading ? (
           <div className="text-sm text-muted-foreground">Loading build details...</div>
         ) : buildDetailsError ? (

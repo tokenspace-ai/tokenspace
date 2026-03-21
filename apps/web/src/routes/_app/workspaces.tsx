@@ -213,7 +213,7 @@ interface WorkspaceCardProps {
     slug: string;
     role?: "workspace_admin" | "member";
     iconUrl?: string;
-    activeCommitId?: Id<"commits">;
+    activeRevisionId?: Id<"revisions">;
     createdAt: number;
     updatedAt: number;
   };
@@ -317,7 +317,7 @@ function WorkspaceCard({ workspace, index }: WorkspaceCardProps) {
       <CardContent className="space-y-4">
         {/* Status badges */}
         <div className="flex items-center gap-2 flex-wrap">
-          {workspace.activeCommitId && (
+          {workspace.activeRevisionId && (
             <Badge variant="default" className="text-xs">
               Active
             </Badge>

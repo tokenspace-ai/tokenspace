@@ -22,7 +22,7 @@ export const Route = createFileRoute("/_app/workspace/$slug/_app/chat/")({
 
 function ChatIndexPage() {
   const navigate = useNavigate();
-  const { slug, workspaceName, branchName } = useWorkspaceContext();
+  const { slug, workspaceName } = useWorkspaceContext();
   const createChat = useMutation(api.ai.chat.createChat);
   const sendChatMessage = useMutation(api.ai.chat.sendChatMessage);
   const getUploadMetadata = useAction(api.fs.overlay.getUploadMetadata);
@@ -93,10 +93,7 @@ function ChatIndexPage() {
         <div className="flex items-center gap-3">
           <h1 className="font-semibold tracking-tight">
             <span className="text-muted-foreground/30">New Chat</span>
-            <span className="ml-2 text-xs text-muted-foreground/50">
-              in {workspaceName}
-              {branchName !== "main" && ` (${branchName})`}
-            </span>
+            <span className="ml-2 text-xs text-muted-foreground/50">in {workspaceName}</span>
           </h1>
         </div>
       </header>

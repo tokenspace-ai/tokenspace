@@ -1,10 +1,8 @@
-import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
+import { useLocation, useParams } from "@tanstack/react-router";
 import { api } from "@tokenspace/backend/convex/_generated/api";
 import { useAuth } from "@workos/authkit-tanstack-react-start/client";
 import { useQuery } from "convex/react";
 import {
-  type Branch,
-  HeaderBranchSelector,
   type RevisionState,
   RevisionStatus,
   UserMenu,
@@ -12,7 +10,7 @@ import {
   WorkspaceSelector,
 } from "@/components/header/index";
 import { Separator } from "@/components/ui/separator";
-import { buildWorkspaceSlug, parseWorkspaceSlug } from "@/lib/workspace-slug";
+import { parseWorkspaceSlug } from "@/lib/workspace-slug";
 
 type RouteSection = "admin" | "app";
 
@@ -33,10 +31,9 @@ function useCurrentRouteSection(): { section: RouteSection; subRoute?: string } 
 }
 
 export default function Header() {
-  const navigate = useNavigate();
   const params = useParams({ strict: false }) as { slug?: string };
   const { user, signOut } = useAuth();
-  const { section, subRoute } = useCurrentRouteSection();
+  const { section } = useCurrentRouteSection();
 
   const workspaceSlug = params.slug;
   const parsedSlug = workspaceSlug ? parseWorkspaceSlug(workspaceSlug) : null;
@@ -46,10 +43,6 @@ export default function Header() {
     api.workspace.resolveWorkspaceContext,
     workspaceSlug ? { slug: workspaceSlug } : "skip",
   );
-  const branchesData = useQuery(
-    api.vcs.listBranches,
-    workspaceContext?.workspace?._id ? { workspaceId: workspaceContext.workspace._id } : "skip",
-  );
 
   const workspaces: Workspace[] = (workspacesData ?? []).map((w) => ({
     id: w._id,
@@ -58,46 +51,7 @@ export default function Header() {
     iconUrl: w.iconUrl,
   }));
 
-  const branches: Branch[] = (branchesData ?? []).map((b) => ({
-    id: b._id,
-    name: b.name,
-    isDefault: b.isDefault,
-  }));
-
-  const currentBranchId = workspaceContext?.branch?._id;
-  const includeWorkingState = Boolean(parsedSlug?.workingStateHash);
-  const workingStateHash = parsedSlug?.workingStateHash;
-
-  const revisionState: RevisionState = workspaceContext?.workspace?.activeCommitId ? "ready" : "pending";
-
-  const handleBranchChange = (branchId: string, includeWorking: boolean) => {
-    const branch = branches.find((b) => b.id === branchId);
-    if (!branch || !parsedSlug) return;
-
-    const newSlug = buildWorkspaceSlug(
-      parsedSlug.workspaceSlug,
-      branch.name,
-      includeWorking ? workingStateHash : undefined,
-    );
-    if (subRoute) {
-      navigate({ to: `/workspace/${newSlug}/${subRoute}` });
-      return;
-    }
-    navigate({ to: `/workspace/${newSlug}` });
-  };
-
-  const handleToggleWorkingState = (include: boolean) => {
-    if (!parsedSlug || !currentBranchId) return;
-    const branch = branches.find((b) => b.id === currentBranchId);
-    if (!branch) return;
-
-    const newSlug = buildWorkspaceSlug(parsedSlug.workspaceSlug, branch.name, include ? workingStateHash : undefined);
-    if (subRoute) {
-      navigate({ to: `/workspace/${newSlug}/${subRoute}` });
-      return;
-    }
-    navigate({ to: `/workspace/${newSlug}` });
-  };
+  const revisionState: RevisionState = workspaceContext?.workspace?.activeRevisionId ? "ready" : "pending";
 
   const handleSignOut = () => {
     signOut();
@@ -116,24 +70,10 @@ export default function Header() {
       <div className="flex h-12 items-center px-4 gap-2">
         <WorkspaceSelector workspaces={workspaces} currentWorkspaceSlug={parsedSlug?.workspaceSlug} />
 
-        {workspaceSlug && branches.length > 0 && (
-          <>
-            <span className="text-muted-foreground">/</span>
-            <HeaderBranchSelector
-              branches={branches}
-              currentBranchId={currentBranchId}
-              includeWorkingState={includeWorkingState}
-              workingStateHash={workingStateHash}
-              onBranchChange={handleBranchChange}
-              onToggleWorkingState={handleToggleWorkingState}
-            />
-          </>
-        )}
-
         {workspaceSlug && (
           <>
             <Separator orientation="vertical" className="h-6 mx-2" />
-            <RevisionStatus revisionId={workspaceContext?.workspace?.activeCommitId} state={revisionState} />
+            <RevisionStatus revisionId={workspaceContext?.workspace?.activeRevisionId} state={revisionState} />
           </>
         )}
 

@@ -64,7 +64,7 @@ function AdminLayout() {
   const currentBranchId = branchId;
   const includeWorkingState = Boolean(workingStateHash);
 
-  const revisionState: RevisionState = workspaceContext?.workspace?.activeCommitId ? "ready" : "pending";
+  const revisionState: RevisionState = workspaceContext?.workspace?.activeRevisionId ? "ready" : "pending";
   const lastObservedLiveHashRef = useRef<string | null | undefined>(undefined);
 
   const navigateToSlug = useCallback(

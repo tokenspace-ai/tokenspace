@@ -467,7 +467,7 @@ export class IntegrationTestHarness {
   }
 
   /**
-   * Seed a workspace from the testing example workspace and compile it.
+   * Seed a workspace from the testing example workspace, compile it, and publish that revision.
    * Sets the test context with workspaceId, branchId, and revisionId.
    */
   async seedWorkspace(): Promise<TestContext> {
@@ -516,6 +516,11 @@ export class IntegrationTestHarness {
       workspaceId,
       branchId,
       includeWorkingState: false,
+    });
+
+    await this.backend.runFunction(getFunctionName(internal.workspace.setActiveRevisionInternal), {
+      workspaceId,
+      revisionId,
     });
 
     this.context = { workspaceId, branchId, revisionId };

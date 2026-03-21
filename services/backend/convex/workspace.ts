@@ -1036,41 +1036,61 @@ export const clearUploadedIcon = mutation({
   },
 });
 
+async function setActiveRevisionHandler(
+  ctx: MutationCtx,
+  args: {
+    workspaceId: Id<"workspaces">;
+    revisionId: Id<"revisions">;
+  },
+): Promise<void> {
+  const workspace = await ctx.db.get(args.workspaceId);
+  if (!workspace) {
+    throw new Error("Workspace not found");
+  }
+
+  const revision = await ctx.db.get(args.revisionId);
+  if (!revision) {
+    throw new Error("Revision not found");
+  }
+
+  if (revision.workspaceId !== args.workspaceId) {
+    throw new Error("Revision does not belong to this workspace");
+  }
+
+  await ctx.db.patch(args.workspaceId, {
+    activeRevisionId: args.revisionId,
+    updatedAt: Date.now(),
+  });
+}
+
 /**
- * Set the active commit for a workspace (production version)
+ * Publish a revision for a workspace.
  */
-export const setActiveCommit = mutation({
+export const setActiveRevision = mutation({
   args: {
     workspaceId: v.id("workspaces"),
-    commitId: v.id("commits"),
+    revisionId: v.id("revisions"),
   },
   handler: async (ctx, args) => {
     await requireWorkspaceAdmin(ctx, args.workspaceId);
-    const workspace = await ctx.db.get(args.workspaceId);
-    if (!workspace) {
-      throw new Error("Workspace not found");
-    }
+    await setActiveRevisionHandler(ctx, args);
+  },
+});
 
-    const commit = await ctx.db.get(args.commitId);
-    if (!commit) {
-      throw new Error("Commit not found");
-    }
-
-    if (commit.workspaceId !== args.workspaceId) {
-      throw new Error("Commit does not belong to this workspace");
-    }
-
-    await ctx.db.patch(args.workspaceId, {
-      activeCommitId: args.commitId,
-      updatedAt: Date.now(),
-    });
+export const setActiveRevisionInternal = internalMutation({
+  args: {
+    workspaceId: v.id("workspaces"),
+    revisionId: v.id("revisions"),
+  },
+  handler: async (ctx, args) => {
+    await setActiveRevisionHandler(ctx, args);
   },
 });
 
 /**
- * Get the active commit for a workspace
+ * Get the published revision for a workspace.
  */
-export const getActiveCommit = query({
+export const getActiveRevision = query({
   args: {
     workspaceId: v.id("workspaces"),
   },
@@ -1081,11 +1101,11 @@ export const getActiveCommit = query({
       throw new Error("Workspace not found");
     }
 
-    if (!workspace.activeCommitId) {
+    if (!workspace.activeRevisionId) {
       return null;
     }
 
-    return await ctx.db.get(workspace.activeCommitId);
+    return await ctx.db.get(workspace.activeRevisionId);
   },
 });
 
@@ -1179,7 +1199,7 @@ export const getCurrentWorkingStateHash = query({
 /**
  * Resolve workspace context from a slug string.
  * Parses formats like:
- * - "workspace" -> workspace only (uses default branch)
+ * - "workspace" -> workspace only (runtime resolves from active revision)
  * - "workspace:branch" -> workspace + specific branch
  * - "workspace:branch:hash" -> workspace + branch + working state hash
  */
@@ -1270,7 +1290,7 @@ export const resolveWorkspaceContext = query({
       },
       branch,
       workingStateHash: workingStateHash || undefined,
-      revisionId: undefined,
+      revisionId: workspace.activeRevisionId,
       // Computed slug for URL building
       effectiveSlug: buildSlug(resolvedWorkspaceSlug, branch?.name, workingStateHash),
     };

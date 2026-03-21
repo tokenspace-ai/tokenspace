@@ -2,15 +2,14 @@ import { createFileRoute, Outlet, useNavigate, useParams } from "@tanstack/react
 import { api } from "@tokenspace/backend/convex/_generated/api";
 import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
 import { useAuth } from "@workos/authkit-tanstack-react-start/client";
-import { useAction, useMutation, usePaginatedQuery, useQuery } from "convex/react";
-import { useCallback, useMemo } from "react";
-import { toast } from "sonner";
+import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { useCallback, useEffect, useMemo } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ChatCommandMenuProvider } from "@/components/chat-command-menu/chat-command-menu-provider";
-import type { Branch, RevisionState, Workspace } from "@/components/sidebar-workspace-selector";
+import type { RevisionState, Workspace } from "@/components/sidebar-workspace-selector";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { WorkspaceRevisionProvider } from "@/components/workspace-revision";
-import { buildWorkspaceSlug, parseWorkspaceSlug, replaceWorkspaceSlugInPath } from "@/lib/workspace-slug";
+import { replaceWorkspaceSlugInPath } from "@/lib/workspace-slug";
 import { useWorkspaceContext } from "../workspace.$slug";
 
 export const Route = createFileRoute("/_app/workspace/$slug/_app")({
@@ -27,26 +26,11 @@ function WorkspaceAppLayout() {
   const currentChatId = params.chatId as Id<"chats"> | undefined;
   const { user, signOut } = useAuth();
 
-  const {
-    workspaceId,
-    workspaceSlug: currentWorkspaceSlug,
-    workspaceRole,
-    branchId,
-    branchName,
-    workingStateHash,
-    revisionId,
-  } = useWorkspaceContext();
+  const { workspaceId, workspaceSlug: currentWorkspaceSlug, workspaceRole, revisionId } = useWorkspaceContext();
 
-  const parsedSlug = parseWorkspaceSlug(slug);
-  const createCommit = useAction(api.vcs.createCommit);
-
-  // Fetch workspaces and branches
+  // Fetch workspaces
   const workspacesData = useQuery(api.workspace.list);
   const workspaceContext = useQuery(api.workspace.resolveWorkspaceContext, { slug });
-  const branchesData = useQuery(
-    api.vcs.listBranches,
-    workspaceContext?.workspace?._id ? { workspaceId: workspaceContext.workspace._id } : "skip",
-  );
 
   const workspaces: Workspace[] = (workspacesData ?? []).map((w) => ({
     id: w._id,
@@ -55,24 +39,7 @@ function WorkspaceAppLayout() {
     iconUrl: w.iconUrl,
   }));
 
-  const branches: Branch[] = (branchesData ?? []).map((b) => ({
-    id: b._id,
-    name: b.name,
-    isDefault: b.isDefault,
-  }));
-
-  const currentBranchId = branchId;
-  const includeWorkingState = Boolean(workingStateHash);
-
-  const revisionState: RevisionState = workspaceContext?.workspace?.activeCommitId ? "ready" : "pending";
-
-  const branchDoc = useQuery(api.vcs.getBranch, branchId ? { branchId } : "skip");
-  const branchCommit = useQuery(api.vcs.getCommit, branchDoc ? { commitId: branchDoc.commitId } : "skip");
-  const committedTree = useQuery(
-    api.trees.getFileTreeStructure,
-    branchCommit ? { treeId: branchCommit.treeId } : "skip",
-  );
-  const workingFiles = useQuery(api.fs.working.getAll, branchId ? { branchId } : "skip");
+  const revisionState: RevisionState = workspaceContext?.workspace?.activeRevisionId ? "ready" : "pending";
 
   const navigateToSlug = useCallback(
     (nextSlug: string, options?: { replace?: boolean }) => {
@@ -87,68 +54,12 @@ function WorkspaceAppLayout() {
     [navigate],
   );
 
-  const committedPaths = useMemo(() => {
-    const paths = new Set<string>();
-    const collectPaths = (nodes: typeof committedTree) => {
-      if (!nodes) return;
-      for (const node of nodes) {
-        if (node.type === "file") {
-          paths.add(node.path);
-        }
-        if (node.children) {
-          collectPaths(node.children as typeof committedTree);
-        }
-      }
-    };
-    collectPaths(committedTree);
-    return paths;
-  }, [committedTree]);
-
-  const workingChanges = useMemo(() => {
-    if (!workingFiles) return [];
-    return workingFiles.map((file) => ({
-      path: file.path,
-      status: file.isDeleted
-        ? ("deleted" as const)
-        : committedPaths.has(file.path)
-          ? ("modified" as const)
-          : ("added" as const),
-    }));
-  }, [workingFiles, committedPaths]);
-
-  const handleCommitChanges = useCallback(
-    async (message: string) => {
-      if (!branchId) {
-        throw new Error("Missing branch context");
-      }
-      await createCommit({
-        workspaceId,
-        branchId,
-        message,
-      });
-      toast.success("Changes committed");
-      const cleanSlug = buildWorkspaceSlug(currentWorkspaceSlug, branchName);
-      navigateToSlug(cleanSlug);
-    },
-    [branchId, createCommit, workspaceId, currentWorkspaceSlug, branchName, navigateToSlug],
-  );
-
-  const handleBranchChange = (newBranchId: string, _includeWorking: boolean) => {
-    const branch = branches.find((b) => b.id === newBranchId);
-    if (!branch) return;
-
-    const newSlug = buildWorkspaceSlug(currentWorkspaceSlug, branch.name);
-    navigateToSlug(newSlug);
-  };
-
-  const handleToggleWorkingState = (include: boolean) => {
-    if (!currentBranchId) return;
-    const branch = branches.find((b) => b.id === currentBranchId);
-    if (!branch) return;
-
-    const newSlug = buildWorkspaceSlug(currentWorkspaceSlug, branch.name, include ? workingStateHash : undefined);
-    navigateToSlug(newSlug);
-  };
+  useEffect(() => {
+    if (!workspaceContext?.workspace || slug.includes("@") || slug === currentWorkspaceSlug) {
+      return;
+    }
+    navigateToSlug(currentWorkspaceSlug, { replace: true });
+  }, [workspaceContext?.workspace?._id, slug, currentWorkspaceSlug, navigateToSlug]);
 
   const handleSignOut = () => {
     signOut();
@@ -217,16 +128,16 @@ function WorkspaceAppLayout() {
           workspaces={workspaces}
           workspaceId={workspaceId}
           revisionId={revisionId}
-          branches={branches}
-          currentWorkspaceSlug={parsedSlug.workspaceSlug}
-          currentBranchId={currentBranchId}
-          includeWorkingState={includeWorkingState}
-          workingStateHash={workingStateHash}
+          branches={[]}
+          currentWorkspaceSlug={currentWorkspaceSlug}
+          currentBranchId={undefined}
+          includeWorkingState={false}
+          workingStateHash={undefined}
           revisionState={revisionState}
-          onBranchChange={handleBranchChange}
-          onToggleWorkingState={handleToggleWorkingState}
-          workingChanges={workingChanges}
-          onCommitChanges={handleCommitChanges}
+          onBranchChange={() => {}}
+          onToggleWorkingState={() => {}}
+          workingChanges={[]}
+          onCommitChanges={async () => {}}
           isWorkspaceAdmin={workspaceRole === "workspace_admin"}
           user={user}
           onSignOut={handleSignOut}
@@ -237,6 +148,7 @@ function WorkspaceAppLayout() {
           onDeleteThread={handleDeleteThread}
           onRenameThread={handleRenameThread}
           onToggleStar={handleToggleStar}
+          showBranchControls={false}
         />
         <SidebarInset className="max-h-screen overflow-y-auto">
           <WorkspaceRevisionProvider>

@@ -4,7 +4,6 @@ import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
 import { useAgentChat } from "@tokenspace/convex-durable-agents/react";
 import { useAction, useQuery as useConvexQuery, useMutation } from "convex/react";
 import {
-  GitBranchIcon,
   MoreVerticalIcon,
   PencilIcon,
   RefreshCcwIcon,
@@ -29,7 +28,6 @@ import { ChatSidebarProvider, type SessionTab, useChatSidebar } from "@/componen
 import { DebugPanel } from "@/components/chat/debug-panel";
 import { SessionPanel } from "@/components/chat/session-panel";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -146,7 +144,6 @@ function ChatPage() {
 }
 
 function PendingChatInterface({ pendingBootstrap }: { pendingBootstrap: PendingChatBootstrap }) {
-  const { branchName, workingStateHash } = useWorkspaceContext();
   const revisionId = useWorkspaceRevision();
 
   return (
@@ -156,13 +153,6 @@ function PendingChatInterface({ pendingBootstrap }: { pendingBootstrap: PendingC
           <h1 className="font-semibold tracking-tight">
             <span className="text-muted-foreground/30">Untitled Chat</span>
           </h1>
-          {(branchName !== "main" || workingStateHash) && (
-            <Badge variant="outline" className="h-5 gap-1 px-1.5 text-[10px] text-muted-foreground">
-              <GitBranchIcon className="size-3" />
-              {branchName}
-              {workingStateHash && <span>:{workingStateHash.slice(0, 7)}</span>}
-            </Badge>
-          )}
         </div>
       </header>
 
@@ -223,7 +213,7 @@ function ChatInterface({
 }) {
   const { slug } = Route.useParams();
   const { searchParams, setSearchParams, clearSidebar } = useChatSearchParams();
-  const { workspaceName, branchName, workingStateHash } = useWorkspaceContext();
+  const { workspaceName } = useWorkspaceContext();
   const sessionId = chat.sessionId;
 
   const handleSectionChange = useCallback(
@@ -272,8 +262,6 @@ function ChatInterface({
         chat={chat}
         slug={slug}
         workspaceName={workspaceName}
-        branchName={branchName}
-        workingStateHash={workingStateHash}
         sessionId={sessionId}
       />
     </ChatSidebarProvider>
@@ -284,8 +272,6 @@ function ChatInterfaceContent({
   chatId,
   chat,
   slug,
-  branchName,
-  workingStateHash,
   sessionId,
 }: {
   chatId: Id<"chats">;
@@ -308,8 +294,6 @@ function ChatInterfaceContent({
   };
   slug: string;
   workspaceName: string;
-  branchName: string;
-  workingStateHash?: string;
   sessionId: Id<"sessions">;
 }) {
   const { sidebarSection, openSession, openDebug } = useChatSidebar();
@@ -522,13 +506,6 @@ function ChatInterfaceContent({
                       <span className="text-muted-foreground/30">Untitled Chat</span>
                     )}
                   </h1>
-                )}
-                {(branchName !== "main" || workingStateHash) && (
-                  <Badge variant="outline" className="h-5 gap-1 px-1.5 text-[10px] text-muted-foreground">
-                    <GitBranchIcon className="size-3" />
-                    {branchName}
-                    {workingStateHash && <span>:{workingStateHash.slice(0, 7)}</span>}
-                  </Badge>
                 )}
               </div>
               <Button

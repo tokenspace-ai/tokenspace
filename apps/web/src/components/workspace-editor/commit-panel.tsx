@@ -17,7 +17,8 @@ interface CommitPanelProps {
   onViewDiff?: (path: string) => void;
   onViewAllDiffs?: () => void;
   onPublish?: () => Promise<void>;
-  isActiveCommit: boolean;
+  canPublish: boolean;
+  isPublishedRevision: boolean;
   className?: string;
 }
 
@@ -29,7 +30,8 @@ export function CommitPanel({
   onViewDiff,
   onViewAllDiffs,
   onPublish,
-  isActiveCommit,
+  canPublish,
+  isPublishedRevision,
   className,
 }: CommitPanelProps) {
   const [commitMessage, setCommitMessage] = useState("");
@@ -154,20 +156,25 @@ export function CommitPanel({
       {onPublish && (
         <div className="flex flex-col gap-2 pt-2 border-t">
           <div className="flex items-center gap-2 text-sm">
-            {isActiveCommit ? (
+            {isPublishedRevision ? (
               <>
                 <Check className="size-4 text-green-500" />
-                <span className="text-muted-foreground">This is the active version</span>
+                <span className="text-muted-foreground">This revision is published</span>
+              </>
+            ) : canPublish ? (
+              <>
+                <Upload className="size-4 text-muted-foreground" />
+                <span className="text-muted-foreground">Publish the compiled revision</span>
               </>
             ) : (
               <>
                 <Upload className="size-4 text-muted-foreground" />
-                <span className="text-muted-foreground">Publish to make this the active version</span>
+                <span className="text-muted-foreground">Compile a revision before publishing</span>
               </>
             )}
           </div>
-          {!isActiveCommit && (
-            <Button variant="outline" onClick={handlePublish} disabled={isPublishing || changes.length > 0}>
+          {!isPublishedRevision && canPublish && (
+            <Button variant="outline" onClick={handlePublish} disabled={isPublishing}>
               <Upload className="size-4 mr-2" />
               {isPublishing ? "Publishing..." : "Publish"}
             </Button>

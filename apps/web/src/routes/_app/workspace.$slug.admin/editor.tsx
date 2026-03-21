@@ -151,7 +151,7 @@ function WorkspacePage() {
   const mergeBranchMutation = useMutation(api.vcs.mergeBranch);
   const deleteBranchMutation = useMutation(api.vcs.deleteBranch);
   const setDefaultBranchMutation = useMutation(api.vcs.setDefaultBranch);
-  const setActiveCommitMutation = useMutation(api.workspace.setActiveCommit);
+  const setActiveRevisionMutation = useMutation(api.workspace.setActiveRevision);
   const discardWorkingFileMutation = useMutation(api.fs.working.discardChange);
   const discardAllWorkingFilesMutation = useMutation(api.fs.working.discardAll);
 
@@ -382,6 +382,10 @@ function WorkspacePage() {
         message,
       });
       toast.success("Changes committed successfully");
+      setCompileResult(null);
+      setCompileStatus("idle");
+      setCompileError(null);
+      setCompileJobId(null);
       // Clear selected file content since working files are cleared
       if (selectedPath) {
         // Reload from committed content
@@ -396,13 +400,16 @@ function WorkspacePage() {
 
   // Publish handler
   const handlePublish = async () => {
-    if (!workspace || !currentBranch) return;
+    if (!workspace || !compileResult?.revisionId) {
+      toast.error("Compile a revision before publishing");
+      return;
+    }
     try {
-      await setActiveCommitMutation({
+      await setActiveRevisionMutation({
         workspaceId: workspace._id,
-        commitId: currentBranch.commitId,
+        revisionId: compileResult.revisionId,
       });
-      toast.success("Commit published as active");
+      toast.success("Revision published");
     } catch (error) {
       toast.error("Failed to publish");
       console.error(error);
@@ -638,6 +645,13 @@ function WorkspacePage() {
     }
   }, [compileJob]);
 
+  useEffect(() => {
+    setCompileResult(null);
+    setCompileStatus("idle");
+    setCompileError(null);
+    setCompileJobId(null);
+  }, [activeBranchId]);
+
   // View diff for a specific file
   const handleViewDiff = (path: string) => {
     if (!currentCommit) return;
@@ -855,7 +869,8 @@ function WorkspacePage() {
       commitId: b.commitId,
     })) ?? [];
 
-  const isActiveCommit = workspace?.activeCommitId === currentBranch?.commitId;
+  const selectedRevisionId = compileResult?.revisionId ?? null;
+  const isPublishedRevision = selectedRevisionId !== null && workspace?.activeRevisionId === selectedRevisionId;
 
   if (!workspace) {
     return (
@@ -1008,7 +1023,8 @@ function WorkspacePage() {
               onViewDiff={handleViewDiff}
               onViewAllDiffs={handleViewAllDiffs}
               onPublish={handlePublish}
-              isActiveCommit={isActiveCommit}
+              canPublish={Boolean(selectedRevisionId)}
+              isPublishedRevision={isPublishedRevision}
             />
 
             {/* Commit History */}

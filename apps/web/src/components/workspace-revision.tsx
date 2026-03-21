@@ -1,11 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import { api } from "@tokenspace/backend/convex/_generated/api";
 import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
-import { useAction, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { Loader2 } from "lucide-react";
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
-import { useConvexQuery } from "@/hooks/use-convex-query";
+import { createContext, useContext } from "react";
 import { useWorkspaceContext } from "@/routes/_app/workspace.$slug";
 import { buttonVariants } from "./ui/button";
 
@@ -16,119 +14,16 @@ interface WorkspaceRevisionProviderProps {
   loadingFallback?: () => React.ReactNode;
   buildingFallback?: () => React.ReactNode;
 }
+
 export function WorkspaceRevisionProvider({
   children,
   loadingFallback,
   buildingFallback,
 }: WorkspaceRevisionProviderProps) {
-  const { workspaceId, branchId, workingStateHash, slug, revisionId: explicitRevisionId } = useWorkspaceContext();
-  const {
-    data: revisionId,
-    isPending,
-    isError,
-    error,
-  } = useConvexQuery(api.workspace.getRevision, {
-    workspaceId,
-    branchId,
-    workingStateHash,
-  });
-  const ensureRevision = useAction(api.workspace.ensureRevision);
-  const [compileJobId, setCompileJobId] = useState<Id<"compileJobs"> | null>(null);
-  const lastEnsureAttemptKeyRef = useRef<string | null>(null);
-  const failedEnsureKeyRef = useRef<string | null>(null);
-  const ensureKey = useMemo(() => {
-    if (!workspaceId || !branchId) {
-      return null;
-    }
-    return `${workspaceId}:${branchId}:${workingStateHash ?? ""}`;
-  }, [workspaceId, branchId, workingStateHash]);
-  const compileJob = useQuery(
-    api.compile.getCompileJob,
-    workspaceId && compileJobId ? { workspaceId, compileJobId } : "skip",
-  );
+  const { slug, revisionId } = useWorkspaceContext();
+  const workspaceContext = useQuery(api.workspace.resolveWorkspaceContext, { slug });
 
-  useEffect(() => {
-    if (explicitRevisionId) {
-      return;
-    }
-    if (revisionId !== null) {
-      lastEnsureAttemptKeyRef.current = null;
-      failedEnsureKeyRef.current = null;
-      return;
-    }
-    if (ensureKey !== lastEnsureAttemptKeyRef.current) {
-      failedEnsureKeyRef.current = null;
-    }
-  }, [explicitRevisionId, revisionId, ensureKey]);
-
-  useEffect(() => {
-    if (
-      !explicitRevisionId &&
-      revisionId === null &&
-      !isPending &&
-      !isError &&
-      workspaceId &&
-      branchId &&
-      ensureKey &&
-      !compileJobId &&
-      lastEnsureAttemptKeyRef.current !== ensureKey &&
-      failedEnsureKeyRef.current !== ensureKey
-    ) {
-      lastEnsureAttemptKeyRef.current = ensureKey;
-      ensureRevision({ workspaceId, branchId, workingStateHash })
-        .then((result) => {
-          if (result.compileJobId) {
-            setCompileJobId(result.compileJobId);
-          }
-        })
-        .catch((e) => {
-          console.error(e);
-          failedEnsureKeyRef.current = ensureKey;
-          toast.error("Failed to build tokenspace revision");
-        });
-    }
-  }, [
-    explicitRevisionId,
-    revisionId,
-    workspaceId,
-    branchId,
-    workingStateHash,
-    isPending,
-    isError,
-    compileJobId,
-    ensureKey,
-  ]);
-
-  useEffect(() => {
-    if (!compileJob) {
-      return;
-    }
-    if (compileJob.status === "completed") {
-      setCompileJobId(null);
-      return;
-    }
-    if (compileJob.status === "failed" || compileJob.status === "canceled") {
-      setCompileJobId(null);
-      if (ensureKey) {
-        failedEnsureKeyRef.current = ensureKey;
-      }
-      toast.error(compileJob.error ?? "Failed to build tokenspace revision");
-    }
-  }, [compileJob, ensureKey]);
-
-  if (explicitRevisionId) {
-    return (
-      <WorkspaceRevisionContext.Provider value={{ revisionId: explicitRevisionId }}>
-        {children}
-      </WorkspaceRevisionContext.Provider>
-    );
-  }
-
-  if (isError) {
-    return <div>Failed to load tokenspace revision: {error.message}</div>;
-  }
-
-  if (isPending) {
+  if (!workspaceContext) {
     return (
       loadingFallback?.() ?? (
         <WaitingScreen>
@@ -138,15 +33,15 @@ export function WorkspaceRevisionProvider({
     );
   }
 
-  if (revisionId === null) {
+  if (!revisionId) {
     return (
       buildingFallback?.() ?? (
         <WaitingScreen>
-          <p className="text-muted-foreground">Building tokenspace revision...</p>
+          <p className="text-muted-foreground">No published revision is available yet.</p>
           <Link
             className={buttonVariants({ variant: "outline", size: "sm" })}
             to="/workspace/$slug/admin/editor"
-            params={{ slug }}
+            params={{ slug: workspaceContext.workspace.slug }}
           >
             Go to tokenspace editor
           </Link>

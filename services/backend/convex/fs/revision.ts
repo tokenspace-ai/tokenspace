@@ -403,7 +403,7 @@ export const getContent = query({
 });
 
 /**
- * Get revision for a workspace's active commit on the default branch
+ * Get the published revision for a workspace.
  */
 export const getRevision = query({
   args: {
@@ -415,25 +415,11 @@ export const getRevision = query({
       throw new Error("Workspace not found");
     }
 
-    // Get the default branch
-    const defaultBranch = await ctx.db
-      .query("branches")
-      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
-      .filter((q) => q.eq(q.field("isDefault"), true))
-      .first();
-
-    if (!defaultBranch) {
+    if (!workspace.activeRevisionId) {
       return null;
     }
 
-    // Find revision for the branch's current commit
-    const revision = await ctx.db
-      .query("revisions")
-      .withIndex("by_branch_commit", (q) => q.eq("branchId", defaultBranch._id).eq("commitId", defaultBranch.commitId))
-      .filter((q) => q.eq(q.field("workingStateHash"), undefined))
-      .first();
-
-    return revision;
+    return await ctx.db.get(workspace.activeRevisionId);
   },
 });
 

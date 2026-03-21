@@ -62,6 +62,7 @@ interface SidebarWorkspaceSelectorProps {
   workingChanges?: WorkspaceWorkingChange[];
   onCommitChanges?: (message: string) => Promise<void>;
   collapsed?: boolean;
+  showBranchControls?: boolean;
 }
 
 const revisionConfig: Record<RevisionState, { icon: typeof Loader2; label: string; className: string }> = {
@@ -100,6 +101,7 @@ export function SidebarWorkspaceSelector({
   workingChanges = [],
   onCommitChanges,
   collapsed = false,
+  showBranchControls = true,
 }: SidebarWorkspaceSelectorProps) {
   const currentWorkspace = workspaces.find((w) => w.slug === currentWorkspaceSlug);
   const currentBranch = branches.find((b) => b.id === currentBranchId);
@@ -174,14 +176,14 @@ export function SidebarWorkspaceSelector({
               </div>
               {/* Line 2: Branch + revision status (or just revision status if on main) */}
               <div className="flex items-center gap-1">
-                {!isOnMainBranch && (
+                {showBranchControls && !isOnMainBranch && (
                   <>
                     <GitBranch className="size-3 text-muted-foreground" />
                     <span className="truncate text-xs text-muted-foreground">{currentBranch?.name}</span>
                     <span className="text-muted-foreground">·</span>
                   </>
                 )}
-                {isWorkingStateActive && (
+                {showBranchControls && isWorkingStateActive && (
                   <>
                     <span className="shrink-0 rounded bg-cyan-500/20 px-1 py-0.5 text-[10px] text-cyan-700 dark:text-cyan-300">
                       ephemeral
@@ -207,57 +209,60 @@ export function SidebarWorkspaceSelector({
           </Link>
         </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
-
-        <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Branches</DropdownMenuLabel>
-        {branches.map((branch) => (
-          <DropdownMenuItem
-            key={branch.id}
-            onClick={() => onBranchChange(branch.id, includeWorkingState)}
-            className="flex items-center gap-2"
-          >
-            <Check
-              className={cn(
-                "size-4 shrink-0",
-                branch.id === currentBranchId && !includeWorkingState ? "opacity-100" : "opacity-0",
-              )}
-            />
-            <GitBranch className="size-4 shrink-0 text-muted-foreground" />
-            <span className="flex-1 truncate">{branch.name}</span>
-            {branch.isDefault && <span className="text-xs text-muted-foreground shrink-0">default</span>}
-          </DropdownMenuItem>
-        ))}
-        {branches.length === 0 && (
-          <DropdownMenuItem disabled className="text-muted-foreground">
-            No branches available
-          </DropdownMenuItem>
-        )}
-
-        {hasWorkingChanges && (
+        {showBranchControls && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => onToggleWorkingState(!includeWorkingState)}
-              className="flex items-center gap-2"
-            >
-              <Check className={cn("size-4 shrink-0", includeWorkingState ? "opacity-100" : "opacity-0")} />
-              <Clock className="size-4 shrink-0 text-cyan-700 dark:text-cyan-300" />
-              <span className="flex-1">Include ephemeral state</span>
-              {workingStateHash && (
-                <span className="text-xs text-muted-foreground font-mono">{workingStateHash.slice(0, 7)}</span>
-              )}
-            </DropdownMenuItem>
-          </>
-        )}
+            <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Branches</DropdownMenuLabel>
+            {branches.map((branch) => (
+              <DropdownMenuItem
+                key={branch.id}
+                onClick={() => onBranchChange(branch.id, includeWorkingState)}
+                className="flex items-center gap-2"
+              >
+                <Check
+                  className={cn(
+                    "size-4 shrink-0",
+                    branch.id === currentBranchId && !includeWorkingState ? "opacity-100" : "opacity-0",
+                  )}
+                />
+                <GitBranch className="size-4 shrink-0 text-muted-foreground" />
+                <span className="flex-1 truncate">{branch.name}</span>
+                {branch.isDefault && <span className="text-xs text-muted-foreground shrink-0">default</span>}
+              </DropdownMenuItem>
+            ))}
+            {branches.length === 0 && (
+              <DropdownMenuItem disabled className="text-muted-foreground">
+                No branches available
+              </DropdownMenuItem>
+            )}
 
-        {hasCommitableChanges && onCommitChanges && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setIsCommitDialogOpen(true)} className="flex items-center gap-2">
-              <GitCommit className="size-4 shrink-0 text-muted-foreground" />
-              <span className="flex-1">Commit changes</span>
-              <span className="text-xs text-muted-foreground">{workingChanges.length}</span>
-            </DropdownMenuItem>
+            {hasWorkingChanges && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => onToggleWorkingState(!includeWorkingState)}
+                  className="flex items-center gap-2"
+                >
+                  <Check className={cn("size-4 shrink-0", includeWorkingState ? "opacity-100" : "opacity-0")} />
+                  <Clock className="size-4 shrink-0 text-cyan-700 dark:text-cyan-300" />
+                  <span className="flex-1">Include ephemeral state</span>
+                  {workingStateHash && (
+                    <span className="text-xs text-muted-foreground font-mono">{workingStateHash.slice(0, 7)}</span>
+                  )}
+                </DropdownMenuItem>
+              </>
+            )}
+
+            {hasCommitableChanges && onCommitChanges && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setIsCommitDialogOpen(true)} className="flex items-center gap-2">
+                  <GitCommit className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="flex-1">Commit changes</span>
+                  <span className="text-xs text-muted-foreground">{workingChanges.length}</span>
+                </DropdownMenuItem>
+              </>
+            )}
           </>
         )}
       </DropdownMenuContent>

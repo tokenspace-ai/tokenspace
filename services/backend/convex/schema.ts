@@ -206,7 +206,8 @@ export default defineSchema({
   workspaces: defineTable({
     name: v.string(),
     slug: v.string(), // URL-friendly identifier
-    activeCommitId: v.optional(v.id("commits")), // Current production version
+    activeCommitId: v.optional(v.id("commits")), // Legacy publish pointer; runtime now uses activeRevisionId
+    activeRevisionId: v.optional(v.id("revisions")), // Current published runtime revision
     executorId: v.optional(v.id("executors")),
     iconBlobId: v.optional(v.id("blobs")),
     iconMimeType: v.optional(v.string()),
