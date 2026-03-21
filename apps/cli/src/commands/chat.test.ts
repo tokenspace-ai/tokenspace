@@ -179,7 +179,9 @@ mock.module("../local-workspace.js", () => ({
   readLinkedWorkspaceConfig: async (_workspaceDir: string) => linkedWorkspaceConfig,
 }));
 
-const { getTranscriptEntry, getChat, listChats, sendMessageToChat, startChat } = await import("./chat");
+const { buildConversationSteps, getTranscriptEntry, getChat, listChats, sendMessageToChat, startChat } = await import(
+  "./chat"
+);
 
 beforeEach(() => {
   linkedWorkspaceRoot = "/tmp/demo";
@@ -256,6 +258,48 @@ describe("chat helpers", () => {
       text: "Result:",
       markers: ["[tool bash output-available]"],
     });
+  });
+
+  it("renders conversation steps in message-part order for human output", () => {
+    const steps = buildConversationSteps([
+      {
+        _id: "m1",
+        _creationTime: 1,
+        threadId: "thread_1",
+        id: "m1",
+        role: "user",
+        parts: [{ type: "text", text: "Inspect the repo" }],
+      },
+      {
+        _id: "m2",
+        _creationTime: 2,
+        threadId: "thread_1",
+        id: "m2",
+        role: "assistant",
+        parts: [
+          { type: "step-start" },
+          { type: "reasoning-start", id: "r1" },
+          { type: "reasoning-delta", id: "r1", delta: "Looking " },
+          { type: "reasoning-delta", id: "r1", delta: "through the files" },
+          { type: "tool-readFile", toolName: "readFile", state: "output-available", input: { path: "README.md" } },
+          {
+            type: "tool-runCode",
+            toolName: "runCode",
+            state: "output-available",
+            input: { description: "Check the compiled artifact" },
+          },
+          { type: "text", text: "Found the relevant section." },
+        ],
+      },
+    ] as any);
+
+    expect(steps).toEqual([
+      { kind: "user", text: "Inspect the repo" },
+      { kind: "reasoning", text: "Looking through the files" },
+      { kind: "tool", text: "Read README.md" },
+      { kind: "tool", text: "Check the compiled artifact" },
+      { kind: "assistant", text: "Found the relevant section." },
+    ]);
   });
 });
 

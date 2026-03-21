@@ -51,6 +51,11 @@ export type TranscriptEntry = {
   markers: string[];
 };
 
+export type ConversationStep = {
+  kind: "user" | "assistant" | "reasoning" | "tool";
+  text: string;
+};
+
 export type ChatSnapshot = {
   chat: ChatDetails;
   thread: ChatThread | null;
@@ -253,11 +258,178 @@ function describeNonTextPart(part: ChatMessagePart): string | null {
   return `[${type}${state}]`;
 }
 
+function getPartType(part: ChatMessagePart): string {
+  return isNonEmptyString(part.type) ? part.type : "part";
+}
+
+function getStringField(part: ChatMessagePart, key: string): string | null {
+  const value = part[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function getObjectField(part: ChatMessagePart, key: string): Record<string, unknown> | null {
+  const value = part[key];
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
 function getTextFromParts(parts: ChatMessagePart[]): string {
   return parts
     .filter((part) => part.type === "text" && typeof part.text === "string")
     .map((part) => part.text ?? "")
     .join("");
+}
+
+function normalizeBlockText(value: string): string {
+  return value.replace(/\r\n/g, "\n").trimEnd();
+}
+
+function compactInlineText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function truncateInlineText(value: string, maxLength = 240): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return `${value.slice(0, maxLength - 1)}…`;
+}
+
+function stringifyInlineValue(value: unknown): string | null {
+  if (value === undefined) {
+    return null;
+  }
+  if (typeof value === "string") {
+    return truncateInlineText(JSON.stringify(compactInlineText(value)));
+  }
+  try {
+    return truncateInlineText(JSON.stringify(value));
+  } catch {
+    const fallback = compactInlineText(String(value));
+    return fallback ? truncateInlineText(fallback) : null;
+  }
+}
+
+function collectConsecutiveTextParts(
+  parts: ChatMessagePart[],
+  startIndex: number,
+): { nextIndex: number; text: string } {
+  const fragments: string[] = [];
+  let index = startIndex;
+  while (index < parts.length && getPartType(parts[index]!) === "text") {
+    const text = getStringField(parts[index]!, "text");
+    if (text) {
+      fragments.push(text);
+    }
+    index += 1;
+  }
+  return {
+    nextIndex: index,
+    text: normalizeBlockText(fragments.join("")),
+  };
+}
+
+function collectConsecutiveReasoningParts(
+  parts: ChatMessagePart[],
+  startIndex: number,
+): { nextIndex: number; text: string } {
+  const fragments: string[] = [];
+  let index = startIndex;
+  while (index < parts.length && getPartType(parts[index]!).startsWith("reasoning")) {
+    const text = getStringField(parts[index]!, "delta") ?? getStringField(parts[index]!, "text");
+    if (text) {
+      fragments.push(text);
+    }
+    index += 1;
+  }
+  return {
+    nextIndex: index,
+    text: compactInlineText(fragments.join("")),
+  };
+}
+
+function describeToolStep(part: ChatMessagePart): string | null {
+  const type = getPartType(part);
+  const toolName = isNonEmptyString(part.toolName) ? part.toolName : type.startsWith("tool-") ? type.slice(5) : null;
+  if (!toolName) {
+    return null;
+  }
+
+  const inputObject = getObjectField(part, "input");
+  const input = stringifyInlineValue(part.input);
+  const errorText = getStringField(part, "errorText");
+  const state = getStringField(part, "state");
+
+  let line: string;
+  switch (toolName) {
+    case "readFile": {
+      const path = typeof inputObject?.path === "string" ? inputObject.path : null;
+      line = path ? `Read ${path}` : "Read file";
+      break;
+    }
+    case "writeFile": {
+      const path = typeof inputObject?.path === "string" ? inputObject.path : null;
+      line = path ? `Write ${path}` : "Write file";
+      break;
+    }
+    case "runCode": {
+      const description =
+        typeof inputObject?.description === "string" ? compactInlineText(inputObject.description) : null;
+      line = description || "Running code";
+      break;
+    }
+    case "bash": {
+      const description =
+        typeof inputObject?.description === "string" ? compactInlineText(inputObject.description) : null;
+      line = description || "Run shell command";
+      break;
+    }
+    case "requestApproval": {
+      const description =
+        typeof inputObject?.description === "string" ? compactInlineText(inputObject.description) : null;
+      const reason = typeof inputObject?.reason === "string" ? compactInlineText(inputObject.reason) : null;
+      line = description || reason || "Request approval";
+      break;
+    }
+    case "spawnAgent": {
+      const prompt = typeof inputObject?.prompt === "string" ? compactInlineText(inputObject.prompt) : null;
+      line = prompt ? `Spawn agent: ${truncateInlineText(prompt, 120)}` : "Spawn agent";
+      break;
+    }
+    default:
+      line = input ? `${toolName}(${input})` : toolName;
+      break;
+  }
+
+  if (state === "output-available") {
+    return line;
+  }
+  if (state === "output-error") {
+    line += errorText ? ` ! ${truncateInlineText(compactInlineText(errorText))}` : " ! error";
+  } else if (state && state !== "input-available") {
+    line += ` (${state})`;
+  }
+
+  return line;
+}
+
+function describeConversationMetaPart(part: ChatMessagePart): string | null {
+  const toolStep = describeToolStep(part);
+  if (toolStep) {
+    return toolStep;
+  }
+
+  const type = getPartType(part);
+  if (type === "step-start" || type === "start" || type === "finish") {
+    return null;
+  }
+  const text = getStringField(part, "text") ?? getStringField(part, "delta");
+  if (text) {
+    return `[${type}] ${truncateInlineText(compactInlineText(text))}`;
+  }
+
+  return describeNonTextPart(part);
 }
 
 export function getTranscriptEntry(message: ChatMessage): TranscriptEntry | null {
@@ -277,18 +449,85 @@ export function buildTranscript(messages: ChatMessage[]): TranscriptEntry[] {
   return messages.map(getTranscriptEntry).filter((entry): entry is TranscriptEntry => entry !== null);
 }
 
-function printTranscriptEntry(entry: TranscriptEntry): void {
-  const label = entry.role === "user" ? pc.cyan("User") : pc.green("Assistant");
-  console.log(label);
-  if (entry.text) {
-    console.log(entry.text);
+function buildMessageConversationSteps(message: ChatMessage): ConversationStep[] {
+  if (message.role !== "user" && message.role !== "assistant") {
+    return [];
   }
-  if (entry.markers.length > 0) {
-    for (const marker of entry.markers) {
-      console.log(pc.dim(marker));
+
+  const steps: ConversationStep[] = [];
+  let index = 0;
+
+  while (index < message.parts.length) {
+    const part = message.parts[index]!;
+    const type = getPartType(part);
+
+    if (type === "text") {
+      const chunk = collectConsecutiveTextParts(message.parts, index);
+      if (chunk.text) {
+        steps.push({
+          kind: message.role === "user" ? "user" : "assistant",
+          text: chunk.text,
+        });
+      }
+      index = chunk.nextIndex;
+      continue;
     }
+
+    if (type.startsWith("reasoning")) {
+      const chunk = collectConsecutiveReasoningParts(message.parts, index);
+      if (chunk.text) {
+        steps.push({ kind: "reasoning", text: chunk.text });
+      }
+      index = chunk.nextIndex;
+      continue;
+    }
+
+    const text = describeConversationMetaPart(part);
+    if (text) {
+      steps.push({
+        kind: message.role === "user" ? "user" : "tool",
+        text,
+      });
+    }
+    index += 1;
   }
-  console.log("");
+
+  return steps;
+}
+
+export function buildConversationSteps(messages: ChatMessage[]): ConversationStep[] {
+  return messages.flatMap((message) => buildMessageConversationSteps(message));
+}
+
+function printConversationStep(step: ConversationStep): void {
+  const lines = normalizeBlockText(step.text).split("\n");
+  for (const line of lines) {
+    if (step.kind === "user") {
+      console.log(pc.cyan(line));
+      continue;
+    }
+    if (step.kind === "reasoning") {
+      console.log(pc.dim(`  ${line}`));
+      continue;
+    }
+    if (step.kind === "tool") {
+      console.log(pc.dim(`  • ${line}`));
+      continue;
+    }
+    console.log(line);
+  }
+}
+
+function printConversation(messages: ChatMessage[]): void {
+  const steps = buildConversationSteps(messages);
+  if (steps.length === 0) {
+    console.log(pc.dim("No messages yet."));
+    return;
+  }
+
+  for (const step of steps) {
+    printConversationStep(step);
+  }
 }
 
 function printChatHeader(args: { context: LinkedWorkspaceContext; snapshot: ChatSnapshot }): void {
@@ -614,8 +853,8 @@ export async function startChat(promptArg: string | undefined, options: StartCha
         console.log(pc.dim(`[status] ${statusLabel(event.snapshot.chat.status)}`));
         return;
       }
-      if (event.type === "message" && event.transcript) {
-        printTranscriptEntry(event.transcript);
+      if (event.type === "message") {
+        printConversation([event.message]);
       }
     },
   });
@@ -677,9 +916,7 @@ export async function getChat(chatId: string, options: GetChatOptions = {}): Pro
   }
 
   printChatHeader({ context, snapshot });
-  for (const entry of snapshot.transcript) {
-    printTranscriptEntry(entry);
-  }
+  printConversation(snapshot.messages);
 
   if (!options.follow) {
     return;
@@ -696,8 +933,8 @@ export async function getChat(chatId: string, options: GetChatOptions = {}): Pro
         console.log(pc.dim(`[status] ${statusLabel(event.snapshot.chat.status)}`));
         return;
       }
-      if (event.type === "message" && event.transcript) {
-        printTranscriptEntry(event.transcript);
+      if (event.type === "message") {
+        printConversation([event.message]);
       }
     },
   });
@@ -763,8 +1000,8 @@ export async function sendMessageToChat(
         console.log(pc.dim(`[status] ${statusLabel(event.snapshot.chat.status)}`));
         return;
       }
-      if (event.type === "message" && event.transcript) {
-        printTranscriptEntry(event.transcript);
+      if (event.type === "message") {
+        printConversation([event.message]);
       }
     },
   });
