@@ -206,7 +206,8 @@ export default defineSchema({
   workspaces: defineTable({
     name: v.string(),
     slug: v.string(), // URL-friendly identifier
-    activeCommitId: v.optional(v.id("commits")), // Current production version
+    activeCommitId: v.optional(v.id("commits")), // Legacy publish pointer; runtime now uses activeRevisionId
+    activeRevisionId: v.optional(v.id("revisions")), // Current published runtime revision
     executorId: v.optional(v.id("executors")),
     iconBlobId: v.optional(v.id("blobs")),
     iconMimeType: v.optional(v.string()),
@@ -335,6 +336,23 @@ export default defineSchema({
     .index("by_workspace", ["workspaceId"])
     .index("by_name", ["workspaceId", "name"]),
 
+  branchStates: defineTable({
+    workspaceId: v.id("workspaces"),
+    name: v.string(),
+    isMain: v.boolean(),
+    backingBranchId: v.id("branches"),
+    workingOwnerKey: v.string(),
+    createdByUserId: v.string(),
+    lastCompiledRevisionId: v.optional(v.id("revisions")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    archivedAt: v.optional(v.number()),
+  })
+    .index("by_workspace", ["workspaceId"])
+    .index("by_name", ["workspaceId", "name"])
+    .index("by_workspace_main", ["workspaceId", "isMain"])
+    .index("by_backing_branch", ["backingBranchId"]),
+
   // Trees - directory structure snapshots (content-addressed)
   trees: defineTable({
     workspaceId: v.id("workspaces"),
@@ -355,7 +373,8 @@ export default defineSchema({
   workingFiles: defineTable({
     workspaceId: v.id("workspaces"),
     branchId: v.id("branches"),
-    userId: v.string(),
+    userId: v.optional(v.string()),
+    branchStateId: v.optional(v.id("branchStates")),
     path: v.string(),
     content: v.optional(v.string()), // undefined means file is deleted or stored in blob
     blobId: v.optional(v.id("blobs")),
@@ -363,15 +382,20 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_branch_user", ["branchId", "userId"])
-    .index("by_path", ["branchId", "userId", "path"]),
+    .index("by_path", ["branchId", "userId", "path"])
+    .index("by_branch_state", ["branchStateId"])
+    .index("by_branch_state_path", ["branchStateId", "path"]),
 
   // Revisions - compiled workspace snapshots stored in file storage
   revisions: defineTable({
     workspaceId: v.id("workspaces"),
     branchId: v.id("branches"),
+    branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
     // Hash of working files included, if any (for deduplication)
     workingStateHash: v.optional(v.string()),
+    // Stable hash of the compiled branch-state draft snapshot, if any.
+    sourceSnapshotHash: v.optional(v.string()),
     // Optional fingerprint of compiled artifact set used for this revision.
     artifactFingerprint: v.optional(v.string()),
     // File storage references for compiled artifacts
@@ -397,7 +421,10 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_branch_commit", ["branchId", "commitId"])
-    .index("by_branch_working", ["branchId", "commitId", "workingStateHash"]),
+    .index("by_branch_working", ["branchId", "commitId", "workingStateHash"])
+    .index("by_branch_state_commit", ["branchStateId", "commitId"])
+    .index("by_branch_state_working", ["branchStateId", "commitId", "workingStateHash"])
+    .index("by_branch_state_snapshot", ["branchStateId", "commitId", "sourceSnapshotHash"]),
 
   // ============================================================================
   // Existing Tables
@@ -556,9 +583,12 @@ export default defineSchema({
 
   compileJobs: defineTable({
     workspaceId: v.id("workspaces"),
+    sourceKind: v.union(v.literal("branch"), v.literal("branchState")),
     branchId: v.id("branches"),
+    branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
     workingStateHash: v.optional(v.string()),
+    sourceSnapshotHash: v.optional(v.string()),
     userId: v.optional(v.string()),
     snapshotStorageId: v.id("_storage"),
     targetExecutorId: v.optional(v.id("executors")),

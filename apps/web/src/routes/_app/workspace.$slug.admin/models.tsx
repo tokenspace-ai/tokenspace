@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { api } from "@tokenspace/backend/convex/_generated/api";
-import { useAuth } from "@workos/authkit-tanstack-react-start/client";
 import { useQuery } from "convex/react";
 import { WorkspaceModelsSection } from "@/components/workspace-editor/workspace-models-section";
 import { useWorkspaceContext } from "../workspace.$slug";
@@ -11,12 +10,10 @@ export const Route = createFileRoute("/_app/workspace/$slug/admin/models")({
 });
 
 function ModelsPage() {
-  const { workspaceId, branchId } = useWorkspaceContext();
-  const { user } = useAuth();
-  const userId = user?.id;
-  const models = useQuery(api.workspace.getModels, { workspaceId, branchId: branchId ?? undefined });
+  const { branchStateId } = useWorkspaceContext();
+  const models = useQuery(api.branchStates.getModels, branchStateId ? { branchStateId } : "skip");
 
-  if (!branchId || !userId || models == null) {
+  if (!branchStateId || models == null) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-muted-foreground">Loading...</div>
@@ -32,9 +29,7 @@ function ModelsPage() {
           <p className="text-sm text-muted-foreground">Configure which LLM models are available in this tokenspace.</p>
         </div>
 
-        {models !== undefined && (
-          <WorkspaceModelsSection workspaceId={workspaceId} branchId={branchId} models={models} />
-        )}
+        {models !== undefined && <WorkspaceModelsSection branchStateId={branchStateId} models={models} />}
       </div>
     </div>
   );

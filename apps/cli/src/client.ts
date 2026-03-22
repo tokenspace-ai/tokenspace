@@ -122,6 +122,11 @@ export type BuildManifestSummary = {
   };
 };
 
+export type RevisionBuildSource = {
+  kind: "branch";
+  branchId: Id<"branches">;
+};
+
 export type CredentialRequirement = {
   id: string;
   label?: string;
@@ -420,9 +425,8 @@ export async function initializeWorkspace(
 
 export async function prepareRevisionFromBuild(
   workspaceId: Id<"workspaces">,
-  branchId: Id<"branches">,
+  source: RevisionBuildSource,
   manifest: BuildManifestSummary,
-  workingStateHash?: string,
 ): Promise<
   | { kind: "existing"; revisionId: Id<"revisions"> }
   | {
@@ -441,17 +445,15 @@ export async function prepareRevisionFromBuild(
   const c = await getClient();
   return await c.action(api.revisionBuild.prepareRevisionFromBuild, {
     workspaceId,
-    branchId,
-    workingStateHash,
+    source,
     manifest,
   });
 }
 
 export async function commitRevisionFromBuild(
   workspaceId: Id<"workspaces">,
-  branchId: Id<"branches">,
+  source: RevisionBuildSource,
   commitId: Id<"commits">,
-  workingStateHash: string | undefined,
   artifactFingerprint: string,
   manifest: BuildManifestSummary,
   artifacts: {
@@ -475,9 +477,8 @@ export async function commitRevisionFromBuild(
   const c = await getClient();
   return await c.action(api.revisionBuild.commitRevisionFromBuild, {
     workspaceId,
-    branchId,
+    source,
     commitId,
-    workingStateHash,
     artifactFingerprint,
     manifest,
     artifacts,
@@ -492,27 +493,13 @@ export function exitWithError(message: string): never {
   process.exit(1);
 }
 
-export async function getCurrentWorkingStateHash(
-  workspaceId: Id<"workspaces">,
-  branchId: Id<"branches">,
-): Promise<string | null> {
-  const c = await getClient();
-  return await c.query(api.workspace.getCurrentWorkingStateHash, {
-    workspaceId,
-    branchId,
-  });
-}
-
 export async function getWorkspaceRevision(
-  workspaceId: Id<"workspaces">,
+  _workspaceId: Id<"workspaces">,
   branchId: Id<"branches">,
-  workingStateHash?: string,
 ): Promise<Id<"revisions"> | null> {
   const c = await getClient();
-  return await c.query(api.workspace.getRevision, {
-    workspaceId,
+  return await c.query(api.fs.revision.getCurrentRevisionIdForBranch, {
     branchId,
-    workingStateHash,
   });
 }
 

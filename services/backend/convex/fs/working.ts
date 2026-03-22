@@ -10,7 +10,62 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { action, internalMutation, internalQuery, mutation, query } from "../_generated/server";
 import { requireAuthenticatedUser, requireWorkspaceAdmin, requireWorkspaceMember } from "../authz";
+import { computeWorkingStateHash } from "../workingStateHash";
 import { resolveFileDownloadUrl, resolveInlineContent, storeFileContent } from "./fileBlobs";
+
+async function resolveWorkingFiles(
+  ctx: any,
+  files: Doc<"workingFiles">[],
+): Promise<Array<Doc<"workingFiles"> & { content?: string; downloadUrl?: string }>> {
+  const resolved = [];
+  for (const file of files) {
+    if (file.isDeleted) {
+      resolved.push({ ...file, content: undefined, downloadUrl: undefined });
+      continue;
+    }
+    const content = await resolveInlineContent(file);
+    const downloadUrl = content === undefined ? await resolveFileDownloadUrl(ctx, file) : undefined;
+    resolved.push({ ...file, content, downloadUrl });
+  }
+  return resolved;
+}
+
+async function resolveWorkingChanges(
+  ctx: any,
+  files: Doc<"workingFiles">[],
+): Promise<
+  Array<{
+    path: string;
+    content?: string;
+    downloadUrl?: string;
+    blobId?: Id<"blobs">;
+    isDeleted: boolean;
+  }>
+> {
+  const changes = [];
+  for (const file of files) {
+    if (file.isDeleted) {
+      changes.push({
+        path: file.path,
+        content: undefined,
+        downloadUrl: undefined,
+        blobId: file.blobId,
+        isDeleted: true,
+      });
+      continue;
+    }
+    const content = await resolveInlineContent(file);
+    const downloadUrl = content === undefined ? await resolveFileDownloadUrl(ctx, file) : undefined;
+    changes.push({
+      path: file.path,
+      content,
+      downloadUrl,
+      blobId: file.blobId,
+      isDeleted: false,
+    });
+  }
+  return changes;
+}
 
 // ============================================================================
 // Internal Operations
@@ -49,6 +104,7 @@ export const write = internalMutation({
       workspaceId: args.workspaceId,
       branchId: args.branchId,
       userId: args.userId,
+      branchStateId: undefined,
       path: args.path,
       content: args.content,
       blobId: args.blobId,
@@ -75,9 +131,63 @@ export const read = internalQuery({
     if (!file) {
       return null;
     }
-    const content = await resolveInlineContent(file);
-    const downloadUrl = content === undefined ? await resolveFileDownloadUrl(ctx, file) : undefined;
-    return { ...file, content, downloadUrl };
+    return (await resolveWorkingFiles(ctx, [file]))[0] ?? null;
+  },
+});
+
+export const writeForBranchState = internalMutation({
+  args: {
+    workspaceId: v.id("workspaces"),
+    branchId: v.id("branches"),
+    branchStateId: v.id("branchStates"),
+    path: v.string(),
+    content: v.optional(v.string()),
+    blobId: v.optional(v.id("blobs")),
+  },
+  handler: async (ctx, args): Promise<Id<"workingFiles">> => {
+    const existing = await ctx.db
+      .query("workingFiles")
+      .withIndex("by_branch_state_path", (q) => q.eq("branchStateId", args.branchStateId).eq("path", args.path))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        content: args.content,
+        blobId: args.blobId,
+        isDeleted: false,
+        updatedAt: Date.now(),
+      });
+      return existing._id;
+    }
+
+    return await ctx.db.insert("workingFiles", {
+      workspaceId: args.workspaceId,
+      branchId: args.branchId,
+      userId: undefined,
+      branchStateId: args.branchStateId,
+      path: args.path,
+      content: args.content,
+      blobId: args.blobId,
+      isDeleted: false,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const readForBranchState = internalQuery({
+  args: {
+    branchStateId: v.id("branchStates"),
+    path: v.string(),
+  },
+  handler: async (ctx, args): Promise<(Doc<"workingFiles"> & { content?: string; downloadUrl?: string }) | null> => {
+    const file = await ctx.db
+      .query("workingFiles")
+      .withIndex("by_branch_state_path", (q) => q.eq("branchStateId", args.branchStateId).eq("path", args.path))
+      .first();
+    if (!file) {
+      return null;
+    }
+    return (await resolveWorkingFiles(ctx, [file]))[0] ?? null;
   },
 });
 
@@ -113,6 +223,44 @@ export const remove = internalMutation({
       workspaceId: args.workspaceId,
       branchId: args.branchId,
       userId: args.userId,
+      branchStateId: undefined,
+      path: args.path,
+      content: undefined,
+      blobId: undefined,
+      isDeleted: true,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const removeForBranchState = internalMutation({
+  args: {
+    workspaceId: v.id("workspaces"),
+    branchId: v.id("branches"),
+    branchStateId: v.id("branchStates"),
+    path: v.string(),
+  },
+  handler: async (ctx, args): Promise<Id<"workingFiles">> => {
+    const existing = await ctx.db
+      .query("workingFiles")
+      .withIndex("by_branch_state_path", (q) => q.eq("branchStateId", args.branchStateId).eq("path", args.path))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        content: undefined,
+        blobId: undefined,
+        isDeleted: true,
+        updatedAt: Date.now(),
+      });
+      return existing._id;
+    }
+
+    return await ctx.db.insert("workingFiles", {
+      workspaceId: args.workspaceId,
+      branchId: args.branchId,
+      userId: undefined,
+      branchStateId: args.branchStateId,
       path: args.path,
       content: undefined,
       blobId: undefined,
@@ -138,6 +286,18 @@ export const list = internalQuery({
   },
 });
 
+export const listForBranchState = internalQuery({
+  args: {
+    branchStateId: v.id("branchStates"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("workingFiles")
+      .withIndex("by_branch_state", (q) => q.eq("branchStateId", args.branchStateId))
+      .collect();
+  },
+});
+
 /**
  * Clear working directory after commit
  */
@@ -150,6 +310,24 @@ export const clear = internalMutation({
     const files = await ctx.db
       .query("workingFiles")
       .withIndex("by_branch_user", (q) => q.eq("branchId", args.branchId).eq("userId", args.userId))
+      .collect();
+
+    for (const file of files) {
+      await ctx.db.delete(file._id);
+    }
+
+    return files.length;
+  },
+});
+
+export const clearForBranchState = internalMutation({
+  args: {
+    branchStateId: v.id("branchStates"),
+  },
+  handler: async (ctx, args) => {
+    const files = await ctx.db
+      .query("workingFiles")
+      .withIndex("by_branch_state", (q) => q.eq("branchStateId", args.branchStateId))
       .collect();
 
     for (const file of files) {
@@ -183,6 +361,25 @@ export const discard = internalMutation({
   },
 });
 
+export const discardForBranchState = internalMutation({
+  args: {
+    branchStateId: v.id("branchStates"),
+    path: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const file = await ctx.db
+      .query("workingFiles")
+      .withIndex("by_branch_state_path", (q) => q.eq("branchStateId", args.branchStateId).eq("path", args.path))
+      .first();
+
+    if (file) {
+      await ctx.db.delete(file._id);
+      return true;
+    }
+    return false;
+  },
+});
+
 /**
  * Get working directory changes (for committing)
  */
@@ -196,30 +393,20 @@ export const getChanges = internalQuery({
       .query("workingFiles")
       .withIndex("by_branch_user", (q) => q.eq("branchId", args.branchId).eq("userId", args.userId))
       .collect();
+    return await resolveWorkingChanges(ctx, files);
+  },
+});
 
-    const changes = [];
-    for (const file of files) {
-      if (file.isDeleted) {
-        changes.push({
-          path: file.path,
-          content: undefined,
-          downloadUrl: undefined,
-          blobId: file.blobId,
-          isDeleted: true,
-        });
-        continue;
-      }
-      const content = await resolveInlineContent(file);
-      const downloadUrl = content === undefined ? await resolveFileDownloadUrl(ctx, file) : undefined;
-      changes.push({
-        path: file.path,
-        content,
-        downloadUrl,
-        blobId: file.blobId,
-        isDeleted: false,
-      });
-    }
-    return changes;
+export const getChangesForBranchState = internalQuery({
+  args: {
+    branchStateId: v.id("branchStates"),
+  },
+  handler: async (ctx, args) => {
+    const files = await ctx.db
+      .query("workingFiles")
+      .withIndex("by_branch_state", (q) => q.eq("branchStateId", args.branchStateId))
+      .collect();
+    return await resolveWorkingChanges(ctx, files);
   },
 });
 
@@ -304,6 +491,7 @@ export const markDeleted = mutation({
       workspaceId: args.workspaceId,
       branchId: args.branchId,
       userId: user.subject,
+      branchStateId: undefined,
       path: args.path,
       content: undefined,
       blobId: undefined,
@@ -343,6 +531,31 @@ export const getAll = query({
       resolved.push({ ...file, content, downloadUrl });
     }
     return resolved;
+  },
+});
+
+export const getCurrentStateHash = query({
+  args: {
+    branchId: v.id("branches"),
+  },
+  handler: async (ctx, args) => {
+    const branch = await ctx.db.get(args.branchId);
+    if (!branch) {
+      throw new Error("Branch not found");
+    }
+    const { user } = await requireWorkspaceMember(ctx, branch.workspaceId);
+
+    const files = await ctx.db
+      .query("workingFiles")
+      .withIndex("by_branch_user", (q) => q.eq("branchId", args.branchId).eq("userId", user.subject))
+      .collect();
+
+    if (files.length === 0) {
+      return null;
+    }
+
+    const changes = await resolveWorkingChanges(ctx, files);
+    return computeWorkingStateHash(changes);
   },
 });
 

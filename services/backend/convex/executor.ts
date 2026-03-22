@@ -838,7 +838,7 @@ export const getTypeScriptSandboxForRevision = action({
 
     return {
       builtins: revisionFs.builtins,
-      sandboxApis: revisionFs.declarations.map((declaration) => ({
+      sandboxApis: revisionFs.declarations.map((declaration: { fileName: string; content: string }) => ({
         fileName: declaration.fileName,
         content: declaration.content,
       })),

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { api } from "@tokenspace/backend/convex/_generated/api";
 import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
 import { gateway } from "ai";
@@ -31,6 +32,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { buildWorkspaceSlug } from "@/lib/workspace-slug";
+import { useWorkspaceContext } from "@/routes/_app/workspace.$slug";
 
 interface WorkspaceModel {
   id?: string;
@@ -42,8 +45,7 @@ interface WorkspaceModel {
 }
 
 interface WorkspaceModelsSectionProps {
-  workspaceId: Id<"workspaces">;
-  branchId: Id<"branches">;
+  branchStateId: Id<"branchStates">;
   models: WorkspaceModel[];
   onSaved?: () => void;
 }
@@ -124,7 +126,9 @@ function ModelPricing({
   );
 }
 
-export function WorkspaceModelsSection({ workspaceId, branchId, models, onSaved }: WorkspaceModelsSectionProps) {
+export function WorkspaceModelsSection({ branchStateId, models, onSaved }: WorkspaceModelsSectionProps) {
+  const navigate = useNavigate();
+  const { workspaceSlug } = useWorkspaceContext();
   const availableModels = useAvailableModels();
   const [isAddModelSelectorOpen, setIsAddModelSelectorOpen] = useState(false);
   const [addingModelId, setAddingModelId] = useState<string | null>(null);
@@ -139,10 +143,30 @@ export function WorkspaceModelsSection({ workspaceId, branchId, models, onSaved 
     setConfiguredModelDefs(models);
   }, [models]);
 
-  const addModel = useMutation(api.workspace.addModel);
-  const removeModel = useMutation(api.workspace.removeModel);
-  const updateModel = useMutation(api.workspace.updateModel);
-  const setDefaultModel = useMutation(api.workspace.setDefaultModel);
+  const addModel = useMutation(api.branchStates.addModel);
+  const removeModel = useMutation(api.branchStates.removeModel);
+  const updateModel = useMutation(api.branchStates.updateModel);
+  const setDefaultModel = useMutation(api.branchStates.setDefaultModel);
+
+  const handleMutationResult = useCallback(
+    (result: {
+      branchStateId: Id<"branchStates">;
+      branchStateName: string;
+      redirected: boolean;
+      models: WorkspaceModel[];
+    }) => {
+      setConfiguredModelDefs(result.models);
+      if (result.redirected) {
+        navigate({
+          to: "/workspace/$slug/admin/models",
+          params: { slug: buildWorkspaceSlug(workspaceSlug, result.branchStateName) },
+        });
+      }
+      onSaved?.();
+      return result.models;
+    },
+    [navigate, onSaved, workspaceSlug],
+  );
 
   const modelMap = useMemo(() => {
     const map = new Map(availableModels?.map((m) => [m.id, m]) ?? []);
@@ -210,8 +234,7 @@ export function WorkspaceModelsSection({ workspaceId, branchId, models, onSaved 
 
     try {
       const updated = await addModel({
-        workspaceId,
-        branchId,
+        branchStateId,
         modelId: addingModelId,
         id: draftId.trim() || addingModelId,
         label: draftLabel.trim() || undefined,
@@ -219,8 +242,7 @@ export function WorkspaceModelsSection({ workspaceId, branchId, models, onSaved 
         systemPrompt: draftSystemPrompt.trim() || undefined,
         providerOptions: parsedProviderOptions.providerOptions,
       });
-      setConfiguredModelDefs(updated);
-      onSaved?.();
+      handleMutationResult(updated);
       toast.success("Model added");
       closeAddDialog();
     } catch (error) {
@@ -230,53 +252,48 @@ export function WorkspaceModelsSection({ workspaceId, branchId, models, onSaved 
   }, [
     addingModelId,
     addModel,
-    workspaceId,
-    branchId,
+    branchStateId,
     draftId,
     draftLabel,
     configuredModelDefs.length,
     draftSystemPrompt,
     draftProviderOptionsJson,
-    onSaved,
     closeAddDialog,
+    handleMutationResult,
   ]);
 
   const handleRemoveModel = useCallback(
     async (id: string) => {
       try {
         const updated = await removeModel({
-          workspaceId,
-          branchId,
+          branchStateId,
           id,
         });
-        setConfiguredModelDefs(updated);
-        onSaved?.();
+        handleMutationResult(updated);
         toast.success("Model removed");
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to remove model");
         console.error(error);
       }
     },
-    [removeModel, workspaceId, branchId, onSaved],
+    [branchStateId, handleMutationResult, removeModel],
   );
 
   const handleSetDefault = useCallback(
     async (id: string) => {
       try {
         const updated = await setDefaultModel({
-          workspaceId,
-          branchId,
+          branchStateId,
           id,
         });
-        setConfiguredModelDefs(updated);
-        onSaved?.();
+        handleMutationResult(updated);
         toast.success("Default model updated");
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to update default model");
         console.error(error);
       }
     },
-    [setDefaultModel, workspaceId, branchId, onSaved],
+    [branchStateId, handleMutationResult, setDefaultModel],
   );
 
   const handleEditClick = useCallback((model: WorkspaceModel) => {
@@ -301,16 +318,14 @@ export function WorkspaceModelsSection({ workspaceId, branchId, models, onSaved 
 
     try {
       const updated = await updateModel({
-        workspaceId,
-        branchId,
+        branchStateId,
         id: editingModelId,
         nextId: draftId,
         label: draftLabel,
         systemPrompt: draftSystemPrompt,
         providerOptions: parsedProviderOptions.providerOptions ?? null,
       });
-      setConfiguredModelDefs(updated);
-      onSaved?.();
+      handleMutationResult(updated);
       toast.success("Model updated");
       closeEditDialog();
     } catch (error) {
@@ -322,13 +337,12 @@ export function WorkspaceModelsSection({ workspaceId, branchId, models, onSaved 
     editingModel,
     draftProviderOptionsJson,
     updateModel,
-    workspaceId,
-    branchId,
+    branchStateId,
     draftId,
     draftLabel,
     draftSystemPrompt,
-    onSaved,
     closeEditDialog,
+    handleMutationResult,
   ]);
 
   return (

@@ -11,6 +11,7 @@ import {
   stripLeadingMarkdownFrontmatter,
 } from "./capabilityExplorer";
 import { loadFileContent, resolveInlineContent } from "./fs/fileBlobs";
+import type { CapabilitySummary } from "./workspaceMetadata";
 
 /**
  * Run code in the playground without requiring a thread context.
@@ -287,7 +288,7 @@ export const getCapabilityExplorerForRevision = action({
 
     const capabilities = revision.capabilities ?? [];
     const entries = await Promise.all(
-      capabilities.map(async (capability) => {
+      capabilities.map(async (capability: CapabilitySummary) => {
         const namespace = getCapabilityNamespace(capability);
         const [markdownEntry, declarationEntry, svgIconEntry, pngIconEntry] = await Promise.all([
           ctx.runQuery(internal.fs.revision.readFileAtPath, {
@@ -340,7 +341,7 @@ export const getCapabilityExplorerForRevision = action({
       }),
     );
 
-    return entries.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+    return entries.filter((entry: CapabilityExplorerEntry | null): entry is CapabilityExplorerEntry => entry !== null);
   },
 });
 
@@ -462,31 +463,6 @@ export const listRevisions = query({
       .withIndex("by_branch_commit", (q) => q.eq("branchId", args.branchId))
       .order("desc")
       .take(limit);
-  },
-});
-
-/**
- * Find or create a revision for a branch and return its ID.
- * This ensures revision filesystem files are materialized.
- */
-export const ensureRevision = action({
-  args: {
-    workspaceId: v.id("workspaces"),
-    branchId: v.id("branches"),
-  },
-  returns: v.object({
-    compileJobId: v.optional(v.id("compileJobs")),
-    existingRevisionId: v.optional(v.id("revisions")),
-  }),
-  handler: async (ctx, args): Promise<{ compileJobId?: Id<"compileJobs">; existingRevisionId?: Id<"revisions"> }> => {
-    const { user } = await requireWorkspaceMember(ctx, args.workspaceId);
-    return await ctx.runAction(internal.compile.enqueueBranchCompile, {
-      workspaceId: args.workspaceId,
-      branchId: args.branchId,
-      includeWorkingState: false,
-      userId: user.subject,
-      checkExistingRevision: true,
-    });
   },
 });
 

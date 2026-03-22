@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { action, internalAction } from "./_generated/server";
 import { requireWorkspaceAdmin } from "./authz";
+import { type ResolvedRevisionBuildSource, resolveRevisionBuildSource, vRevisionBuildSource } from "./revisionSource";
 import { extractPromptMetadataFromEntries, getDefaultWorkspaceModels } from "./workspaceMetadata";
 
 type ArtifactName = "revisionFs" | "bundle" | "metadata" | "diagnostics" | "deps";
@@ -277,8 +278,7 @@ async function prepareRevisionFromBuildImpl(
   ctx: any,
   args: {
     workspaceId: Id<"workspaces">;
-    branchId: Id<"branches">;
-    workingStateHash?: string;
+    source: ResolvedRevisionBuildSource;
     manifest: BuildManifestSummary;
   },
 ): Promise<PrepareResult> {
@@ -286,13 +286,6 @@ async function prepareRevisionFromBuildImpl(
     throw new Error(
       `Unsupported build manifest schemaVersion ${args.manifest.schemaVersion}; expected ${SUPPORTED_BUILD_SCHEMA_VERSION}`,
     );
-  }
-
-  const branch = await ctx.runQuery(internal.vcs.getBranchInternal, {
-    branchId: args.branchId,
-  });
-  if (!branch || branch.workspaceId !== args.workspaceId) {
-    throw new Error("Branch not found or does not belong to workspace");
   }
 
   const artifactFingerprint = makeArtifactFingerprint({
@@ -304,9 +297,11 @@ async function prepareRevisionFromBuildImpl(
   });
 
   const existingRevision = await ctx.runQuery(internal.revisions.findRevision, {
-    branchId: args.branchId,
-    commitId: branch.commitId,
-    workingStateHash: args.workingStateHash,
+    branchId: args.source.branchId,
+    branchStateId: args.source.branchStateId,
+    commitId: args.source.commitId,
+    workingStateHash: args.source.workingStateHash,
+    sourceSnapshotHash: args.source.sourceSnapshotHash,
     artifactFingerprint,
   });
 
@@ -338,7 +333,7 @@ async function prepareRevisionFromBuildImpl(
 
   return {
     kind: "upload" as const,
-    commitId: branch.commitId,
+    commitId: args.source.commitId,
     artifactFingerprint,
     upload: {
       revisionFs: await resolveUploadInstruction(args.manifest.artifacts.revisionFs),
@@ -354,9 +349,8 @@ async function commitRevisionFromBuildImpl(
   ctx: any,
   args: {
     workspaceId: Id<"workspaces">;
-    branchId: Id<"branches">;
+    source: ResolvedRevisionBuildSource;
     commitId: Id<"commits">;
-    workingStateHash?: string;
     artifactFingerprint: string;
     manifest: BuildManifestSummary;
     artifacts: {
@@ -402,14 +396,7 @@ async function commitRevisionFromBuildImpl(
     throw new Error("Artifact mismatch for deps: unexpected artifact reference");
   }
 
-  const branch = await ctx.runQuery(internal.vcs.getBranchInternal, {
-    branchId: args.branchId,
-  });
-  if (!branch || branch.workspaceId !== args.workspaceId) {
-    throw new Error("Branch not found or does not belong to workspace");
-  }
-
-  if (branch.commitId !== args.commitId) {
+  if (args.source.commitId !== args.commitId) {
     throw new Error("Commit mismatch: branch head changed before commit");
   }
 
@@ -498,17 +485,21 @@ async function commitRevisionFromBuildImpl(
   );
 
   const previous = await ctx.runQuery(internal.revisions.findRevision, {
-    branchId: args.branchId,
+    branchId: args.source.branchId,
+    branchStateId: args.source.branchStateId,
     commitId: args.commitId,
-    workingStateHash: args.workingStateHash,
+    workingStateHash: args.source.workingStateHash,
+    sourceSnapshotHash: args.source.sourceSnapshotHash,
     artifactFingerprint: args.artifactFingerprint,
   });
 
   const revisionId = await ctx.runMutation(internal.revisions.createRevision, {
     workspaceId: args.workspaceId,
-    branchId: args.branchId,
+    branchId: args.source.branchId,
+    branchStateId: args.source.branchStateId,
     commitId: args.commitId,
-    workingStateHash: args.workingStateHash,
+    workingStateHash: args.source.workingStateHash,
+    sourceSnapshotHash: args.source.sourceSnapshotHash,
     artifactFingerprint: args.artifactFingerprint,
     revisionFsStorageId,
     bundleStorageId,
@@ -556,8 +547,7 @@ async function commitRevisionFromBuildImpl(
 export const prepareRevisionFromBuild = action({
   args: {
     workspaceId: v.id("workspaces"),
-    branchId: v.id("branches"),
-    workingStateHash: v.optional(v.string()),
+    source: vRevisionBuildSource,
     manifest: vBuildManifestSummary,
   },
   returns: v.union(
@@ -576,16 +566,24 @@ export const prepareRevisionFromBuild = action({
     }),
   ),
   handler: async (ctx, args): Promise<PrepareResult> => {
-    await requireWorkspaceAdmin(ctx, args.workspaceId);
-    return await prepareRevisionFromBuildImpl(ctx, args);
+    const { user } = await requireWorkspaceAdmin(ctx, args.workspaceId);
+    const source = await resolveRevisionBuildSource(ctx, {
+      workspaceId: args.workspaceId,
+      source: args.source,
+      userId: user.subject,
+    });
+    return await prepareRevisionFromBuildImpl(ctx, {
+      workspaceId: args.workspaceId,
+      source,
+      manifest: args.manifest,
+    });
   },
 });
 
 export const prepareRevisionFromBuildInternal = internalAction({
   args: {
     workspaceId: v.id("workspaces"),
-    branchId: v.id("branches"),
-    workingStateHash: v.optional(v.string()),
+    source: vRevisionBuildSource,
     manifest: vBuildManifestSummary,
   },
   returns: v.union(
@@ -604,16 +602,23 @@ export const prepareRevisionFromBuildInternal = internalAction({
     }),
   ),
   handler: async (ctx, args): Promise<PrepareResult> => {
-    return await prepareRevisionFromBuildImpl(ctx, args);
+    const source = await resolveRevisionBuildSource(ctx, {
+      workspaceId: args.workspaceId,
+      source: args.source,
+    });
+    return await prepareRevisionFromBuildImpl(ctx, {
+      workspaceId: args.workspaceId,
+      source,
+      manifest: args.manifest,
+    });
   },
 });
 
 export const commitRevisionFromBuild = action({
   args: {
     workspaceId: v.id("workspaces"),
-    branchId: v.id("branches"),
+    source: vRevisionBuildSource,
     commitId: v.id("commits"),
-    workingStateHash: v.optional(v.string()),
     artifactFingerprint: v.string(),
     manifest: vBuildManifestSummary,
     artifacts: v.object({
@@ -629,17 +634,28 @@ export const commitRevisionFromBuild = action({
     created: v.boolean(),
   }),
   handler: async (ctx, args): Promise<CommitResult> => {
-    await requireWorkspaceAdmin(ctx, args.workspaceId);
-    return await commitRevisionFromBuildImpl(ctx, args);
+    const { user } = await requireWorkspaceAdmin(ctx, args.workspaceId);
+    const source = await resolveRevisionBuildSource(ctx, {
+      workspaceId: args.workspaceId,
+      source: args.source,
+      userId: user.subject,
+    });
+    return await commitRevisionFromBuildImpl(ctx, {
+      workspaceId: args.workspaceId,
+      source,
+      commitId: args.commitId,
+      artifactFingerprint: args.artifactFingerprint,
+      manifest: args.manifest,
+      artifacts: args.artifacts,
+    });
   },
 });
 
 export const commitRevisionFromBuildInternal = internalAction({
   args: {
     workspaceId: v.id("workspaces"),
-    branchId: v.id("branches"),
+    source: vRevisionBuildSource,
     commitId: v.id("commits"),
-    workingStateHash: v.optional(v.string()),
     artifactFingerprint: v.string(),
     manifest: vBuildManifestSummary,
     artifacts: v.object({
@@ -655,6 +671,17 @@ export const commitRevisionFromBuildInternal = internalAction({
     created: v.boolean(),
   }),
   handler: async (ctx, args): Promise<CommitResult> => {
-    return await commitRevisionFromBuildImpl(ctx, args);
+    const source = await resolveRevisionBuildSource(ctx, {
+      workspaceId: args.workspaceId,
+      source: args.source,
+    });
+    return await commitRevisionFromBuildImpl(ctx, {
+      workspaceId: args.workspaceId,
+      source,
+      commitId: args.commitId,
+      artifactFingerprint: args.artifactFingerprint,
+      manifest: args.manifest,
+      artifacts: args.artifacts,
+    });
   },
 });

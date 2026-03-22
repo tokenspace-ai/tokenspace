@@ -105,11 +105,8 @@ interface AppSidebarProps {
   branches: Branch[];
   currentWorkspaceSlug?: string;
   currentBranchId?: string;
-  includeWorkingState: boolean;
-  workingStateHash?: string;
   revisionState: RevisionState;
-  onBranchChange: (branchId: string, includeWorkingState: boolean) => void;
-  onToggleWorkingState: (include: boolean) => void;
+  onBranchChange: (branchId: string) => void;
   workingChanges: WorkspaceWorkingChange[];
   onCommitChanges: (message: string) => Promise<void>;
   isWorkspaceAdmin: boolean;
@@ -128,6 +125,7 @@ interface AppSidebarProps {
   onDeleteThread: (threadId: Id<"chats">, e: React.MouseEvent) => void;
   onRenameThread: (threadId: Id<"chats">, newTitle: string) => void;
   onToggleStar: (threadId: Id<"chats">, isStarred: boolean, e: React.MouseEvent) => void;
+  showBranchControls?: boolean;
 }
 
 export function AppSidebar({
@@ -137,11 +135,8 @@ export function AppSidebar({
   branches,
   currentWorkspaceSlug,
   currentBranchId,
-  includeWorkingState,
-  workingStateHash,
   revisionState,
   onBranchChange,
-  onToggleWorkingState,
   workingChanges,
   onCommitChanges,
   isWorkspaceAdmin,
@@ -154,6 +149,7 @@ export function AppSidebar({
   onDeleteThread,
   onRenameThread,
   onToggleStar,
+  showBranchControls = true,
 }: AppSidebarProps) {
   const params = useParams({ strict: false }) as { slug?: string };
   const slug = params.slug;
@@ -162,20 +158,9 @@ export function AppSidebar({
   const currentRoute = useCurrentAppRoute();
   const [threadsPopoverOpen, setThreadsPopoverOpen] = useState(false);
   const assignedExecutorStatus = useQuery(api.executors.getAssignedExecutorStatus, { workspaceId });
-  const resolvedRevisionId = useQuery(
-    api.workspace.getRevision,
-    revisionId || !currentBranchId
-      ? "skip"
-      : {
-          workspaceId,
-          branchId: currentBranchId as Id<"branches">,
-          workingStateHash,
-        },
-  );
-  const effectiveRevisionId = revisionId ?? resolvedRevisionId ?? undefined;
   const credentialSummary = useQuery(
     api.credentials.getCredentialNavigationSummary,
-    effectiveRevisionId ? { revisionId: effectiveRevisionId } : "skip",
+    revisionId ? { revisionId } : "skip",
   );
   const executorState =
     assignedExecutorStatus === undefined ? null : deriveWorkspaceExecutorState(assignedExecutorStatus);
@@ -196,14 +181,12 @@ export function AppSidebar({
           branches={branches}
           currentWorkspaceSlug={currentWorkspaceSlug}
           currentBranchId={currentBranchId}
-          includeWorkingState={includeWorkingState}
-          workingStateHash={workingStateHash}
           revisionState={revisionState}
           onBranchChange={onBranchChange}
-          onToggleWorkingState={onToggleWorkingState}
           workingChanges={workingChanges}
           onCommitChanges={onCommitChanges}
           collapsed={collapsed}
+          showBranchControls={showBranchControls}
         />
       </SidebarHeader>
 

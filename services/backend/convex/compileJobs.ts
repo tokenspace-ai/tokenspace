@@ -148,9 +148,12 @@ function assertRunningOwnedJob(
 export const createCompileJob = internalMutation({
   args: {
     workspaceId: v.id("workspaces"),
+    sourceKind: v.union(v.literal("branch"), v.literal("branchState")),
     branchId: v.id("branches"),
+    branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
     workingStateHash: v.optional(v.string()),
+    sourceSnapshotHash: v.optional(v.string()),
     userId: v.optional(v.string()),
     snapshotStorageId: v.id("_storage"),
   },
@@ -164,9 +167,12 @@ export const createCompileJob = internalMutation({
     });
     return await ctx.db.insert("compileJobs", {
       workspaceId: args.workspaceId,
+      sourceKind: args.sourceKind,
       branchId: args.branchId,
+      branchStateId: args.branchStateId,
       commitId: args.commitId,
       workingStateHash: args.workingStateHash,
+      sourceSnapshotHash: args.sourceSnapshotHash,
       userId: args.userId,
       snapshotStorageId: args.snapshotStorageId,
       targetExecutorId: scheduled.targetExecutorId,
@@ -275,6 +281,7 @@ export const claimCompileJob = mutation({
     branchId: v.id("branches"),
     commitId: v.id("commits"),
     workingStateHash: v.optional(v.string()),
+    sourceSnapshotHash: v.optional(v.string()),
     userId: v.optional(v.string()),
   }),
   handler: async (ctx, args) => {
@@ -298,6 +305,7 @@ export const claimCompileJob = mutation({
         branchId: job.branchId,
         commitId: job.commitId,
         workingStateHash: job.workingStateHash,
+        sourceSnapshotHash: job.sourceSnapshotHash,
         userId: job.userId,
       };
     }
@@ -358,6 +366,7 @@ export const claimCompileJob = mutation({
       branchId: updated.branchId,
       commitId: updated.commitId,
       workingStateHash: updated.workingStateHash,
+      sourceSnapshotHash: updated.sourceSnapshotHash,
       userId: updated.userId,
     };
   },
@@ -403,6 +412,7 @@ export const getCompileJobSnapshot = query({
     branchId: v.id("branches"),
     commitId: v.id("commits"),
     workingStateHash: v.optional(v.string()),
+    sourceSnapshotHash: v.optional(v.string()),
     userId: v.optional(v.string()),
     snapshotUrl: v.string(),
   }),
@@ -424,6 +434,7 @@ export const getCompileJobSnapshot = query({
       branchId: job.branchId,
       commitId: job.commitId,
       workingStateHash: job.workingStateHash,
+      sourceSnapshotHash: job.sourceSnapshotHash,
       userId: job.userId,
       snapshotUrl,
     };
@@ -482,8 +493,17 @@ export const prepareRevisionFromBuildForExecutor = action({
 
     return await ctx.runAction(internal.revisionBuild.prepareRevisionFromBuildInternal, {
       workspaceId: job.workspaceId,
-      branchId: job.branchId,
-      workingStateHash: job.workingStateHash,
+      source: job.branchStateId
+        ? {
+            kind: "branchState" as const,
+            branchStateId: job.branchStateId,
+            sourceSnapshotHash: job.sourceSnapshotHash,
+          }
+        : {
+            kind: "branch" as const,
+            branchId: job.branchId,
+            workingStateHash: job.workingStateHash,
+          },
       manifest: args.manifest as BuildManifestSummary,
     });
   },
@@ -535,9 +555,18 @@ export const commitRevisionFromBuildForExecutor = action({
 
     return await ctx.runAction(internal.revisionBuild.commitRevisionFromBuildInternal, {
       workspaceId: job.workspaceId,
-      branchId: job.branchId,
+      source: job.branchStateId
+        ? {
+            kind: "branchState" as const,
+            branchStateId: job.branchStateId,
+            sourceSnapshotHash: job.sourceSnapshotHash,
+          }
+        : {
+            kind: "branch" as const,
+            branchId: job.branchId,
+            workingStateHash: job.workingStateHash,
+          },
       commitId: job.commitId,
-      workingStateHash: job.workingStateHash,
       artifactFingerprint: args.artifactFingerprint,
       manifest: args.manifest as BuildManifestSummary,
       artifacts: args.artifacts,
@@ -591,6 +620,15 @@ export const completeCompileJob = mutation({
       artifactFingerprint: args.artifactFingerprint ?? revision?.artifactFingerprint,
       completedAt: Date.now(),
     });
+    if (job.branchStateId) {
+      const branchState = await ctx.db.get(job.branchStateId);
+      if (branchState) {
+        await ctx.db.patch(job.branchStateId, {
+          lastCompiledRevisionId: args.revisionId,
+          updatedAt: Date.now(),
+        });
+      }
+    }
   },
 });
 

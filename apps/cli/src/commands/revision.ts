@@ -96,18 +96,16 @@ export async function pushRevisionArtifacts(args: {
   workspaceId: Id<"workspaces">;
   branchId: Id<"branches">;
   buildDir: string;
-  workingStateHash?: string;
 }): Promise<{ revisionId: Id<"revisions">; created: boolean }> {
   const buildDir = path.resolve(args.buildDir);
   const manifest = await readBuildManifest(buildDir);
   const manifestSummary = toBuildManifestSummary(manifest);
+  const source = {
+    kind: "branch" as const,
+    branchId: args.branchId,
+  };
 
-  const prepare = await prepareRevisionFromBuild(
-    args.workspaceId,
-    args.branchId,
-    manifestSummary,
-    args.workingStateHash,
-  );
+  const prepare = await prepareRevisionFromBuild(args.workspaceId, source, manifestSummary);
   if (prepare.kind === "existing") {
     return { revisionId: prepare.revisionId, created: false };
   }
@@ -164,9 +162,8 @@ export async function pushRevisionArtifacts(args: {
 
   return await commitRevisionFromBuild(
     args.workspaceId,
-    args.branchId,
+    source,
     prepare.commitId,
-    args.workingStateHash,
     prepare.artifactFingerprint,
     manifestSummary,
     artifacts,

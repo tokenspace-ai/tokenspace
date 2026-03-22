@@ -1,8 +1,8 @@
 import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { api } from "@tokenspace/backend/convex/_generated/api";
 import { useAuth } from "@workos/authkit-tanstack-react-start/client";
-import { useAction, useQuery } from "convex/react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AdminSidebar } from "@/components/admin-sidebar";
 import type { Branch, RevisionState, Workspace } from "@/components/sidebar-workspace-selector";
@@ -21,31 +21,30 @@ function AdminLayout() {
     slug,
     workspaceId,
     workspaceSlug: currentWorkspaceSlug,
+    branchStateId,
+    isMainBranchState,
     branchId,
-    branchName,
-    workingStateHash,
   } = useWorkspaceContext();
 
   const parsedSlug = parseWorkspaceSlug(slug);
-  const createCommit = useAction(api.vcs.createCommit);
-  const liveWorkingStateHash = useQuery(
-    api.workspace.getCurrentWorkingStateHash,
-    branchId ? { workspaceId, branchId } : "skip",
-  );
+  const ensureBranchStates = useMutation(api.branchStates.ensureInitialized);
+  const createCommit = useAction(api.branchStates.createCommit);
+  const [branchStatesReady, setBranchStatesReady] = useState(false);
+  const branchStateDoc = useQuery(api.branchStates.get, branchStateId ? { branchStateId } : "skip");
   const branchDoc = useQuery(api.vcs.getBranch, branchId ? { branchId } : "skip");
   const branchCommit = useQuery(api.vcs.getCommit, branchDoc ? { commitId: branchDoc.commitId } : "skip");
   const committedTree = useQuery(
     api.trees.getFileTreeStructure,
     branchCommit ? { treeId: branchCommit.treeId } : "skip",
   );
-  const workingFiles = useQuery(api.fs.working.getAll, branchId ? { branchId } : "skip");
+  const workingFiles = useQuery(api.branchStates.getWorkingFiles, branchStateId ? { branchStateId } : "skip");
 
   // Fetch workspaces and branches
   const workspacesData = useQuery(api.workspace.list);
   const workspaceContext = useQuery(api.workspace.resolveWorkspaceContext, { slug });
   const branchesData = useQuery(
-    api.vcs.listBranches,
-    workspaceContext?.workspace?._id ? { workspaceId: workspaceContext.workspace._id } : "skip",
+    api.branchStates.list,
+    branchStatesReady && workspaceContext?.workspace?._id ? { workspaceId: workspaceContext.workspace._id } : "skip",
   );
 
   const workspaces: Workspace[] = (workspacesData ?? []).map((w) => ({
@@ -58,14 +57,11 @@ function AdminLayout() {
   const branches: Branch[] = (branchesData ?? []).map((b) => ({
     id: b._id,
     name: b.name,
-    isDefault: b.isDefault,
+    isDefault: b.isMain,
   }));
 
-  const currentBranchId = branchId;
-  const includeWorkingState = Boolean(workingStateHash);
-
-  const revisionState: RevisionState = workspaceContext?.workspace?.activeCommitId ? "ready" : "pending";
-  const lastObservedLiveHashRef = useRef<string | null | undefined>(undefined);
+  const currentBranchId = branchStateId;
+  const revisionState: RevisionState = workspaceContext?.workspace?.activeRevisionId ? "ready" : "pending";
 
   const navigateToSlug = useCallback(
     (nextSlug: string, options?: { replace?: boolean }) => {
@@ -79,6 +75,25 @@ function AdminLayout() {
     },
     [navigate],
   );
+
+  useEffect(() => {
+    let canceled = false;
+    ensureBranchStates({ workspaceId })
+      .then(() => {
+        if (!canceled) {
+          setBranchStatesReady(true);
+        }
+      })
+      .catch((error) => {
+        console.error(error);
+        if (!canceled) {
+          toast.error(error instanceof Error ? error.message : "Failed to initialize branch states");
+        }
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [ensureBranchStates, workspaceId]);
 
   const committedPaths = useMemo(() => {
     const paths = new Set<string>();
@@ -111,57 +126,46 @@ function AdminLayout() {
 
   const handleCommitChanges = useCallback(
     async (message: string) => {
-      if (!branchId) {
-        throw new Error("Missing branch context");
+      if (!branchStateId) {
+        throw new Error("Missing branch state context");
       }
-      await createCommit({
-        workspaceId,
-        branchId,
+      const result = await createCommit({
+        branchStateId,
         message,
       });
       toast.success("Changes committed");
-      const cleanSlug = buildWorkspaceSlug(currentWorkspaceSlug, branchName);
+      const cleanSlug = buildWorkspaceSlug(currentWorkspaceSlug, result.branchStateName);
       navigateToSlug(cleanSlug);
     },
-    [branchId, createCommit, workspaceId, currentWorkspaceSlug, branchName, navigateToSlug],
+    [branchStateId, createCommit, currentWorkspaceSlug, navigateToSlug],
   );
 
   useEffect(() => {
-    if (!branchId || liveWorkingStateHash === undefined) return;
+    if (!workspaceContext?.effectiveSlug || slug === workspaceContext.effectiveSlug) {
+      return;
+    }
+    navigateToSlug(workspaceContext.effectiveSlug, { replace: true });
+  }, [workspaceContext?.effectiveSlug, slug, navigateToSlug]);
 
-    const observationKey = `${branchId}:${liveWorkingStateHash ?? "null"}`;
-    const liveHashChanged = lastObservedLiveHashRef.current !== observationKey;
-    lastObservedLiveHashRef.current = observationKey;
-    if (!liveHashChanged) return;
-
-    const currentHash = workingStateHash;
-    const nextHash = liveWorkingStateHash ?? undefined;
-    if (currentHash === nextHash) return;
-
-    const nextSlug = buildWorkspaceSlug(currentWorkspaceSlug, branchName, nextHash);
-    navigateToSlug(nextSlug, { replace: true });
-  }, [branchId, liveWorkingStateHash, workingStateHash, currentWorkspaceSlug, branchName, navigateToSlug]);
-
-  const handleBranchChange = (newBranchId: string, _includeWorking: boolean) => {
+  const handleBranchChange = (newBranchId: string) => {
     const branch = branches.find((b) => b.id === newBranchId);
     if (!branch) return;
 
-    const newSlug = buildWorkspaceSlug(currentWorkspaceSlug, branch.name);
-    navigateToSlug(newSlug);
-  };
-
-  const handleToggleWorkingState = (include: boolean) => {
-    if (!currentBranchId) return;
-    const branch = branches.find((b) => b.id === currentBranchId);
-    if (!branch) return;
-
-    const newSlug = buildWorkspaceSlug(currentWorkspaceSlug, branch.name, include ? workingStateHash : undefined);
+    const newSlug = buildWorkspaceSlug(currentWorkspaceSlug, branch.isDefault ? undefined : branch.name);
     navigateToSlug(newSlug);
   };
 
   const handleSignOut = () => {
     signOut();
   };
+
+  if (!branchStatesReady || (workspaceContext?.workspace && !branchStateDoc && !isMainBranchState)) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-muted-foreground">Loading branch states...</div>
+      </div>
+    );
+  }
 
   return (
     <SidebarProvider>
@@ -170,11 +174,8 @@ function AdminLayout() {
         branches={branches}
         currentWorkspaceSlug={parsedSlug.workspaceSlug}
         currentBranchId={currentBranchId}
-        includeWorkingState={includeWorkingState}
-        workingStateHash={workingStateHash}
         revisionState={revisionState}
-        onBranchChange={handleBranchChange}
-        onToggleWorkingState={handleToggleWorkingState}
+        onBranchChange={(id) => handleBranchChange(id)}
         workingChanges={workingChanges}
         onCommitChanges={handleCommitChanges}
         user={user}

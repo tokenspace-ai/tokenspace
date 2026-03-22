@@ -246,6 +246,7 @@ export async function enqueueAndWaitForRevision(
   args: {
     workspaceId: string;
     branchId: string;
+    branchStateId?: string;
     includeWorkingState?: boolean;
     workingStateHash?: string;
     userId?: string;
@@ -256,6 +257,7 @@ export async function enqueueAndWaitForRevision(
   const queued = (await backend.runFunction(getFunctionName(internal.compile.enqueueBranchCompile), {
     workspaceId: args.workspaceId,
     branchId: args.branchId,
+    branchStateId: args.branchStateId,
     includeWorkingState: args.includeWorkingState,
     workingStateHash: args.workingStateHash,
     userId: args.userId,
@@ -467,7 +469,7 @@ export class IntegrationTestHarness {
   }
 
   /**
-   * Seed a workspace from the testing example workspace and compile it.
+   * Seed a workspace from the testing example workspace, compile it, and publish that revision.
    * Sets the test context with workspaceId, branchId, and revisionId.
    */
   async seedWorkspace(): Promise<TestContext> {
@@ -516,6 +518,11 @@ export class IntegrationTestHarness {
       workspaceId,
       branchId,
       includeWorkingState: false,
+    });
+
+    await this.backend.runFunction(getFunctionName(internal.workspace.setActiveRevisionInternal), {
+      workspaceId,
+      revisionId,
     });
 
     this.context = { workspaceId, branchId, revisionId };

@@ -2,7 +2,7 @@ import { createFileRoute, Outlet, useParams } from "@tanstack/react-router";
 import { api } from "@tokenspace/backend/convex/_generated/api";
 import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
 import { useQuery } from "convex/react";
-import { parseWorkspaceSlug } from "@/lib/workspace-slug";
+import { normalizeMemberWorkspaceSlug, parseWorkspaceSlug } from "@/lib/workspace-slug";
 
 // Context type for passing workspace data to child routes
 export type WorkspaceContextType = {
@@ -10,9 +10,11 @@ export type WorkspaceContextType = {
   workspaceSlug: string;
   workspaceName: string;
   workspaceRole: "workspace_admin" | "member";
+  branchStateId: Id<"branchStates"> | undefined;
+  branchStateName: string;
+  isMainBranchState: boolean;
   branchId: Id<"branches"> | undefined;
   branchName: string;
-  workingStateHash: string | undefined;
   revisionId: Id<"revisions"> | undefined;
   slug: string; // The full slug from URL
 };
@@ -30,7 +32,7 @@ export function useWorkspaceContext(): WorkspaceContextType {
     throw new Error("useWorkspaceContext must be used within a workspace route");
   }
 
-  const { workspaceSlug, branchName, workingStateHash, revisionId } = parseWorkspaceSlug(slug);
+  const { workspaceSlug, branchName, revisionId } = parseWorkspaceSlug(slug);
   const workspaceContext = useQuery(api.workspace.resolveWorkspaceContext, { slug });
 
   if (!workspaceContext) {
@@ -42,9 +44,11 @@ export function useWorkspaceContext(): WorkspaceContextType {
     workspaceSlug,
     workspaceName: workspaceContext.workspace.name,
     workspaceRole: workspaceContext.workspace.role,
+    branchStateId: workspaceContext.branchState?._id,
+    branchStateName: workspaceContext.branchState?.name ?? branchName,
+    isMainBranchState: workspaceContext.branchState?.isMain ?? branchName === "main",
     branchId: workspaceContext.branch?._id,
-    branchName: workspaceContext.branch?.name ?? branchName,
-    workingStateHash,
+    branchName: workspaceContext.branchState?.name ?? workspaceContext.branch?.name ?? branchName,
     revisionId:
       (workspaceContext.revisionId as Id<"revisions"> | undefined) ?? (revisionId as Id<"revisions"> | undefined),
     slug,
@@ -53,11 +57,10 @@ export function useWorkspaceContext(): WorkspaceContextType {
 
 function WorkspaceLayout() {
   const { slug } = Route.useParams();
+  const pathname = typeof window !== "undefined" ? window.location.pathname : "";
+  const contextSlug = pathname.includes("/admin") ? slug : normalizeMemberWorkspaceSlug(slug);
+  const workspaceContext = useQuery(api.workspace.resolveWorkspaceContext, { slug: contextSlug });
 
-  // Resolve workspace context from backend
-  const workspaceContext = useQuery(api.workspace.resolveWorkspaceContext, { slug });
-
-  // Loading state
   if (!workspaceContext) {
     return (
       <div className="flex h-screen items-center justify-center">

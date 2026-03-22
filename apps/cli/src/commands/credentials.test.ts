@@ -5,7 +5,6 @@ let linkedWorkspaceRoot: string | null;
 let linkedWorkspaceConfig: { version: 1; workspaceSlug: string } | null;
 let workspace: any;
 let defaultBranch: any;
-let workingStateHash: string | null;
 let revisionId: string | null;
 let credentialRequirements: any[];
 let workspaceBindings: any[];
@@ -24,10 +23,9 @@ mock.module("../client.js", () => ({
     throw new Error(`EXIT:${message}`);
   },
   getCredentialRequirementsForRevision: async (_revisionId: string) => credentialRequirements,
-  getCurrentWorkingStateHash: async (_workspaceId: string, _branchId: string) => workingStateHash,
   getDefaultBranch: async (_workspaceId: string) => defaultBranch,
   getWorkspaceBySlug: async (_slug: string) => workspace,
-  getWorkspaceRevision: async (_workspaceId: string, _branchId: string, _workingStateHash?: string) => revisionId,
+  getWorkspaceRevision: async (_workspaceId: string, _branchId: string) => revisionId,
   listWorkspaceCredentialBindings: async (_workspaceId: string) => {
     if (workspaceBindingsError) {
       throw workspaceBindingsError;
@@ -111,7 +109,6 @@ beforeEach(() => {
     commitId: "commit_1",
     isDefault: true,
   };
-  workingStateHash = "working_hash";
   revisionId = "revision_1";
   credentialRequirements = [];
   workspaceBindings = [];

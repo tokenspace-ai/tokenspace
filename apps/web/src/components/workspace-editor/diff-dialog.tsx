@@ -17,8 +17,8 @@ interface DiffDialogProps {
   headCommitId?: Id<"commits">;
   /** Workspace ID (for potential future use) */
   workspaceId: Id<"workspaces">;
-  /** Branch ID (required for working directory comparison) */
-  branchId?: Id<"branches">;
+  /** Branch state ID (required for working directory comparison) */
+  branchStateId?: Id<"branchStates">;
   /** Initial file to show */
   initialPath?: string;
 }
@@ -29,7 +29,7 @@ export function DiffDialog({
   baseCommitId,
   headCommitId,
   workspaceId: _workspaceId,
-  branchId,
+  branchStateId,
   initialPath,
 }: DiffDialogProps) {
   const [selectedPath, setSelectedPath] = useState<string | undefined>(initialPath);
@@ -53,12 +53,13 @@ export function DiffDialog({
   const commitDiff = useQuery(api.vcs.diffCommits, headCommitId ? { baseCommitId, headCommitId } : "skip");
 
   // Get working directory changes (if no headCommitId)
-  const workingFiles = useQuery(api.fs.working.getAll, !headCommitId && branchId ? { branchId } : "skip");
+  const workingFiles = useQuery(
+    api.branchStates.getWorkingFiles,
+    !headCommitId && branchStateId ? { branchStateId } : "skip",
+  );
 
   // Get committed tree for determining status of working files
-  const currentBranch = useQuery(api.vcs.getBranch, branchId ? { branchId } : "skip");
-  const currentCommit = useQuery(api.vcs.getCommit, currentBranch ? { commitId: currentBranch.commitId } : "skip");
-  const baseTree = useQuery(api.trees.getFlattenedTree, currentCommit ? { treeId: currentCommit.treeId } : "skip");
+  const baseTree = useQuery(api.trees.getFlattenedTree, baseCommit ? { treeId: baseCommit.treeId } : "skip");
 
   // Build change list
   const changes: DiffFileChange[] = useMemo(() => {

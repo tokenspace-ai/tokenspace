@@ -9,6 +9,8 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { internalAction, internalMutation, internalQuery, query } from "../_generated/server";
+import { requireWorkspaceMember } from "../authz";
+import { computeWorkingStateHash } from "../workingStateHash";
 import { resolveFileDownloadUrl, resolveInlineContent, storeFileContent } from "./fileBlobs";
 import { parsePath } from "./index";
 
@@ -403,7 +405,7 @@ export const getContent = query({
 });
 
 /**
- * Get revision for a workspace's active commit on the default branch
+ * Get the published revision for a workspace.
  */
 export const getRevision = query({
   args: {
@@ -415,25 +417,11 @@ export const getRevision = query({
       throw new Error("Workspace not found");
     }
 
-    // Get the default branch
-    const defaultBranch = await ctx.db
-      .query("branches")
-      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
-      .filter((q) => q.eq(q.field("isDefault"), true))
-      .first();
-
-    if (!defaultBranch) {
+    if (!workspace.activeRevisionId) {
       return null;
     }
 
-    // Find revision for the branch's current commit
-    const revision = await ctx.db
-      .query("revisions")
-      .withIndex("by_branch_commit", (q) => q.eq("branchId", defaultBranch._id).eq("commitId", defaultBranch.commitId))
-      .filter((q) => q.eq(q.field("workingStateHash"), undefined))
-      .first();
-
-    return revision;
+    return await ctx.db.get(workspace.activeRevisionId);
   },
 });
 
@@ -449,7 +437,52 @@ export const getRevisionByBranchCommit = query({
     return await ctx.db
       .query("revisions")
       .withIndex("by_branch_commit", (q) => q.eq("branchId", args.branchId).eq("commitId", args.commitId))
-      .filter((q) => q.eq(q.field("workingStateHash"), undefined))
+      .filter((q) => q.and(q.eq(q.field("workingStateHash"), undefined), q.eq(q.field("branchStateId"), undefined)))
       .first();
+  },
+});
+
+export const getCurrentRevisionIdForBranch = query({
+  args: {
+    branchId: v.id("branches"),
+  },
+  returns: v.union(v.id("revisions"), v.null()),
+  handler: async (ctx, args): Promise<Id<"revisions"> | null> => {
+    const branch = await ctx.db.get(args.branchId);
+    if (!branch) {
+      throw new Error("Branch not found");
+    }
+
+    const { user } = await requireWorkspaceMember(ctx, branch.workspaceId);
+    const workingChanges: Array<{
+      path: string;
+      content?: string;
+      blobId?: Id<"blobs">;
+      downloadUrl?: string;
+      isDeleted: boolean;
+    }> = await ctx.runQuery(internal.fs.working.getChanges, {
+      branchId: args.branchId,
+      userId: user.subject,
+    });
+    const workingStateHash: string | undefined =
+      workingChanges.length > 0 ? computeWorkingStateHash(workingChanges) : undefined;
+
+    const revision: {
+      _id: Id<"revisions">;
+    } | null = workingStateHash
+      ? await ctx.db
+          .query("revisions")
+          .withIndex("by_branch_working", (q) =>
+            q.eq("branchId", args.branchId).eq("commitId", branch.commitId).eq("workingStateHash", workingStateHash),
+          )
+          .filter((q) => q.eq(q.field("branchStateId"), undefined))
+          .first()
+      : await ctx.db
+          .query("revisions")
+          .withIndex("by_branch_commit", (q) => q.eq("branchId", args.branchId).eq("commitId", branch.commitId))
+          .filter((q) => q.and(q.eq(q.field("workingStateHash"), undefined), q.eq(q.field("branchStateId"), undefined)))
+          .first();
+
+    return revision?._id ?? null;
   },
 });

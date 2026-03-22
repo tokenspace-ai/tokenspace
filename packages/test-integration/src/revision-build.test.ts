@@ -79,8 +79,11 @@ async function pushBuildToRevision(args: {
 
   const prepare = (await backend.runFunction(getFunctionName(internal.revisionBuild.prepareRevisionFromBuildInternal), {
     workspaceId: args.workspaceId,
-    branchId: args.branchId,
-    workingStateHash: args.manifest.sourceFingerprint,
+    source: {
+      kind: "branch",
+      branchId: args.branchId,
+      workingStateHash: args.manifest.sourceFingerprint,
+    },
     manifest: {
       schemaVersion: args.manifest.schemaVersion,
       compilerVersion: args.manifest.compilerVersion,
@@ -168,9 +171,12 @@ async function pushBuildToRevision(args: {
 
   return (await backend.runFunction(getFunctionName(internal.revisionBuild.commitRevisionFromBuildInternal), {
     workspaceId: args.workspaceId,
-    branchId: args.branchId,
+    source: {
+      kind: "branch",
+      branchId: args.branchId,
+      workingStateHash: args.manifest.sourceFingerprint,
+    },
     commitId: prepare.commitId,
-    workingStateHash: args.manifest.sourceFingerprint,
     artifactFingerprint: prepare.artifactFingerprint,
     manifest: {
       schemaVersion: args.manifest.schemaVersion,

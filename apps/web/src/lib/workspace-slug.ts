@@ -4,15 +4,14 @@
  * URL format: /workspace/{slug}/chat/{threadId}
  *
  * Slug formats:
- * - "playground" -> workspace only (uses default/main branch)
- * - "playground:dev" -> workspace + specific branch
- * - "playground:main:c0ff33" -> workspace + branch + working state hash
+ * - "playground" -> workspace only (published runtime or main admin branch state)
+ * - "playground:dev" -> workspace + specific branch state
+ * - "playground:main:c0ff33" -> legacy admin URL with working state hash
  */
 
 export type WorkspaceSlugContext = {
   workspaceSlug: string;
   branchName: string;
-  workingStateHash: string | undefined;
   revisionId: string | undefined;
 };
 
@@ -48,7 +47,6 @@ export function parseWorkspaceSlug(slug: string): WorkspaceSlugContext {
   return {
     workspaceSlug: parts[0] ?? "",
     branchName: parts[1] ?? "main",
-    workingStateHash: parts[2] || undefined,
     revisionId: revisionId || undefined,
   };
 }
@@ -57,22 +55,18 @@ export function parseWorkspaceSlug(slug: string): WorkspaceSlugContext {
  * Build a workspace slug string from its components.
  *
  * @param workspace - The workspace slug
- * @param branch - The branch name (omit or pass "main" for default)
- * @param hash - The working state hash (optional)
+ * @param branch - The branch state name (omit or pass "main" for default)
  * @returns The combined slug string
  */
-export function buildWorkspaceSlug(workspace: string, branch?: string, hash?: string, revisionId?: string): string {
+export function buildWorkspaceSlug(workspace: string, branch?: string, revisionId?: string): string {
   if (revisionId) return `${workspace}@${revisionId}`;
-  if (hash) return `${workspace}:${branch ?? "main"}:${hash}`;
   if (branch && branch !== "main") return `${workspace}:${branch}`;
   return workspace;
 }
 
-/**
- * Check if a slug includes a working state hash.
- */
-export function hasWorkingState(slug: string): boolean {
-  return parseWorkspaceSlug(slug).workingStateHash !== undefined;
+export function normalizeMemberWorkspaceSlug(slug: string): string {
+  const { workspaceSlug, revisionId } = parseWorkspaceSlug(slug);
+  return buildWorkspaceSlug(workspaceSlug, undefined, revisionId);
 }
 
 /**

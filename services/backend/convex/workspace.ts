@@ -16,7 +16,6 @@ import { workos } from "./auth";
 import { requireAuthenticatedUser, requireWorkspaceAdmin, requireWorkspaceMember } from "./authz";
 import { loadFileContent } from "./fs/fileBlobs";
 import { RESEND_FROM_ADDRESS, renderTokenspaceEmailHtml, resend } from "./resend";
-import { computeWorkingStateHash, type WorkingStateChange } from "./workingStateHash";
 import {
   ensureValidWorkspaceModels,
   getDefaultWorkspaceModels,
@@ -1036,41 +1035,61 @@ export const clearUploadedIcon = mutation({
   },
 });
 
+async function setActiveRevisionHandler(
+  ctx: MutationCtx,
+  args: {
+    workspaceId: Id<"workspaces">;
+    revisionId: Id<"revisions">;
+  },
+): Promise<void> {
+  const workspace = await ctx.db.get(args.workspaceId);
+  if (!workspace) {
+    throw new Error("Workspace not found");
+  }
+
+  const revision = await ctx.db.get(args.revisionId);
+  if (!revision) {
+    throw new Error("Revision not found");
+  }
+
+  if (revision.workspaceId !== args.workspaceId) {
+    throw new Error("Revision does not belong to this workspace");
+  }
+
+  await ctx.db.patch(args.workspaceId, {
+    activeRevisionId: args.revisionId,
+    updatedAt: Date.now(),
+  });
+}
+
 /**
- * Set the active commit for a workspace (production version)
+ * Publish a revision for a workspace.
  */
-export const setActiveCommit = mutation({
+export const setActiveRevision = mutation({
   args: {
     workspaceId: v.id("workspaces"),
-    commitId: v.id("commits"),
+    revisionId: v.id("revisions"),
   },
   handler: async (ctx, args) => {
     await requireWorkspaceAdmin(ctx, args.workspaceId);
-    const workspace = await ctx.db.get(args.workspaceId);
-    if (!workspace) {
-      throw new Error("Workspace not found");
-    }
+    await setActiveRevisionHandler(ctx, args);
+  },
+});
 
-    const commit = await ctx.db.get(args.commitId);
-    if (!commit) {
-      throw new Error("Commit not found");
-    }
-
-    if (commit.workspaceId !== args.workspaceId) {
-      throw new Error("Commit does not belong to this workspace");
-    }
-
-    await ctx.db.patch(args.workspaceId, {
-      activeCommitId: args.commitId,
-      updatedAt: Date.now(),
-    });
+export const setActiveRevisionInternal = internalMutation({
+  args: {
+    workspaceId: v.id("workspaces"),
+    revisionId: v.id("revisions"),
+  },
+  handler: async (ctx, args) => {
+    await setActiveRevisionHandler(ctx, args);
   },
 });
 
 /**
- * Get the active commit for a workspace
+ * Get the published revision for a workspace.
  */
-export const getActiveCommit = query({
+export const getActiveRevision = query({
   args: {
     workspaceId: v.id("workspaces"),
   },
@@ -1081,107 +1100,19 @@ export const getActiveCommit = query({
       throw new Error("Workspace not found");
     }
 
-    if (!workspace.activeCommitId) {
+    if (!workspace.activeRevisionId) {
       return null;
     }
 
-    return await ctx.db.get(workspace.activeCommitId);
-  },
-});
-
-export const getRevision = query({
-  args: {
-    workspaceId: v.id("workspaces"),
-    branchId: v.optional(v.id("branches")),
-    workingStateHash: v.optional(v.string()),
-  },
-  handler: async (ctx, args): Promise<Id<"revisions"> | null> => {
-    const { user } = await requireWorkspaceMember(ctx, args.workspaceId);
-    let branchId = args.branchId;
-    if (!branchId) {
-      const defaultBranch = await ctx.runQuery(internal.vcs.getDefaultBranchInternal, {
-        workspaceId: args.workspaceId,
-      });
-      if (!defaultBranch) {
-        throw new Error("Default branch not found");
-      }
-      branchId = defaultBranch._id;
-    }
-    return await ctx.runQuery(internal.compile.getRevision, {
-      workspaceId: args.workspaceId,
-      branchId,
-      workingStateHash: args.workingStateHash,
-      userId: user.subject,
-    });
-  },
-});
-
-export const ensureRevision = action({
-  args: {
-    workspaceId: v.id("workspaces"),
-    branchId: v.optional(v.id("branches")),
-    workingStateHash: v.optional(v.string()),
-  },
-  returns: v.object({
-    compileJobId: v.optional(v.id("compileJobs")),
-    existingRevisionId: v.optional(v.id("revisions")),
-  }),
-  handler: async (ctx, args): Promise<{ compileJobId?: Id<"compileJobs">; existingRevisionId?: Id<"revisions"> }> => {
-    const { user } = await requireWorkspaceMember(ctx, args.workspaceId);
-    let branchId = args.branchId;
-    if (!branchId) {
-      const defaultBranch = await ctx.runQuery(internal.vcs.getDefaultBranchInternal, {
-        workspaceId: args.workspaceId,
-      });
-      if (!defaultBranch) {
-        throw new Error("Default branch not found");
-      }
-      branchId = defaultBranch._id;
-    }
-    return await ctx.runAction(internal.compile.enqueueBranchCompile, {
-      workspaceId: args.workspaceId,
-      branchId,
-      includeWorkingState: args.workingStateHash !== undefined,
-      workingStateHash: args.workingStateHash,
-      userId: user.subject,
-      checkExistingRevision: true,
-    });
-  },
-});
-
-/**
- * Get the current working-state hash for the authenticated user on a branch.
- * Returns null when there are no working changes.
- */
-export const getCurrentWorkingStateHash = query({
-  args: {
-    workspaceId: v.id("workspaces"),
-    branchId: v.optional(v.id("branches")),
-  },
-  returns: v.union(v.string(), v.null()),
-  handler: async (ctx, args): Promise<string | null> => {
-    const { user } = await requireWorkspaceMember(ctx, args.workspaceId);
-
-    const branch = await resolveBranchForWorkspace(ctx, args.workspaceId, args.branchId);
-    const workingChanges: WorkingStateChange[] = await ctx.runQuery(internal.fs.working.getChanges, {
-      branchId: branch._id,
-      userId: user.subject,
-    });
-
-    if (workingChanges.length === 0) {
-      return null;
-    }
-
-    return computeWorkingStateHash(workingChanges);
+    return await ctx.db.get(workspace.activeRevisionId);
   },
 });
 
 /**
  * Resolve workspace context from a slug string.
  * Parses formats like:
- * - "workspace" -> workspace only (uses default branch)
- * - "workspace:branch" -> workspace + specific branch
- * - "workspace:branch:hash" -> workspace + branch + working state hash
+ * - "workspace" -> workspace only (runtime resolves from active revision)
+ * - "workspace:branch-state" -> workspace + specific admin branch state
  */
 export const resolveWorkspaceContext = query({
   args: {
@@ -1190,9 +1121,9 @@ export const resolveWorkspaceContext = query({
   handler: async (ctx, args) => {
     await requireAuthenticatedUser(ctx);
     const [contextSlug, revisionId] = args.slug.split("@");
-    // Parse the slug: "workspace", "workspace:branch", "workspace:branch:hash"
+    // Parse the slug: "workspace", "workspace:branch-state", "workspace:branch-state:legacy-hash"
     const parts = (contextSlug ?? "").split(":");
-    const [workspaceSlug, branchName, workingStateHash] = parts;
+    const [workspaceSlug, branchName] = parts;
 
     if (!workspaceSlug && !revisionId) {
       throw new Error("Workspace slug is required");
@@ -1211,6 +1142,13 @@ export const resolveWorkspaceContext = query({
         throw new Error(`Revision "${revisionId}" does not belong to workspace "${workspaceSlug}"`);
       }
       const branch = await ctx.db.get(revision.branchId);
+      const branchState = branch
+        ? await ctx.db
+            .query("branchStates")
+            .withIndex("by_backing_branch", (q) => q.eq("backingBranchId", branch._id))
+            .filter((q) => q.eq(q.field("archivedAt"), undefined))
+            .first()
+        : null;
       const { membership } = await requireWorkspaceMember(ctx, workspace._id);
 
       return {
@@ -1219,10 +1157,10 @@ export const resolveWorkspaceContext = query({
           role: membership.role,
           ...(await resolveWorkspaceIcon(ctx, workspace)),
         },
+        branchState,
         branch,
-        workingStateHash: revision.workingStateHash || undefined,
         revisionId: revision._id,
-        effectiveSlug: buildSlug(workspace.slug, branch?.name, revision.workingStateHash, revision._id),
+        effectiveSlug: buildSlug(workspace.slug, branchState?.name ?? branch?.name, revision._id),
       };
     }
 
@@ -1243,15 +1181,43 @@ export const resolveWorkspaceContext = query({
 
     const { membership } = await requireWorkspaceMember(ctx, workspace._id);
 
-    // Get branch - either by name or default
-    let branch: Awaited<ReturnType<typeof ctx.db.get<"branches">>> | null = null;
+    let branchState: Awaited<ReturnType<typeof ctx.db.get<"branchStates">>> | null = null;
     if (branchName) {
+      branchState = await ctx.db
+        .query("branchStates")
+        .withIndex("by_name", (q) => q.eq("workspaceId", workspace._id).eq("name", branchName))
+        .filter((q) => q.eq(q.field("archivedAt"), undefined))
+        .first();
+    } else {
+      branchState = await ctx.db
+        .query("branchStates")
+        .withIndex("by_workspace_main", (q) => q.eq("workspaceId", workspace._id).eq("isMain", true))
+        .filter((q) => q.eq(q.field("archivedAt"), undefined))
+        .first();
+    }
+
+    // Get backing branch - either from branch state or legacy branch lookup.
+    let branch: Awaited<ReturnType<typeof ctx.db.get<"branches">>> | null = null;
+    if (branchState) {
+      branch = await ctx.db.get(branchState.backingBranchId);
+    } else if (branchName) {
       branch = await ctx.db
         .query("branches")
         .withIndex("by_name", (q) => q.eq("workspaceId", workspace._id).eq("name", branchName))
         .first();
       if (!branch) {
-        throw new Error(`Branch "${branchName}" not found in workspace "${workspaceSlug}"`);
+        branchState = await ctx.db
+          .query("branchStates")
+          .withIndex("by_workspace_main", (q) => q.eq("workspaceId", workspace._id).eq("isMain", true))
+          .filter((q) => q.eq(q.field("archivedAt"), undefined))
+          .first();
+        branch = branchState
+          ? await ctx.db.get(branchState.backingBranchId)
+          : await ctx.db
+              .query("branches")
+              .withIndex("by_workspace", (q) => q.eq("workspaceId", workspace._id))
+              .filter((q) => q.eq(q.field("isDefault"), true))
+              .first();
       }
     } else {
       // Get default branch
@@ -1268,11 +1234,11 @@ export const resolveWorkspaceContext = query({
         role: membership.role,
         ...(await resolveWorkspaceIcon(ctx, workspace)),
       },
+      branchState,
       branch,
-      workingStateHash: workingStateHash || undefined,
-      revisionId: undefined,
+      revisionId: workspace.activeRevisionId,
       // Computed slug for URL building
-      effectiveSlug: buildSlug(resolvedWorkspaceSlug, branch?.name, workingStateHash),
+      effectiveSlug: buildSlug(resolvedWorkspaceSlug, branchState?.name ?? branch?.name),
     };
   },
 });
@@ -1280,9 +1246,8 @@ export const resolveWorkspaceContext = query({
 /**
  * Build a slug string from components
  */
-function buildSlug(workspaceSlug: string, branchName?: string, hash?: string, revisionId?: Id<"revisions">): string {
+function buildSlug(workspaceSlug: string, branchName?: string, revisionId?: Id<"revisions">): string {
   if (revisionId) return `${workspaceSlug}@${revisionId}`;
-  if (hash) return `${workspaceSlug}:${branchName ?? "main"}:${hash}`;
   if (branchName && branchName !== "main") return `${workspaceSlug}:${branchName}`;
   return workspaceSlug;
 }
@@ -1964,6 +1929,14 @@ export const remove = mutation({
       .collect();
     for (const branch of branches) {
       await ctx.db.delete(branch._id);
+    }
+
+    const branchStates = await ctx.db
+      .query("branchStates")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", args.workspaceId))
+      .collect();
+    for (const branchState of branchStates) {
+      await ctx.db.delete(branchState._id);
     }
 
     // Delete commits

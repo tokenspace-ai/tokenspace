@@ -27,7 +27,13 @@ export const createCommit = action({
   handler: async (ctx, args): Promise<Id<"commits">> => {
     const { user } = await requireWorkspaceAdmin(ctx, args.workspaceId);
 
-    return await createCommitHandler(ctx, { ...args, userId: user.subject });
+    return await createCommitHandler(ctx, {
+      workspaceId: args.workspaceId,
+      branchId: args.branchId,
+      authorId: user.subject,
+      workingOwnerId: user.subject,
+      message: args.message,
+    });
   },
 });
 
@@ -39,13 +45,51 @@ export const createCommitInternal = internalAction({
     message: v.string(),
   },
   handler: async (ctx, args): Promise<Id<"commits">> => {
+    return await createCommitHandler(ctx, {
+      workspaceId: args.workspaceId,
+      branchId: args.branchId,
+      authorId: args.userId,
+      workingOwnerId: args.userId,
+      message: args.message,
+    });
+  },
+});
+
+export const createCommitForOwnerInternal = internalAction({
+  args: {
+    workspaceId: v.id("workspaces"),
+    branchId: v.id("branches"),
+    authorId: v.string(),
+    workingOwnerId: v.string(),
+    message: v.string(),
+  },
+  handler: async (ctx, args): Promise<Id<"commits">> => {
     return await createCommitHandler(ctx, args);
+  },
+});
+
+export const createCommitForBranchStateInternal = internalAction({
+  args: {
+    workspaceId: v.id("workspaces"),
+    branchId: v.id("branches"),
+    branchStateId: v.id("branchStates"),
+    authorId: v.string(),
+    message: v.string(),
+  },
+  handler: async (ctx, args): Promise<Id<"commits">> => {
+    return await createCommitFromBranchStateHandler(ctx, args);
   },
 });
 
 async function createCommitHandler(
   ctx: any,
-  args: { workspaceId: Id<"workspaces">; branchId: Id<"branches">; userId: string; message: string },
+  args: {
+    workspaceId: Id<"workspaces">;
+    branchId: Id<"branches">;
+    authorId: string;
+    workingOwnerId: string;
+    message: string;
+  },
 ): Promise<Id<"commits">> {
   const branch = await ctx.runQuery(internal.vcs.getBranchInternal, { branchId: args.branchId });
   if (!branch) {
@@ -68,7 +112,7 @@ async function createCommitHandler(
     isDeleted: boolean;
   }> = await ctx.runQuery(internal.fs.working.getChanges, {
     branchId: args.branchId,
-    userId: args.userId,
+    userId: args.workingOwnerId,
   });
 
   if (changes.length === 0) {
@@ -121,7 +165,7 @@ async function createCommitHandler(
   const commitId: Id<"commits"> = await ctx.runMutation(internal.vcs.createCommitRecord, {
     workspaceId: args.workspaceId,
     branchId: args.branchId,
-    userId: args.userId,
+    userId: args.authorId,
     message: args.message,
     treeId: newTreeId,
     parentId: branch.commitId,
@@ -129,7 +173,103 @@ async function createCommitHandler(
 
   await ctx.runMutation(internal.fs.working.clear, {
     branchId: args.branchId,
-    userId: args.userId,
+    userId: args.workingOwnerId,
+  });
+
+  return commitId;
+}
+
+async function createCommitFromBranchStateHandler(
+  ctx: any,
+  args: {
+    workspaceId: Id<"workspaces">;
+    branchId: Id<"branches">;
+    branchStateId: Id<"branchStates">;
+    authorId: string;
+    message: string;
+  },
+): Promise<Id<"commits">> {
+  const branch = await ctx.runQuery(internal.vcs.getBranchInternal, { branchId: args.branchId });
+  if (!branch) {
+    throw new Error("Branch not found");
+  }
+  if (branch.workspaceId !== args.workspaceId) {
+    throw new Error("Branch does not belong to this workspace");
+  }
+
+  const currentCommit = await ctx.runQuery(internal.vcs.getCommitInternal, { commitId: branch.commitId });
+  if (!currentCommit) {
+    throw new Error("Current commit not found");
+  }
+
+  const changes: Array<{
+    path: string;
+    content?: string;
+    blobId?: Id<"blobs">;
+    downloadUrl?: string;
+    isDeleted: boolean;
+  }> = await ctx.runQuery(internal.fs.working.getChangesForBranchState, {
+    branchStateId: args.branchStateId,
+  });
+
+  if (changes.length === 0) {
+    throw new Error("No changes to commit");
+  }
+
+  const normalizedChanges = [];
+  for (const change of changes) {
+    if (change.isDeleted) {
+      normalizedChanges.push({ path: change.path, isDeleted: true });
+      continue;
+    }
+    if (change.blobId) {
+      normalizedChanges.push({ path: change.path, blobId: change.blobId, isDeleted: false });
+      continue;
+    }
+    if (change.content !== undefined) {
+      normalizedChanges.push({ path: change.path, content: change.content, isDeleted: false });
+      continue;
+    }
+    if (change.downloadUrl) {
+      const abortController = new AbortController();
+      const timeout = setTimeout(() => abortController.abort(), REMOTE_CONTENT_FETCH_TIMEOUT_MS);
+      try {
+        const response = await fetch(change.downloadUrl, { signal: abortController.signal });
+        if (!response.ok) {
+          throw new Error(`Failed to download file content (${response.status})`);
+        }
+        const content = await response.text();
+        normalizedChanges.push({ path: change.path, content, isDeleted: false });
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          throw new Error(`Timed out downloading file content after ${REMOTE_CONTENT_FETCH_TIMEOUT_MS}ms`);
+        }
+        throw error;
+      } finally {
+        clearTimeout(timeout);
+      }
+      continue;
+    }
+    throw new Error(`Cannot commit file "${change.path}": no content available (missing blob or inline content)`);
+  }
+
+  const newTreeId: Id<"trees"> = await ctx.runAction(internal.content.buildTreeFromChanges, {
+    workspaceId: args.workspaceId,
+    baseTreeId: currentCommit.treeId,
+    changes: normalizedChanges,
+  });
+
+  const commitId: Id<"commits"> = await ctx.runMutation(internal.vcs.createCommitRecord, {
+    workspaceId: args.workspaceId,
+    branchId: args.branchId,
+    userId: args.authorId,
+    message: args.message,
+    treeId: newTreeId,
+    parentId: branch.commitId,
+  });
+
+  await ctx.runMutation(internal.fs.working.clearForBranchState, {
+    branchStateId: args.branchStateId,
   });
 
   return commitId;
@@ -589,69 +729,87 @@ export const mergeBranch = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireAuthenticatedUser(ctx);
-
-    const sourceBranch = await ctx.db.get(args.sourceBranchId);
-    const targetBranch = await ctx.db.get(args.targetBranchId);
-
-    if (!sourceBranch || !targetBranch) {
-      throw new Error("Branch not found");
-    }
-
-    if (sourceBranch.workspaceId !== targetBranch.workspaceId) {
-      throw new Error("Branches must be in the same workspace");
-    }
-    await requireWorkspaceAdmin(ctx, sourceBranch.workspaceId);
-
-    // Check if source is ahead of target (can fast-forward)
-    const sourceCommit = await ctx.db.get(sourceBranch.commitId);
-    const targetCommit = await ctx.db.get(targetBranch.commitId);
-
-    if (!sourceCommit || !targetCommit) {
-      throw new Error("Commit not found");
-    }
-
-    // Check if target commit is an ancestor of source commit
-    let current: Id<"commits"> | undefined = sourceBranch.commitId;
-    let canFastForward = false;
-
-    while (current) {
-      if (current === targetBranch.commitId) {
-        canFastForward = true;
-        break;
-      }
-      const commit: Doc<"commits"> | null = await ctx.db.get(current);
-      if (!commit) break;
-      current = commit.parentId;
-    }
-
-    if (canFastForward) {
-      // Fast-forward merge
-      await ctx.db.patch(args.targetBranchId, {
-        commitId: sourceBranch.commitId,
-      });
-      return { type: "fast-forward" as const, commitId: sourceBranch.commitId };
-    }
-
-    // For non-fast-forward merges, create a merge commit
-    // This is a simplified version - real merge would need conflict resolution
-    const mergeTreeId = sourceCommit.treeId; // Use source tree for now
-
-    const mergeCommitId = await ctx.db.insert("commits", {
-      workspaceId: targetBranch.workspaceId,
-      parentId: targetBranch.commitId,
-      treeId: mergeTreeId,
-      message: `Merge branch '${sourceBranch.name}' into '${targetBranch.name}'`,
+    return await mergeBranchesHandler(ctx, {
+      sourceBranchId: args.sourceBranchId,
+      targetBranchId: args.targetBranchId,
       authorId: user.subject,
-      createdAt: Date.now(),
+      skipWorkspaceAdminCheck: false,
     });
-
-    await ctx.db.patch(args.targetBranchId, {
-      commitId: mergeCommitId,
-    });
-
-    return { type: "merge-commit" as const, commitId: mergeCommitId };
   },
 });
+
+export const mergeBranchInternal = internalMutation({
+  args: {
+    sourceBranchId: v.id("branches"),
+    targetBranchId: v.id("branches"),
+    authorId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await mergeBranchesHandler(ctx, {
+      ...args,
+      skipWorkspaceAdminCheck: true,
+    });
+  },
+});
+
+async function mergeBranchesHandler(
+  ctx: any,
+  args: {
+    sourceBranchId: Id<"branches">;
+    targetBranchId: Id<"branches">;
+    authorId: string;
+    skipWorkspaceAdminCheck: boolean;
+  },
+) {
+  const sourceBranch = await ctx.db.get(args.sourceBranchId);
+  const targetBranch = await ctx.db.get(args.targetBranchId);
+
+  if (!sourceBranch || !targetBranch) {
+    throw new Error("Branch not found");
+  }
+
+  if (sourceBranch.workspaceId !== targetBranch.workspaceId) {
+    throw new Error("Branches must be in the same workspace");
+  }
+  if (!args.skipWorkspaceAdminCheck) {
+    await requireWorkspaceAdmin(ctx, sourceBranch.workspaceId);
+  }
+
+  // Check if source is ahead of target (can fast-forward)
+  const sourceCommit = await ctx.db.get(sourceBranch.commitId);
+  const targetCommit = await ctx.db.get(targetBranch.commitId);
+
+  if (!sourceCommit || !targetCommit) {
+    throw new Error("Commit not found");
+  }
+
+  // Check if target commit is an ancestor of source commit
+  let current: Id<"commits"> | undefined = sourceBranch.commitId;
+  let canFastForward = false;
+
+  while (current) {
+    if (current === targetBranch.commitId) {
+      canFastForward = true;
+      break;
+    }
+    const commit: Doc<"commits"> | null = await ctx.db.get(current);
+    if (!commit) break;
+    current = commit.parentId;
+  }
+
+  if (canFastForward) {
+    // Fast-forward merge
+    await ctx.db.patch(args.targetBranchId, {
+      commitId: sourceBranch.commitId,
+    });
+    return { type: "fast-forward" as const, commitId: sourceBranch.commitId };
+  }
+
+  throw new Error(
+    `Non-fast-forward merge rejected: cannot auto-merge '${sourceBranch.name}' into '${targetBranch.name}' ` +
+      `(sourceCommitId=${sourceBranch.commitId}, targetCommitId=${targetBranch.commitId})`,
+  );
+}
 
 // ============================================================================
 // Diff Operations
