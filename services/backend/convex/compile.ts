@@ -9,6 +9,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { action, internalAction, internalQuery, query } from "./_generated/server";
 import { requireWorkspaceMember } from "./authz";
+import { type CompileSource, vCompileSource } from "./compileSource";
 import { computeWorkingStateHash } from "./workingStateHash";
 
 type CompileSnapshotArtifact = {
@@ -63,10 +64,7 @@ async function enqueueRevisionCompileJob(
   args: {
     workspaceId: Id<"workspaces">;
     branchId: Id<"branches">;
-    branchStateId?: Id<"branchStates">;
-    includeWorkingState?: boolean;
-    workingStateHash?: string;
-    userId?: string;
+    source: CompileSource;
     checkExistingRevision: boolean;
   },
 ): Promise<{
@@ -99,22 +97,44 @@ async function enqueueRevisionCompileJob(
   let workingChanges: Array<{
     path: string;
     content?: string;
-    blobId?: string;
+    blobId?: Id<"blobs">;
     downloadUrl?: string;
     isDeleted: boolean;
   }> = [];
-  let workingStateHash: string | undefined = args.workingStateHash;
+  let workingStateHash: string | undefined;
+  let branchStateId: Id<"branchStates"> | undefined;
+  let userId: string | undefined;
 
-  if (args.includeWorkingState && !args.userId) {
-    throw new Error("userId is required when includeWorkingState is true");
-  }
+  if (args.source.kind === "branch") {
+    workingStateHash = args.source.workingStateHash;
+    userId = args.source.userId;
+    if (args.source.includeWorkingState && !args.source.userId) {
+      throw new Error("userId is required when includeWorkingState is true");
+    }
+    if (args.source.includeWorkingState && args.source.userId) {
+      workingChanges = await ctx.runQuery(internal.fs.working.getChanges, {
+        branchId: args.branchId,
+        userId: args.source.userId,
+      });
 
-  if (args.includeWorkingState && args.userId) {
-    workingChanges = await ctx.runQuery(internal.fs.working.getChanges, {
-      branchId: args.branchId,
-      userId: args.userId,
+      if (workingChanges.length > 0) {
+        workingStateHash = computeWorkingStateHash(workingChanges);
+      }
+    }
+  } else {
+    const branchState = await ctx.runQuery(internal.branchStates.getInternal, {
+      branchStateId: args.source.branchStateId,
     });
-
+    if (!branchState || branchState.workspaceId !== args.workspaceId) {
+      throw new Error("Branch state not found or does not belong to workspace");
+    }
+    if (branchState.backingBranchId !== args.branchId) {
+      throw new Error("Branch state does not belong to the requested branch");
+    }
+    branchStateId = branchState._id;
+    workingChanges = await ctx.runQuery(internal.fs.working.getChangesForBranchState, {
+      branchStateId: branchState._id,
+    });
     if (workingChanges.length > 0) {
       workingStateHash = computeWorkingStateHash(workingChanges);
     }
@@ -151,14 +171,18 @@ async function enqueueRevisionCompileJob(
     files.push(...fileMap.values());
   }
 
-  if (args.workingStateHash && workingStateHash !== args.workingStateHash) {
+  if (
+    args.source.kind === "branch" &&
+    args.source.workingStateHash &&
+    workingStateHash !== args.source.workingStateHash
+  ) {
     throw new Error("Working state hash mismatch");
   }
 
   if (args.checkExistingRevision) {
     const existingRevision = await ctx.runQuery(internal.revisions.findRevision, {
       branchId: args.branchId,
-      branchStateId: args.branchStateId,
+      branchStateId,
       commitId: branch.commitId,
       workingStateHash,
     });
@@ -188,11 +212,12 @@ async function enqueueRevisionCompileJob(
 
   const compileJobId = await ctx.runMutation(internal.compileJobs.createCompileJob, {
     workspaceId: args.workspaceId,
+    sourceKind: args.source.kind,
     branchId: args.branchId,
-    branchStateId: args.branchStateId,
+    branchStateId,
     commitId: branch.commitId,
     workingStateHash,
-    userId: args.userId,
+    userId,
     snapshotStorageId,
   });
 
@@ -200,6 +225,30 @@ async function enqueueRevisionCompileJob(
     compileJobId,
     commitId: branch.commitId,
     workingStateHash,
+  };
+}
+
+function normalizeCompileSource(args: {
+  source?: CompileSource;
+  branchStateId?: Id<"branchStates">;
+  includeWorkingState?: boolean;
+  workingStateHash?: string;
+  userId?: string;
+}): CompileSource {
+  if (args.source) {
+    return args.source;
+  }
+  if (args.branchStateId) {
+    return {
+      kind: "branchState",
+      branchStateId: args.branchStateId,
+    };
+  }
+  return {
+    kind: "branch",
+    includeWorkingState: args.includeWorkingState,
+    workingStateHash: args.workingStateHash,
+    userId: args.userId,
   };
 }
 
@@ -319,7 +368,6 @@ export const getRevision = internalQuery({
     branchId: v.id("branches"),
     branchStateId: v.optional(v.id("branchStates")),
     workingStateHash: v.optional(v.string()),
-    userId: v.optional(v.string()), // Required if includeWorkingState is true
   },
   returns: v.union(v.id("revisions"), v.null()),
   handler: async (ctx, args): Promise<Id<"revisions"> | null> => {
@@ -518,6 +566,7 @@ export const enqueueBranchCompile = internalAction({
   args: {
     workspaceId: v.id("workspaces"),
     branchId: v.id("branches"),
+    source: v.optional(vCompileSource),
     branchStateId: v.optional(v.id("branchStates")),
     includeWorkingState: v.optional(v.boolean()),
     workingStateHash: v.optional(v.string()),
@@ -532,10 +581,7 @@ export const enqueueBranchCompile = internalAction({
     const result = await enqueueRevisionCompileJob(ctx, {
       workspaceId: args.workspaceId,
       branchId: args.branchId,
-      branchStateId: args.branchStateId,
-      includeWorkingState: args.includeWorkingState,
-      workingStateHash: args.workingStateHash,
-      userId: args.userId,
+      source: normalizeCompileSource(args),
       checkExistingRevision: args.checkExistingRevision ?? false,
     });
     return {
@@ -573,8 +619,11 @@ export const compileDefaultBranch = action({
     const queued = await ctx.runAction(internal.compile.enqueueBranchCompile, {
       workspaceId: args.workspaceId,
       branchId: branch._id,
-      includeWorkingState: false,
-      userId: user.subject,
+      source: {
+        kind: "branch",
+        includeWorkingState: false,
+        userId: user.subject,
+      },
       checkExistingRevision: false,
     });
     if (!queued.compileJobId) {
@@ -602,8 +651,11 @@ export const compileBranch = action({
     const queued = await ctx.runAction(internal.compile.enqueueBranchCompile, {
       workspaceId: args.workspaceId,
       branchId: args.branchId,
-      includeWorkingState: args.includeWorkingState,
-      userId: user.subject,
+      source: {
+        kind: "branch",
+        includeWorkingState: args.includeWorkingState,
+        userId: user.subject,
+      },
       checkExistingRevision: false,
     });
     if (!queued.compileJobId) {

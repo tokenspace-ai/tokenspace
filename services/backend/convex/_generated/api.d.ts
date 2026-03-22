@@ -27,6 +27,7 @@ import type * as branchStates from "../branchStates.js";
 import type * as capabilityExplorer from "../capabilityExplorer.js";
 import type * as compile from "../compile.js";
 import type * as compileJobs from "../compileJobs.js";
+import type * as compileSource from "../compileSource.js";
 import type * as content from "../content.js";
 import type * as credentials from "../credentials.js";
 import type * as credentialsCrypto from "../credentialsCrypto.js";
@@ -82,6 +83,7 @@ declare const fullApi: ApiFromModules<{
   capabilityExplorer: typeof capabilityExplorer;
   compile: typeof compile;
   compileJobs: typeof compileJobs;
+  compileSource: typeof compileSource;
   content: typeof content;
   credentials: typeof credentials;
   credentialsCrypto: typeof credentialsCrypto;

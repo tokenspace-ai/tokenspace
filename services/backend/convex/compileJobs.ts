@@ -148,6 +148,7 @@ function assertRunningOwnedJob(
 export const createCompileJob = internalMutation({
   args: {
     workspaceId: v.id("workspaces"),
+    sourceKind: v.union(v.literal("branch"), v.literal("branchState")),
     branchId: v.id("branches"),
     branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
@@ -165,6 +166,7 @@ export const createCompileJob = internalMutation({
     });
     return await ctx.db.insert("compileJobs", {
       workspaceId: args.workspaceId,
+      sourceKind: args.sourceKind,
       branchId: args.branchId,
       branchStateId: args.branchStateId,
       commitId: args.commitId,

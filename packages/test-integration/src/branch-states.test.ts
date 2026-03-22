@@ -139,7 +139,6 @@ describe("Branch states", () => {
     expect(branchStates[0]?.name).toBe("main");
     expect(branchStates[0]?.isMain).toBe(true);
     expect(branchStates[0]?.backingBranchId).toBe(workspace.branchId);
-    expect(branchStates[0]?.workingOwnerKey).toBe(`branch-state:${workspace.branchId}`);
   });
 
   it("auto-creates a shared draft branch state for main mutations and stores drafts under the branch-state owner key", async () => {
@@ -161,9 +160,8 @@ describe("Branch states", () => {
     expect(draft.isMain).toBe(false);
     expect(draft.backingBranchId).not.toBe(mainBranchState?.backingBranchId);
 
-    const sharedWorkingFile = (await backend.runFunction(getFunctionName(internal.fs.working.read), {
-      branchId: draft.backingBranchId,
-      userId: draft.workingOwnerKey,
+    const sharedWorkingFile = (await backend.runFunction(getFunctionName(internal.fs.working.readForBranchState), {
+      branchStateId: draft._id,
       path: "src/branch-state-draft.ts",
     })) as { path: string; content?: string; isDeleted: boolean } | null;
     expect(sharedWorkingFile?.path).toBe("src/branch-state-draft.ts");
@@ -204,9 +202,8 @@ describe("Branch states", () => {
     const branchAfter = (await backend.runFunction(getFunctionName(internal.vcs.getBranchInternal), {
       branchId: draft.backingBranchId,
     })) as { commitId: string } | null;
-    const clearedWorkingFile = (await backend.runFunction(getFunctionName(internal.fs.working.read), {
-      branchId: draft.backingBranchId,
-      userId: draft.workingOwnerKey,
+    const clearedWorkingFile = (await backend.runFunction(getFunctionName(internal.fs.working.readForBranchState), {
+      branchStateId: draft._id,
       path: "src/branch-state-commit.ts",
     })) as { path: string } | null;
 
@@ -242,9 +239,8 @@ describe("Branch states", () => {
     const branch = (await backend.runFunction(getFunctionName(internal.vcs.getBranchInternal), {
       branchId: draft.backingBranchId,
     })) as { commitId: string } | null;
-    const workingChanges = (await backend.runFunction(getFunctionName(internal.fs.working.getChanges), {
-      branchId: draft.backingBranchId,
-      userId: draft.workingOwnerKey,
+    const workingChanges = (await backend.runFunction(getFunctionName(internal.fs.working.getChangesForBranchState), {
+      branchStateId: draft._id,
     })) as Array<{
       path: string;
       content?: string;
@@ -265,9 +261,10 @@ describe("Branch states", () => {
     const deduped = (await backend.runFunction(getFunctionName(internal.compile.enqueueBranchCompile), {
       workspaceId: workspace.workspaceId,
       branchId: draft.backingBranchId,
-      branchStateId: draft._id,
-      includeWorkingState: true,
-      userId: draft.workingOwnerKey,
+      source: {
+        kind: "branchState",
+        branchStateId: draft._id,
+      },
       checkExistingRevision: true,
     })) as { existingRevisionId?: string; compileJobId?: string };
 

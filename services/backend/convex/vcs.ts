@@ -68,6 +68,19 @@ export const createCommitForOwnerInternal = internalAction({
   },
 });
 
+export const createCommitForBranchStateInternal = internalAction({
+  args: {
+    workspaceId: v.id("workspaces"),
+    branchId: v.id("branches"),
+    branchStateId: v.id("branchStates"),
+    authorId: v.string(),
+    message: v.string(),
+  },
+  handler: async (ctx, args): Promise<Id<"commits">> => {
+    return await createCommitFromBranchStateHandler(ctx, args);
+  },
+});
+
 async function createCommitHandler(
   ctx: any,
   args: {
@@ -161,6 +174,102 @@ async function createCommitHandler(
   await ctx.runMutation(internal.fs.working.clear, {
     branchId: args.branchId,
     userId: args.workingOwnerId,
+  });
+
+  return commitId;
+}
+
+async function createCommitFromBranchStateHandler(
+  ctx: any,
+  args: {
+    workspaceId: Id<"workspaces">;
+    branchId: Id<"branches">;
+    branchStateId: Id<"branchStates">;
+    authorId: string;
+    message: string;
+  },
+): Promise<Id<"commits">> {
+  const branch = await ctx.runQuery(internal.vcs.getBranchInternal, { branchId: args.branchId });
+  if (!branch) {
+    throw new Error("Branch not found");
+  }
+  if (branch.workspaceId !== args.workspaceId) {
+    throw new Error("Branch does not belong to this workspace");
+  }
+
+  const currentCommit = await ctx.runQuery(internal.vcs.getCommitInternal, { commitId: branch.commitId });
+  if (!currentCommit) {
+    throw new Error("Current commit not found");
+  }
+
+  const changes: Array<{
+    path: string;
+    content?: string;
+    blobId?: Id<"blobs">;
+    downloadUrl?: string;
+    isDeleted: boolean;
+  }> = await ctx.runQuery(internal.fs.working.getChangesForBranchState, {
+    branchStateId: args.branchStateId,
+  });
+
+  if (changes.length === 0) {
+    throw new Error("No changes to commit");
+  }
+
+  const normalizedChanges = [];
+  for (const change of changes) {
+    if (change.isDeleted) {
+      normalizedChanges.push({ path: change.path, isDeleted: true });
+      continue;
+    }
+    if (change.blobId) {
+      normalizedChanges.push({ path: change.path, blobId: change.blobId, isDeleted: false });
+      continue;
+    }
+    if (change.content !== undefined) {
+      normalizedChanges.push({ path: change.path, content: change.content, isDeleted: false });
+      continue;
+    }
+    if (change.downloadUrl) {
+      const abortController = new AbortController();
+      const timeout = setTimeout(() => abortController.abort(), REMOTE_CONTENT_FETCH_TIMEOUT_MS);
+      try {
+        const response = await fetch(change.downloadUrl, { signal: abortController.signal });
+        if (!response.ok) {
+          throw new Error(`Failed to download file content (${response.status})`);
+        }
+        const content = await response.text();
+        normalizedChanges.push({ path: change.path, content, isDeleted: false });
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          throw new Error(`Timed out downloading file content after ${REMOTE_CONTENT_FETCH_TIMEOUT_MS}ms`);
+        }
+        throw error;
+      } finally {
+        clearTimeout(timeout);
+      }
+      continue;
+    }
+    throw new Error(`Cannot commit file "${change.path}": no content available (missing blob or inline content)`);
+  }
+
+  const newTreeId: Id<"trees"> = await ctx.runAction(internal.content.buildTreeFromChanges, {
+    workspaceId: args.workspaceId,
+    baseTreeId: currentCommit.treeId,
+    changes: normalizedChanges,
+  });
+
+  const commitId: Id<"commits"> = await ctx.runMutation(internal.vcs.createCommitRecord, {
+    workspaceId: args.workspaceId,
+    branchId: args.branchId,
+    userId: args.authorId,
+    message: args.message,
+    treeId: newTreeId,
+    parentId: branch.commitId,
+  });
+
+  await ctx.runMutation(internal.fs.working.clearForBranchState, {
+    branchStateId: args.branchStateId,
   });
 
   return commitId;

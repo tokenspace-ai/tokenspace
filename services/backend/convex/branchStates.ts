@@ -27,6 +27,8 @@ import {
 const MODELS_FILE_PATH = "src/models.yaml";
 
 type BranchStateDoc = Doc<"branchStates">;
+type WorkingFileDoc = Doc<"workingFiles">;
+type ResolvedWorkingFile = WorkingFileDoc & { content?: string; downloadUrl?: string };
 
 function getInvalidBranchStateNameReason(name: string): string | null {
   if (name.includes(":")) {
@@ -225,33 +227,56 @@ async function ensureWritableBranchStateHandler(
   });
 }
 
-async function clearWorkingFilesForOwner(
-  ctx: MutationCtx,
-  args: { branchId: Id<"branches">; workingOwnerKey: string },
-): Promise<number> {
-  const files = await ctx.db
+async function listLegacyWorkingFilesForBranchState(ctx: QueryCtx | MutationCtx | any, branchState: BranchStateDoc) {
+  return await ctx.db
     .query("workingFiles")
-    .withIndex("by_branch_user", (q) => q.eq("branchId", args.branchId).eq("userId", args.workingOwnerKey))
+    .withIndex("by_branch_user", (q: any) =>
+      q.eq("branchId", branchState.backingBranchId).eq("userId", branchState.workingOwnerKey),
+    )
     .collect();
+}
+
+async function migrateLegacyWorkingFilesForBranchState(ctx: MutationCtx, branchState: BranchStateDoc): Promise<number> {
+  const files = await listLegacyWorkingFilesForBranchState(ctx, branchState);
+  let migrated = 0;
 
   for (const file of files) {
-    await ctx.db.delete(file._id);
+    const existing = await ctx.db
+      .query("workingFiles")
+      .withIndex("by_branch_state_path", (q) => q.eq("branchStateId", branchState._id).eq("path", file.path))
+      .first();
+    if (existing) {
+      await ctx.db.delete(file._id);
+      continue;
+    }
+    await ctx.db.patch(file._id, {
+      branchStateId: branchState._id,
+      userId: undefined,
+      updatedAt: Date.now(),
+    });
+    migrated += 1;
   }
 
-  return files.length;
+  return migrated;
 }
 
 async function getResolvedWorkingFiles(
   ctx: QueryCtx | MutationCtx | any,
-  args: { branchId: Id<"branches">; workingOwnerKey: string },
-) {
-  const files = await ctx.db
-    .query("workingFiles")
-    .withIndex("by_branch_user", (q: any) => q.eq("branchId", args.branchId).eq("userId", args.workingOwnerKey))
-    .collect();
+  branchState: BranchStateDoc,
+): Promise<ResolvedWorkingFile[]> {
+  const files: WorkingFileDoc[] = await ctx.runQuery(internal.fs.working.listForBranchState, {
+    branchStateId: branchState._id,
+  });
+  const legacyFiles: WorkingFileDoc[] = await listLegacyWorkingFilesForBranchState(ctx, branchState);
+  const fileByPath = new Map<string, WorkingFileDoc>(files.map((file) => [file.path, file]));
+  for (const legacyFile of legacyFiles) {
+    if (!fileByPath.has(legacyFile.path)) {
+      fileByPath.set(legacyFile.path, legacyFile);
+    }
+  }
 
-  const resolved = [];
-  for (const file of files) {
+  const resolved: ResolvedWorkingFile[] = [];
+  for (const file of fileByPath.values() as Iterable<WorkingFileDoc>) {
     if (file.isDeleted) {
       resolved.push({ ...file, content: undefined, downloadUrl: undefined });
       continue;
@@ -260,17 +285,21 @@ async function getResolvedWorkingFiles(
     const downloadUrl = content === undefined ? await resolveFileDownloadUrl(ctx, file) : undefined;
     resolved.push({ ...file, content, downloadUrl });
   }
-  return resolved;
+  return resolved satisfies ResolvedWorkingFile[];
 }
 
 async function computeBranchStateWorkingStateHash(
   ctx: QueryCtx | MutationCtx | any,
   branchState: BranchStateDoc,
 ): Promise<string | undefined> {
-  const workingChanges: WorkingStateChange[] = await ctx.runQuery(internal.fs.working.getChanges, {
-    branchId: branchState.backingBranchId,
-    userId: branchState.workingOwnerKey,
-  });
+  const workingFiles: ResolvedWorkingFile[] = await getResolvedWorkingFiles(ctx, branchState);
+  const workingChanges: WorkingStateChange[] = workingFiles.map((file: ResolvedWorkingFile) => ({
+    path: file.path,
+    content: file.content,
+    isDeleted: file.isDeleted,
+    blobId: file.blobId,
+    downloadUrl: file.downloadUrl,
+  }));
 
   if (workingChanges.length === 0) {
     return undefined;
@@ -299,11 +328,16 @@ function normalizeProviderOptionsForMutation(
 }
 
 async function loadModelsFromBranchState(ctx: QueryCtx | MutationCtx | any, branchState: BranchStateDoc) {
-  const workingFile = await ctx.runQuery(internal.fs.working.read, {
-    branchId: branchState.backingBranchId,
-    userId: branchState.workingOwnerKey,
-    path: MODELS_FILE_PATH,
-  });
+  const workingFile =
+    (await ctx.runQuery(internal.fs.working.readForBranchState, {
+      branchStateId: branchState._id,
+      path: MODELS_FILE_PATH,
+    })) ??
+    (await ctx.runQuery(internal.fs.working.read, {
+      branchId: branchState.backingBranchId,
+      userId: branchState.workingOwnerKey,
+      path: MODELS_FILE_PATH,
+    }));
 
   if (workingFile) {
     if (workingFile.isDeleted) {
@@ -360,10 +394,11 @@ async function writeModelsToBranchState(
 ) {
   const models = ensureValidWorkspaceModels(args.models, MODELS_FILE_PATH);
   const content = serializeWorkspaceModelsYaml(models);
-  await ctx.runMutation(internal.fs.working.write, {
+  await migrateLegacyWorkingFilesForBranchState(ctx, args.branchState);
+  await ctx.runMutation(internal.fs.working.writeForBranchState, {
     workspaceId: args.branchState.workspaceId,
     branchId: args.branchState.backingBranchId,
-    userId: args.branchState.workingOwnerKey,
+    branchStateId: args.branchState._id,
     path: MODELS_FILE_PATH,
     content,
     blobId: undefined,
@@ -402,10 +437,13 @@ async function saveFileHandler(
     content: args.content,
     binary: false,
   });
-  await ctx.runMutation(internal.fs.working.write, {
+  await ctx.runMutation(internal.branchStates.migrateLegacyWorkingFilesInternal, {
+    branchStateId: effectiveBranchState._id,
+  });
+  await ctx.runMutation(internal.fs.working.writeForBranchState, {
     workspaceId: effectiveBranchState.workspaceId,
     branchId: effectiveBranchState.backingBranchId,
-    userId: effectiveBranchState.workingOwnerKey,
+    branchStateId: effectiveBranchState._id,
     path: args.path,
     content: stored.content,
     blobId: stored.blobId,
@@ -435,11 +473,14 @@ async function createCommitHandler(
   if (!branchState) {
     throw new Error("Branch state not found");
   }
-  const commitId: Id<"commits"> = await ctx.runAction(internal.vcs.createCommitForOwnerInternal, {
+  await ctx.runMutation(internal.branchStates.migrateLegacyWorkingFilesInternal, {
+    branchStateId: branchState._id,
+  });
+  const commitId: Id<"commits"> = await ctx.runAction(internal.vcs.createCommitForBranchStateInternal, {
     workspaceId: branchState.workspaceId,
     branchId: branchState.backingBranchId,
+    branchStateId: branchState._id,
     authorId: args.authorId,
-    workingOwnerId: branchState.workingOwnerKey,
     message: args.message,
   });
   await ctx.runMutation(internal.branchStates.touchBranchStateInternal, {
@@ -465,12 +506,16 @@ async function compileBranchStateHandler(
   if (!branchState) {
     throw new Error("Branch state not found");
   }
+  await ctx.runMutation(internal.branchStates.migrateLegacyWorkingFilesInternal, {
+    branchStateId: branchState._id,
+  });
   const queued: { compileJobId?: Id<"compileJobs"> } = await ctx.runAction(internal.compile.enqueueBranchCompile, {
     workspaceId: branchState.workspaceId,
     branchId: branchState.backingBranchId,
-    branchStateId: branchState._id,
-    includeWorkingState: true,
-    userId: branchState.workingOwnerKey,
+    source: {
+      kind: "branchState",
+      branchStateId: branchState._id,
+    },
     checkExistingRevision: false,
   });
   if (!queued.compileJobId) {
@@ -526,9 +571,9 @@ async function deleteBranchStateHandler(
     throw new Error("Cannot delete the main branch state");
   }
 
-  await clearWorkingFilesForOwner(ctx, {
-    branchId: branchState.backingBranchId,
-    workingOwnerKey: branchState.workingOwnerKey,
+  await migrateLegacyWorkingFilesForBranchState(ctx, branchState);
+  await ctx.runMutation(internal.fs.working.clearForBranchState, {
+    branchStateId: branchState._id,
   });
 
   await ctx.db.delete(branchState.backingBranchId);
@@ -582,6 +627,16 @@ export const ensureWritableBranchStateInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     return await ensureWritableBranchStateHandler(ctx, args);
+  },
+});
+
+export const migrateLegacyWorkingFilesInternal = internalMutation({
+  args: {
+    branchStateId: v.id("branchStates"),
+  },
+  handler: async (ctx, args) => {
+    const branchState = await getBranchStateOrThrow(ctx, args.branchStateId);
+    return await migrateLegacyWorkingFilesForBranchState(ctx, branchState);
   },
 });
 
@@ -747,13 +802,10 @@ export const getWorkingFiles = query({
   args: {
     branchStateId: v.id("branchStates"),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<ResolvedWorkingFile[]> => {
     const branchState = await getBranchStateOrThrow(ctx, args.branchStateId);
     await requireWorkspaceAdmin(ctx, branchState.workspaceId);
-    return await getResolvedWorkingFiles(ctx, {
-      branchId: branchState.backingBranchId,
-      workingOwnerKey: branchState.workingOwnerKey,
-    });
+    return await getResolvedWorkingFiles(ctx, branchState);
   },
 });
 
@@ -813,15 +865,13 @@ export const discardFile = mutation({
     if (branchState.isMain) {
       return { discarded: false };
     }
-    const file = await ctx.db
-      .query("workingFiles")
-      .withIndex("by_path", (q) =>
-        q.eq("branchId", branchState.backingBranchId).eq("userId", branchState.workingOwnerKey).eq("path", args.path),
-      )
-      .first();
+    await migrateLegacyWorkingFilesForBranchState(ctx, branchState);
+    const discarded = await ctx.runMutation(internal.fs.working.discardForBranchState, {
+      branchStateId: branchState._id,
+      path: args.path,
+    });
 
-    if (file) {
-      await ctx.db.delete(file._id);
+    if (discarded) {
       await ctx.db.patch(branchState._id, {
         updatedAt: Date.now(),
         lastCompiledRevisionId: undefined,
@@ -838,15 +888,15 @@ export const discardAll = mutation({
     branchStateId: v.id("branchStates"),
   },
   returns: v.number(),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<number> => {
     const branchState = await getBranchStateOrThrow(ctx, args.branchStateId);
     await requireWorkspaceAdmin(ctx, branchState.workspaceId);
     if (branchState.isMain) {
       return 0;
     }
-    const count = await clearWorkingFilesForOwner(ctx, {
-      branchId: branchState.backingBranchId,
-      workingOwnerKey: branchState.workingOwnerKey,
+    await migrateLegacyWorkingFilesForBranchState(ctx, branchState);
+    const count: number = await ctx.runMutation(internal.fs.working.clearForBranchState, {
+      branchStateId: branchState._id,
     });
     if (count > 0) {
       await ctx.db.patch(branchState._id, {
@@ -957,7 +1007,6 @@ export const getCurrentRevision = query({
       branchId: branchState.backingBranchId,
       branchStateId: branchState._id,
       workingStateHash,
-      userId: branchState.workingOwnerKey,
     });
     if (!revisionId) {
       return null;

@@ -16,7 +16,6 @@ import { workos } from "./auth";
 import { requireAuthenticatedUser, requireWorkspaceAdmin, requireWorkspaceMember } from "./authz";
 import { loadFileContent } from "./fs/fileBlobs";
 import { RESEND_FROM_ADDRESS, renderTokenspaceEmailHtml, resend } from "./resend";
-import { computeWorkingStateHash, type WorkingStateChange } from "./workingStateHash";
 import {
   ensureValidWorkspaceModels,
   getDefaultWorkspaceModels,
@@ -1106,93 +1105,6 @@ export const getActiveRevision = query({
     }
 
     return await ctx.db.get(workspace.activeRevisionId);
-  },
-});
-
-export const getRevision = query({
-  args: {
-    workspaceId: v.id("workspaces"),
-    branchId: v.optional(v.id("branches")),
-    workingStateHash: v.optional(v.string()),
-  },
-  handler: async (ctx, args): Promise<Id<"revisions"> | null> => {
-    const { user } = await requireWorkspaceMember(ctx, args.workspaceId);
-    let branchId = args.branchId;
-    if (!branchId) {
-      const defaultBranch = await ctx.runQuery(internal.vcs.getDefaultBranchInternal, {
-        workspaceId: args.workspaceId,
-      });
-      if (!defaultBranch) {
-        throw new Error("Default branch not found");
-      }
-      branchId = defaultBranch._id;
-    }
-    return await ctx.runQuery(internal.compile.getRevision, {
-      workspaceId: args.workspaceId,
-      branchId,
-      workingStateHash: args.workingStateHash,
-      userId: user.subject,
-    });
-  },
-});
-
-export const ensureRevision = action({
-  args: {
-    workspaceId: v.id("workspaces"),
-    branchId: v.optional(v.id("branches")),
-    workingStateHash: v.optional(v.string()),
-  },
-  returns: v.object({
-    compileJobId: v.optional(v.id("compileJobs")),
-    existingRevisionId: v.optional(v.id("revisions")),
-  }),
-  handler: async (ctx, args): Promise<{ compileJobId?: Id<"compileJobs">; existingRevisionId?: Id<"revisions"> }> => {
-    const { user } = await requireWorkspaceMember(ctx, args.workspaceId);
-    let branchId = args.branchId;
-    if (!branchId) {
-      const defaultBranch = await ctx.runQuery(internal.vcs.getDefaultBranchInternal, {
-        workspaceId: args.workspaceId,
-      });
-      if (!defaultBranch) {
-        throw new Error("Default branch not found");
-      }
-      branchId = defaultBranch._id;
-    }
-    return await ctx.runAction(internal.compile.enqueueBranchCompile, {
-      workspaceId: args.workspaceId,
-      branchId,
-      includeWorkingState: args.workingStateHash !== undefined,
-      workingStateHash: args.workingStateHash,
-      userId: user.subject,
-      checkExistingRevision: true,
-    });
-  },
-});
-
-/**
- * Get the current working-state hash for the authenticated user on a branch.
- * Returns null when there are no working changes.
- */
-export const getCurrentWorkingStateHash = query({
-  args: {
-    workspaceId: v.id("workspaces"),
-    branchId: v.optional(v.id("branches")),
-  },
-  returns: v.union(v.string(), v.null()),
-  handler: async (ctx, args): Promise<string | null> => {
-    const { user } = await requireWorkspaceMember(ctx, args.workspaceId);
-
-    const branch = await resolveBranchForWorkspace(ctx, args.workspaceId, args.branchId);
-    const workingChanges: WorkingStateChange[] = await ctx.runQuery(internal.fs.working.getChanges, {
-      branchId: branch._id,
-      userId: user.subject,
-    });
-
-    if (workingChanges.length === 0) {
-      return null;
-    }
-
-    return computeWorkingStateHash(workingChanges);
   },
 });
 

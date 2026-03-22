@@ -373,7 +373,8 @@ export default defineSchema({
   workingFiles: defineTable({
     workspaceId: v.id("workspaces"),
     branchId: v.id("branches"),
-    userId: v.string(),
+    userId: v.optional(v.string()),
+    branchStateId: v.optional(v.id("branchStates")),
     path: v.string(),
     content: v.optional(v.string()), // undefined means file is deleted or stored in blob
     blobId: v.optional(v.id("blobs")),
@@ -381,7 +382,9 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_branch_user", ["branchId", "userId"])
-    .index("by_path", ["branchId", "userId", "path"]),
+    .index("by_path", ["branchId", "userId", "path"])
+    .index("by_branch_state", ["branchStateId"])
+    .index("by_branch_state_path", ["branchStateId", "path"]),
 
   // Revisions - compiled workspace snapshots stored in file storage
   revisions: defineTable({
@@ -577,6 +580,7 @@ export default defineSchema({
 
   compileJobs: defineTable({
     workspaceId: v.id("workspaces"),
+    sourceKind: v.union(v.literal("branch"), v.literal("branchState")),
     branchId: v.id("branches"),
     branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
