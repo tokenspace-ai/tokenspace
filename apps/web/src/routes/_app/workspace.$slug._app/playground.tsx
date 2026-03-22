@@ -90,20 +90,7 @@ function WorkspacePlaygroundPage() {
 
   // Resolve workspace context from backend
   const workspaceContext = useQuery(api.workspace.resolveWorkspaceContext, { slug });
-  const explicitRevisionId = (workspaceContext?.revisionId as Id<"revisions"> | undefined) ?? null;
-
-  // Get or create revision for current branch
-  const ensureRevision = useAction(api.playground.ensureRevision);
-  const [revisionId, setRevisionId] = useState<Id<"revisions"> | null>(null);
-  const [compileJobId, setCompileJobId] = useState<Id<"compileJobs"> | null>(null);
-  const [revisionLoading, setRevisionLoading] = useState(false);
-  const [revisionError, setRevisionError] = useState<string | null>(null);
-  const compileJob = useQuery(
-    api.compile.getCompileJob,
-    workspaceContext?.workspace && compileJobId
-      ? { workspaceId: workspaceContext.workspace._id, compileJobId }
-      : "skip",
-  );
+  const revisionId = ((workspaceContext?.revisionId as Id<"revisions"> | undefined) ?? null) as Id<"revisions"> | null;
 
   // Language selection - prefer URL param, then localStorage
   const [language, setLanguage] = useState<Language>(() => {
@@ -117,11 +104,9 @@ function WorkspacePlaygroundPage() {
   });
 
   // Session management - initialize from URL if provided
-  // Track if sessionId was initialized from URL param (to prevent branch change from resetting it)
+  // Track if sessionId was initialized from URL param (to avoid resetting it on first revision hydration)
   const sessionFromUrlRef = useRef(!!searchParams.sessionId);
-  const lastBranchIdRef = useRef<Id<"branches"> | null>(null);
-  const previousExplicitRevisionIdRef = useRef<Id<"revisions"> | null | undefined>(undefined);
-  const ensureRevisionRequestRef = useRef(0);
+  const previousRevisionIdRef = useRef<Id<"revisions"> | null | undefined>(undefined);
   const [sessionId, setSessionId] = useState<Id<"sessions"> | null>(
     searchParams.sessionId ? (searchParams.sessionId as Id<"sessions">) : null,
   );
@@ -196,30 +181,14 @@ function WorkspacePlaygroundPage() {
   );
 
   useEffect(() => {
-    const previousExplicitRevisionId = previousExplicitRevisionIdRef.current;
-    previousExplicitRevisionIdRef.current = explicitRevisionId;
+    const previousRevisionId = previousRevisionIdRef.current;
+    previousRevisionIdRef.current = revisionId;
 
-    if (previousExplicitRevisionId !== undefined && previousExplicitRevisionId !== explicitRevisionId) {
+    if (previousRevisionId !== undefined && previousRevisionId !== revisionId) {
       sessionFromUrlRef.current = false;
       setSessionId(null);
     }
-
-    if (!explicitRevisionId) {
-      if (!previousExplicitRevisionId) {
-        return;
-      }
-      ensureRevisionRequestRef.current += 1;
-      setRevisionId(null);
-      setCompileJobId(null);
-      setRevisionLoading(false);
-      setRevisionError(null);
-      return;
-    }
-    setRevisionId(explicitRevisionId);
-    setCompileJobId(null);
-    setRevisionLoading(false);
-    setRevisionError(null);
-  }, [explicitRevisionId]);
+  }, [revisionId]);
 
   // Load type definitions when revision changes (only for TypeScript)
   useEffect(() => {
@@ -349,119 +318,6 @@ function WorkspacePlaygroundPage() {
     },
     [slug],
   );
-
-  // Ensure we have a revision when branch changes
-  useEffect(() => {
-    if (
-      workspaceContext?.workspace &&
-      workspaceContext?.branch &&
-      !explicitRevisionId &&
-      !revisionId &&
-      !revisionLoading &&
-      !revisionError &&
-      !compileJobId
-    ) {
-      const requestId = ++ensureRevisionRequestRef.current;
-      setRevisionLoading(true);
-      setRevisionError(null);
-      ensureRevision({
-        workspaceId: workspaceContext.workspace._id,
-        branchId: workspaceContext.branch._id,
-      })
-        .then((result) => {
-          if (ensureRevisionRequestRef.current !== requestId) {
-            return;
-          }
-          if (result.existingRevisionId) {
-            setRevisionId(result.existingRevisionId);
-            setRevisionLoading(false);
-            return;
-          }
-          if (result.compileJobId) {
-            setCompileJobId(result.compileJobId);
-            return;
-          }
-          throw new Error("Compile job was not created");
-        })
-        .catch((err) => {
-          if (ensureRevisionRequestRef.current !== requestId) {
-            return;
-          }
-          setRevisionError(err instanceof Error ? err.message : "Failed to load revision");
-          setRevisionLoading(false);
-        });
-      return;
-    }
-  }, [
-    explicitRevisionId,
-    workspaceContext?.workspace?._id,
-    workspaceContext?.branch?._id,
-    revisionId,
-    revisionLoading,
-    revisionError,
-    compileJobId,
-    ensureRevision,
-  ]);
-
-  useEffect(() => {
-    if (!compileJob) {
-      return;
-    }
-    if (compileJob.status === "pending" || compileJob.status === "running") {
-      setRevisionLoading(true);
-      return;
-    }
-    if (compileJob.status === "completed") {
-      if (!compileJob.revisionId) {
-        setRevisionError("Compile job completed without revision");
-      } else {
-        setRevisionId(compileJob.revisionId);
-      }
-      setRevisionLoading(false);
-      setCompileJobId(null);
-      return;
-    }
-    if (compileJob.status === "failed" || compileJob.status === "canceled") {
-      setRevisionError(compileJob.error ?? "Failed to load revision");
-      setRevisionLoading(false);
-      setCompileJobId(null);
-    }
-  }, [compileJob]);
-
-  // Reset revision and session when branch actually changes (skip initial branch hydration)
-  useEffect(() => {
-    if (explicitRevisionId) {
-      return;
-    }
-    const currentBranchId = workspaceContext?.branch?._id ?? null;
-    if (!currentBranchId) {
-      return;
-    }
-    if (!lastBranchIdRef.current) {
-      lastBranchIdRef.current = currentBranchId;
-      return;
-    }
-    if (lastBranchIdRef.current === currentBranchId) {
-      return;
-    }
-    lastBranchIdRef.current = currentBranchId;
-    ensureRevisionRequestRef.current += 1;
-    // Skip resetting sessionId if it was initialized from URL param (only on first render)
-    if (sessionFromUrlRef.current) {
-      sessionFromUrlRef.current = false;
-      // Still reset revision-related state
-      setRevisionId(null);
-      setCompileJobId(null);
-      setRevisionLoading(false);
-      setRevisionError(null);
-      return;
-    }
-    setRevisionId(null);
-    setCompileJobId(null);
-    setRevisionLoading(false);
-    setRevisionError(null);
-    setSessionId(null);
-  }, [explicitRevisionId, workspaceContext?.branch?._id]);
 
   const handleRun = useCallback(async () => {
     setIsRunning(true);
@@ -681,17 +537,7 @@ function WorkspacePlaygroundPage() {
           )}
 
           {/* Revision indicator */}
-          {revisionLoading ? (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Loader2Icon className="size-3 animate-spin" />
-              <span>{compileJobId ? "Building revision..." : "Loading revision..."}</span>
-            </div>
-          ) : revisionError ? (
-            <div className="flex items-center gap-1.5 text-xs text-destructive">
-              <AlertCircleIcon className="size-3" />
-              <span>{revisionError}</span>
-            </div>
-          ) : selectedRevision ? (
+          {selectedRevision ? (
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <CheckCircle2Icon className="size-3 text-emerald-500" />
               <span className="font-mono">rev:{selectedRevision._id.slice(-6)}</span>

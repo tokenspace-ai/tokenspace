@@ -158,6 +158,7 @@ async function enqueueRevisionCompileJob(
   if (args.checkExistingRevision) {
     const existingRevision = await ctx.runQuery(internal.revisions.findRevision, {
       branchId: args.branchId,
+      branchStateId: args.branchStateId,
       commitId: branch.commitId,
       workingStateHash,
     });
@@ -316,6 +317,7 @@ export const getRevision = internalQuery({
   args: {
     workspaceId: v.id("workspaces"),
     branchId: v.id("branches"),
+    branchStateId: v.optional(v.id("branchStates")),
     workingStateHash: v.optional(v.string()),
     userId: v.optional(v.string()), // Required if includeWorkingState is true
   },
@@ -335,6 +337,7 @@ export const getRevision = internalQuery({
     // Check if revision already exists
     const existingRevision = await ctx.runQuery(internal.revisions.findRevision, {
       branchId: args.branchId,
+      branchStateId: args.branchStateId,
       commitId: branch.commitId,
       workingStateHash: args.workingStateHash,
     });

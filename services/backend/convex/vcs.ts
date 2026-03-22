@@ -624,6 +624,7 @@ export const mergeBranch = mutation({
       sourceBranchId: args.sourceBranchId,
       targetBranchId: args.targetBranchId,
       authorId: user.subject,
+      skipWorkspaceAdminCheck: false,
     });
   },
 });
@@ -635,7 +636,10 @@ export const mergeBranchInternal = internalMutation({
     authorId: v.string(),
   },
   handler: async (ctx, args) => {
-    return await mergeBranchesHandler(ctx, args);
+    return await mergeBranchesHandler(ctx, {
+      ...args,
+      skipWorkspaceAdminCheck: true,
+    });
   },
 });
 
@@ -645,6 +649,7 @@ async function mergeBranchesHandler(
     sourceBranchId: Id<"branches">;
     targetBranchId: Id<"branches">;
     authorId: string;
+    skipWorkspaceAdminCheck: boolean;
   },
 ) {
   const sourceBranch = await ctx.db.get(args.sourceBranchId);
@@ -657,7 +662,9 @@ async function mergeBranchesHandler(
   if (sourceBranch.workspaceId !== targetBranch.workspaceId) {
     throw new Error("Branches must be in the same workspace");
   }
-  await requireWorkspaceAdmin(ctx, sourceBranch.workspaceId);
+  if (!args.skipWorkspaceAdminCheck) {
+    await requireWorkspaceAdmin(ctx, sourceBranch.workspaceId);
+  }
 
   // Check if source is ahead of target (can fast-forward)
   const sourceCommit = await ctx.db.get(sourceBranch.commitId);

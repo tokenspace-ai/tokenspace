@@ -278,6 +278,7 @@ async function prepareRevisionFromBuildImpl(
   args: {
     workspaceId: Id<"workspaces">;
     branchId: Id<"branches">;
+    branchStateId?: Id<"branchStates">;
     workingStateHash?: string;
     manifest: BuildManifestSummary;
   },
@@ -305,6 +306,7 @@ async function prepareRevisionFromBuildImpl(
 
   const existingRevision = await ctx.runQuery(internal.revisions.findRevision, {
     branchId: args.branchId,
+    branchStateId: args.branchStateId,
     commitId: branch.commitId,
     workingStateHash: args.workingStateHash,
     artifactFingerprint,
@@ -355,6 +357,7 @@ async function commitRevisionFromBuildImpl(
   args: {
     workspaceId: Id<"workspaces">;
     branchId: Id<"branches">;
+    branchStateId?: Id<"branchStates">;
     commitId: Id<"commits">;
     workingStateHash?: string;
     artifactFingerprint: string;
@@ -499,6 +502,7 @@ async function commitRevisionFromBuildImpl(
 
   const previous = await ctx.runQuery(internal.revisions.findRevision, {
     branchId: args.branchId,
+    branchStateId: args.branchStateId,
     commitId: args.commitId,
     workingStateHash: args.workingStateHash,
     artifactFingerprint: args.artifactFingerprint,
@@ -507,6 +511,7 @@ async function commitRevisionFromBuildImpl(
   const revisionId = await ctx.runMutation(internal.revisions.createRevision, {
     workspaceId: args.workspaceId,
     branchId: args.branchId,
+    branchStateId: args.branchStateId,
     commitId: args.commitId,
     workingStateHash: args.workingStateHash,
     artifactFingerprint: args.artifactFingerprint,
@@ -557,6 +562,7 @@ export const prepareRevisionFromBuild = action({
   args: {
     workspaceId: v.id("workspaces"),
     branchId: v.id("branches"),
+    branchStateId: v.optional(v.id("branchStates")),
     workingStateHash: v.optional(v.string()),
     manifest: vBuildManifestSummary,
   },
@@ -585,6 +591,7 @@ export const prepareRevisionFromBuildInternal = internalAction({
   args: {
     workspaceId: v.id("workspaces"),
     branchId: v.id("branches"),
+    branchStateId: v.optional(v.id("branchStates")),
     workingStateHash: v.optional(v.string()),
     manifest: vBuildManifestSummary,
   },
@@ -612,6 +619,7 @@ export const commitRevisionFromBuild = action({
   args: {
     workspaceId: v.id("workspaces"),
     branchId: v.id("branches"),
+    branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
     workingStateHash: v.optional(v.string()),
     artifactFingerprint: v.string(),
@@ -638,6 +646,7 @@ export const commitRevisionFromBuildInternal = internalAction({
   args: {
     workspaceId: v.id("workspaces"),
     branchId: v.id("branches"),
+    branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
     workingStateHash: v.optional(v.string()),
     artifactFingerprint: v.string(),

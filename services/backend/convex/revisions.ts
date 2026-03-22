@@ -12,6 +12,47 @@ import {
   vWorkspaceModelDefinition,
 } from "./workspaceMetadata";
 
+function queryRevisionIdentity(
+  ctx: any,
+  args: {
+    branchId: string;
+    branchStateId?: string;
+    commitId: string;
+    workingStateHash?: string;
+  },
+) {
+  if (args.branchStateId) {
+    return args.workingStateHash
+      ? ctx.db
+          .query("revisions")
+          .withIndex("by_branch_state_working", (q: any) =>
+            q
+              .eq("branchStateId", args.branchStateId)
+              .eq("commitId", args.commitId)
+              .eq("workingStateHash", args.workingStateHash),
+          )
+      : ctx.db
+          .query("revisions")
+          .withIndex("by_branch_state_commit", (q: any) =>
+            q.eq("branchStateId", args.branchStateId).eq("commitId", args.commitId),
+          )
+          .filter((q: any) => q.eq(q.field("workingStateHash"), undefined));
+  }
+
+  const legacyQuery = args.workingStateHash
+    ? ctx.db
+        .query("revisions")
+        .withIndex("by_branch_working", (q: any) =>
+          q.eq("branchId", args.branchId).eq("commitId", args.commitId).eq("workingStateHash", args.workingStateHash),
+        )
+    : ctx.db
+        .query("revisions")
+        .withIndex("by_branch_commit", (q: any) => q.eq("branchId", args.branchId).eq("commitId", args.commitId))
+        .filter((q: any) => q.eq(q.field("workingStateHash"), undefined));
+
+  return legacyQuery.filter((q: any) => q.eq(q.field("branchStateId"), undefined));
+}
+
 /**
  * Get a revision by ID
  */
@@ -30,24 +71,16 @@ export const getRevision = internalQuery({
 export const findRevision = internalQuery({
   args: {
     branchId: v.id("branches"),
+    branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
     workingStateHash: v.optional(v.string()),
     artifactFingerprint: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const baseQuery = args.workingStateHash
-      ? ctx.db
-          .query("revisions")
-          .withIndex("by_branch_working", (q) =>
-            q.eq("branchId", args.branchId).eq("commitId", args.commitId).eq("workingStateHash", args.workingStateHash),
-          )
-      : ctx.db
-          .query("revisions")
-          .withIndex("by_branch_commit", (q) => q.eq("branchId", args.branchId).eq("commitId", args.commitId))
-          .filter((q) => q.eq(q.field("workingStateHash"), undefined));
+    const baseQuery = queryRevisionIdentity(ctx, args);
 
     if (args.artifactFingerprint) {
-      return await baseQuery.filter((q) => q.eq(q.field("artifactFingerprint"), args.artifactFingerprint)).first();
+      return await baseQuery.filter((q: any) => q.eq(q.field("artifactFingerprint"), args.artifactFingerprint)).first();
     }
     return await baseQuery.first();
   },
@@ -60,6 +93,7 @@ export const createRevision = internalMutation({
   args: {
     workspaceId: v.id("workspaces"),
     branchId: v.id("branches"),
+    branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
     workingStateHash: v.optional(v.string()),
     artifactFingerprint: v.optional(v.string()),
@@ -80,19 +114,10 @@ export const createRevision = internalMutation({
   },
   handler: async (ctx, args) => {
     // Check if revision already exists
-    const baseQuery = args.workingStateHash
-      ? ctx.db
-          .query("revisions")
-          .withIndex("by_branch_working", (q) =>
-            q.eq("branchId", args.branchId).eq("commitId", args.commitId).eq("workingStateHash", args.workingStateHash),
-          )
-      : ctx.db
-          .query("revisions")
-          .withIndex("by_branch_commit", (q) => q.eq("branchId", args.branchId).eq("commitId", args.commitId))
-          .filter((q) => q.eq(q.field("workingStateHash"), undefined));
+    const baseQuery = queryRevisionIdentity(ctx, args);
 
     const existing = args.artifactFingerprint
-      ? await baseQuery.filter((q) => q.eq(q.field("artifactFingerprint"), args.artifactFingerprint)).first()
+      ? await baseQuery.filter((q: any) => q.eq(q.field("artifactFingerprint"), args.artifactFingerprint)).first()
       : await baseQuery.first();
 
     if (existing) {
@@ -165,6 +190,7 @@ export const createRevision = internalMutation({
     return await ctx.db.insert("revisions", {
       workspaceId: args.workspaceId,
       branchId: args.branchId,
+      branchStateId: args.branchStateId,
       commitId: args.commitId,
       workingStateHash: args.workingStateHash,
       artifactFingerprint: args.artifactFingerprint,

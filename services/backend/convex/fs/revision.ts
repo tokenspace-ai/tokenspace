@@ -435,7 +435,7 @@ export const getRevisionByBranchCommit = query({
     return await ctx.db
       .query("revisions")
       .withIndex("by_branch_commit", (q) => q.eq("branchId", args.branchId).eq("commitId", args.commitId))
-      .filter((q) => q.eq(q.field("workingStateHash"), undefined))
+      .filter((q) => q.and(q.eq(q.field("workingStateHash"), undefined), q.eq(q.field("branchStateId"), undefined)))
       .first();
   },
 });

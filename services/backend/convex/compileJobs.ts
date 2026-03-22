@@ -485,6 +485,7 @@ export const prepareRevisionFromBuildForExecutor = action({
     return await ctx.runAction(internal.revisionBuild.prepareRevisionFromBuildInternal, {
       workspaceId: job.workspaceId,
       branchId: job.branchId,
+      branchStateId: job.branchStateId,
       workingStateHash: job.workingStateHash,
       manifest: args.manifest as BuildManifestSummary,
     });
@@ -538,6 +539,7 @@ export const commitRevisionFromBuildForExecutor = action({
     return await ctx.runAction(internal.revisionBuild.commitRevisionFromBuildInternal, {
       workspaceId: job.workspaceId,
       branchId: job.branchId,
+      branchStateId: job.branchStateId,
       commitId: job.commitId,
       workingStateHash: job.workingStateHash,
       artifactFingerprint: args.artifactFingerprint,

@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { internal } from "../../../services/backend/convex/_generated/api";
+import { computeWorkingStateHash } from "../../../services/backend/convex/workingStateHash";
 import { getSharedHarness, waitForSetup } from "./setup";
 import { EXAMPLE_DIR, getFunctionName, readFilesRecursively } from "./test-utils";
 
@@ -72,30 +73,22 @@ async function getBranchState(branchStateId: string): Promise<BranchState | null
 }
 
 async function createDraftAndWriteFile(args: {
-  workspaceId: string;
   mainBranchStateId: string;
   path: string;
   content: string;
 }): Promise<BranchState> {
   const backend = getSharedHarness().getBackend();
-  const draft = (await backend.runFunction(getFunctionName(internal.branchStates.ensureWritableBranchStateInternal), {
+  const result = (await backend.runFunction(getFunctionName(internal.branchStates.saveFileInternal), {
     branchStateId: args.mainBranchStateId,
-    createdByUserId: TEST_USER_ID,
-  })) as BranchState;
-
-  await backend.runFunction(getFunctionName(internal.fs.working.write), {
-    workspaceId: args.workspaceId,
-    branchId: draft.backingBranchId,
-    userId: draft.workingOwnerKey,
     path: args.path,
     content: args.content,
-  });
+    createdByUserId: TEST_USER_ID,
+  })) as { branchStateId: string };
 
-  await backend.runFunction(getFunctionName(internal.branchStates.touchBranchStateInternal), {
-    branchStateId: draft._id,
-    clearLastCompiledRevisionId: true,
-  });
-
+  const draft = await getBranchState(result.branchStateId);
+  if (!draft) {
+    throw new Error("Draft branch state not found after save");
+  }
   return draft;
 }
 
@@ -158,7 +151,6 @@ describe("Branch states", () => {
 
     const [mainBranchState] = await initializeBranchStates(workspace.workspaceId);
     const draft = await createDraftAndWriteFile({
-      workspaceId: workspace.workspaceId,
       mainBranchStateId: mainBranchState!._id,
       path: "src/branch-state-draft.ts",
       content: 'export const branchStateDraft = "shared";\n',
@@ -194,7 +186,6 @@ describe("Branch states", () => {
 
     const [mainBranchState] = await initializeBranchStates(workspace.workspaceId);
     const draft = await createDraftAndWriteFile({
-      workspaceId: workspace.workspaceId,
       mainBranchStateId: mainBranchState!._id,
       path: "src/branch-state-commit.ts",
       content: 'export const branchStateCommit = "ready";\n',
@@ -204,13 +195,11 @@ describe("Branch states", () => {
       branchId: draft.backingBranchId,
     })) as { commitId: string } | null;
 
-    const commitId = (await backend.runFunction(getFunctionName(internal.vcs.createCommitForOwnerInternal), {
-      workspaceId: workspace.workspaceId,
-      branchId: draft.backingBranchId,
+    const committed = (await backend.runFunction(getFunctionName(internal.branchStates.createCommitInternal), {
+      branchStateId: draft._id,
       authorId: TEST_USER_ID,
-      workingOwnerId: draft.workingOwnerKey,
       message: "Commit shared branch-state draft",
-    })) as string;
+    })) as { commitId: string };
 
     const branchAfter = (await backend.runFunction(getFunctionName(internal.vcs.getBranchInternal), {
       branchId: draft.backingBranchId,
@@ -221,12 +210,12 @@ describe("Branch states", () => {
       path: "src/branch-state-commit.ts",
     })) as { path: string } | null;
 
-    expect(branchAfter?.commitId).toBe(commitId);
+    expect(branchAfter?.commitId).toBe(committed.commitId);
     expect(branchAfter?.commitId).not.toBe(branchBefore?.commitId);
     expect(clearedWorkingFile).toBeNull();
   });
 
-  it("compiles a branch state without a working-state hash and records the last compiled revision", async () => {
+  it("compiles a branch state with branch-state source identity and records the last compiled revision", async () => {
     const backend = getSharedHarness().getBackend();
     const workspace = await seedWorkspace({
       slug: "testing-branch-states-compile",
@@ -235,25 +224,133 @@ describe("Branch states", () => {
 
     const [mainBranchState] = await initializeBranchStates(workspace.workspaceId);
     const draft = await createDraftAndWriteFile({
-      workspaceId: workspace.workspaceId,
       mainBranchStateId: mainBranchState!._id,
       path: "src/branch-state-compile.ts",
       content: 'export const branchStateCompile = "draft";\n',
     });
 
-    const queued = (await backend.runFunction(getFunctionName(internal.compile.enqueueBranchCompile), {
-      workspaceId: workspace.workspaceId,
-      branchId: draft.backingBranchId,
+    const queued = (await backend.runFunction(getFunctionName(internal.branchStates.compileInternal), {
       branchStateId: draft._id,
-      includeWorkingState: true,
-      userId: draft.workingOwnerKey,
-      checkExistingRevision: false,
     })) as { compileJobId?: string };
 
     expect(queued.compileJobId).toBeDefined();
     const revisionId = await waitForCompileJob(queued.compileJobId!);
     const updatedDraft = await getBranchState(draft._id);
+    const revision = (await backend.runFunction(getFunctionName(internal.revisions.getRevision), {
+      revisionId,
+    })) as { _id: string; branchStateId?: string } | null;
+    const branch = (await backend.runFunction(getFunctionName(internal.vcs.getBranchInternal), {
+      branchId: draft.backingBranchId,
+    })) as { commitId: string } | null;
+    const workingChanges = (await backend.runFunction(getFunctionName(internal.fs.working.getChanges), {
+      branchId: draft.backingBranchId,
+      userId: draft.workingOwnerKey,
+    })) as Array<{
+      path: string;
+      content?: string;
+      isDeleted: boolean;
+    }>;
+    const workingStateHash = computeWorkingStateHash(workingChanges);
+    const branchStateRevision = (await backend.runFunction(getFunctionName(internal.revisions.findRevision), {
+      branchId: draft.backingBranchId,
+      branchStateId: draft._id,
+      commitId: branch!.commitId,
+      workingStateHash,
+    })) as { _id: string } | null;
+    const legacyRevision = (await backend.runFunction(getFunctionName(internal.revisions.findRevision), {
+      branchId: draft.backingBranchId,
+      commitId: branch!.commitId,
+      workingStateHash,
+    })) as { _id: string } | null;
+    const deduped = (await backend.runFunction(getFunctionName(internal.compile.enqueueBranchCompile), {
+      workspaceId: workspace.workspaceId,
+      branchId: draft.backingBranchId,
+      branchStateId: draft._id,
+      includeWorkingState: true,
+      userId: draft.workingOwnerKey,
+      checkExistingRevision: true,
+    })) as { existingRevisionId?: string; compileJobId?: string };
 
     expect(updatedDraft?.lastCompiledRevisionId).toBe(revisionId);
+    expect(revision?.branchStateId).toBe(draft._id);
+    expect(branchStateRevision?._id).toBe(revisionId);
+    expect(legacyRevision).toBeNull();
+    expect(deduped.existingRevisionId).toBe(revisionId);
+    expect(deduped.compileJobId).toBeUndefined();
+  });
+
+  it("merges a draft branch state into main through the branch-state API", async () => {
+    const backend = getSharedHarness().getBackend();
+    const workspace = await seedWorkspace({
+      slug: "testing-branch-states-merge",
+      name: "Testing Branch States Merge",
+    });
+
+    const [mainBranchState] = await initializeBranchStates(workspace.workspaceId);
+    const draft = await createDraftAndWriteFile({
+      mainBranchStateId: mainBranchState!._id,
+      path: "src/branch-state-merge.ts",
+      content: 'export const branchStateMerge = "merged";\n',
+    });
+
+    await backend.runFunction(getFunctionName(internal.branchStates.createCommitInternal), {
+      branchStateId: draft._id,
+      authorId: TEST_USER_ID,
+      message: "Commit branch-state merge change",
+    });
+    const queued = (await backend.runFunction(getFunctionName(internal.branchStates.compileInternal), {
+      branchStateId: draft._id,
+    })) as { compileJobId: string };
+    await waitForCompileJob(queued.compileJobId);
+
+    const mergeResult = (await backend.runFunction(getFunctionName(internal.branchStates.mergeIntoMainInternal), {
+      branchStateId: draft._id,
+      authorId: TEST_USER_ID,
+    })) as { type: "fast-forward" | "merge-commit"; commitId: string };
+    const refreshedMain = await getBranchState(mainBranchState!._id);
+    const refreshedDraft = await getBranchState(draft._id);
+    const mainBranch = (await backend.runFunction(getFunctionName(internal.vcs.getBranchInternal), {
+      branchId: mainBranchState!.backingBranchId,
+    })) as { commitId: string } | null;
+    const mergedCommit = (await backend.runFunction(getFunctionName(internal.vcs.getCommitInternal), {
+      commitId: mainBranch!.commitId,
+    })) as { treeId: string } | null;
+    const mergedFiles = (await backend.runFunction(getFunctionName(internal.trees.getAllFiles), {
+      treeId: mergedCommit!.treeId,
+    })) as Array<{ path: string; content?: string }>;
+    const mergedFile = mergedFiles.find((file) => file.path === "src/branch-state-merge.ts");
+
+    expect(mergeResult.commitId).toBe(mainBranch?.commitId);
+    expect(mergeResult.type === "fast-forward" || mergeResult.type === "merge-commit").toBe(true);
+    expect(refreshedMain?.lastCompiledRevisionId).toBeUndefined();
+    expect(refreshedDraft?.lastCompiledRevisionId).toBeUndefined();
+    expect(mergedFile?.content).toContain('branchStateMerge = "merged"');
+  });
+
+  it("deletes a non-main branch state and its backing branch", async () => {
+    const backend = getSharedHarness().getBackend();
+    const workspace = await seedWorkspace({
+      slug: "testing-branch-states-delete",
+      name: "Testing Branch States Delete",
+    });
+
+    const [mainBranchState] = await initializeBranchStates(workspace.workspaceId);
+    const draft = await createDraftAndWriteFile({
+      mainBranchStateId: mainBranchState!._id,
+      path: "src/branch-state-delete.ts",
+      content: 'export const branchStateDelete = "gone";\n',
+    });
+
+    const deleted = (await backend.runFunction(getFunctionName(internal.branchStates.deleteBranchStateInternal), {
+      branchStateId: draft._id,
+    })) as { deleted: boolean };
+    const deletedBranchState = await getBranchState(draft._id);
+    const deletedBackingBranch = (await backend.runFunction(getFunctionName(internal.vcs.getBranchInternal), {
+      branchId: draft.backingBranchId,
+    })) as { _id: string } | null;
+
+    expect(deleted.deleted).toBe(true);
+    expect(deletedBranchState).toBeNull();
+    expect(deletedBackingBranch).toBeNull();
   });
 });

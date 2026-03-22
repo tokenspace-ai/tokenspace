@@ -164,20 +164,9 @@ export function AppSidebar({
   const currentRoute = useCurrentAppRoute();
   const [threadsPopoverOpen, setThreadsPopoverOpen] = useState(false);
   const assignedExecutorStatus = useQuery(api.executors.getAssignedExecutorStatus, { workspaceId });
-  const resolvedRevisionId = useQuery(
-    api.workspace.getRevision,
-    revisionId || !currentBranchId || !showBranchControls
-      ? "skip"
-      : {
-          workspaceId,
-          branchId: currentBranchId as Id<"branches">,
-          workingStateHash,
-        },
-  );
-  const effectiveRevisionId = revisionId ?? resolvedRevisionId ?? undefined;
   const credentialSummary = useQuery(
     api.credentials.getCredentialNavigationSummary,
-    effectiveRevisionId ? { revisionId: effectiveRevisionId } : "skip",
+    revisionId ? { revisionId } : "skip",
   );
   const executorState =
     assignedExecutorStatus === undefined ? null : deriveWorkspaceExecutorState(assignedExecutorStatus);

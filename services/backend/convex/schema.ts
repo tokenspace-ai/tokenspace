@@ -387,6 +387,7 @@ export default defineSchema({
   revisions: defineTable({
     workspaceId: v.id("workspaces"),
     branchId: v.id("branches"),
+    branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
     // Hash of working files included, if any (for deduplication)
     workingStateHash: v.optional(v.string()),
@@ -415,7 +416,9 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_branch_commit", ["branchId", "commitId"])
-    .index("by_branch_working", ["branchId", "commitId", "workingStateHash"]),
+    .index("by_branch_working", ["branchId", "commitId", "workingStateHash"])
+    .index("by_branch_state_commit", ["branchStateId", "commitId"])
+    .index("by_branch_state_working", ["branchStateId", "commitId", "workingStateHash"]),
 
   // ============================================================================
   // Existing Tables

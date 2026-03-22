@@ -3,6 +3,7 @@ import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   action,
+  internalAction,
   internalMutation,
   internalQuery,
   type MutationCtx,
@@ -374,6 +375,168 @@ async function writeModelsToBranchState(
   return models;
 }
 
+async function saveFileHandler(
+  ctx: any,
+  args: {
+    branchStateId: Id<"branchStates">;
+    path: string;
+    content: string;
+    createdByUserId: string;
+  },
+): Promise<{ branchStateId: Id<"branchStates">; branchStateName: string; redirected: boolean }> {
+  const branchState: BranchStateDoc | null = await ctx.runQuery(internal.branchStates.getInternal, {
+    branchStateId: args.branchStateId,
+  });
+  if (!branchState) {
+    throw new Error("Branch state not found");
+  }
+  const effectiveBranchState: BranchStateDoc = await ctx.runMutation(
+    internal.branchStates.ensureWritableBranchStateInternal,
+    {
+      branchStateId: args.branchStateId,
+      createdByUserId: args.createdByUserId,
+    },
+  );
+  const stored = await storeFileContent(ctx, {
+    workspaceId: effectiveBranchState.workspaceId,
+    content: args.content,
+    binary: false,
+  });
+  await ctx.runMutation(internal.fs.working.write, {
+    workspaceId: effectiveBranchState.workspaceId,
+    branchId: effectiveBranchState.backingBranchId,
+    userId: effectiveBranchState.workingOwnerKey,
+    path: args.path,
+    content: stored.content,
+    blobId: stored.blobId,
+  });
+  await ctx.runMutation(internal.branchStates.touchBranchStateInternal, {
+    branchStateId: effectiveBranchState._id,
+    clearLastCompiledRevisionId: true,
+  });
+  return {
+    branchStateId: effectiveBranchState._id,
+    branchStateName: effectiveBranchState.name,
+    redirected: effectiveBranchState._id !== args.branchStateId,
+  };
+}
+
+async function createCommitHandler(
+  ctx: any,
+  args: {
+    branchStateId: Id<"branchStates">;
+    message: string;
+    authorId: string;
+  },
+): Promise<{ branchStateId: Id<"branchStates">; branchStateName: string; commitId: Id<"commits"> }> {
+  const branchState: BranchStateDoc | null = await ctx.runQuery(internal.branchStates.getInternal, {
+    branchStateId: args.branchStateId,
+  });
+  if (!branchState) {
+    throw new Error("Branch state not found");
+  }
+  const commitId: Id<"commits"> = await ctx.runAction(internal.vcs.createCommitForOwnerInternal, {
+    workspaceId: branchState.workspaceId,
+    branchId: branchState.backingBranchId,
+    authorId: args.authorId,
+    workingOwnerId: branchState.workingOwnerKey,
+    message: args.message,
+  });
+  await ctx.runMutation(internal.branchStates.touchBranchStateInternal, {
+    branchStateId: branchState._id,
+    clearLastCompiledRevisionId: true,
+  });
+  return {
+    branchStateId: branchState._id,
+    branchStateName: branchState.name,
+    commitId,
+  };
+}
+
+async function compileBranchStateHandler(
+  ctx: any,
+  args: {
+    branchStateId: Id<"branchStates">;
+  },
+): Promise<{ compileJobId: Id<"compileJobs"> }> {
+  const branchState: BranchStateDoc | null = await ctx.runQuery(internal.branchStates.getInternal, {
+    branchStateId: args.branchStateId,
+  });
+  if (!branchState) {
+    throw new Error("Branch state not found");
+  }
+  const queued: { compileJobId?: Id<"compileJobs"> } = await ctx.runAction(internal.compile.enqueueBranchCompile, {
+    workspaceId: branchState.workspaceId,
+    branchId: branchState.backingBranchId,
+    branchStateId: branchState._id,
+    includeWorkingState: true,
+    userId: branchState.workingOwnerKey,
+    checkExistingRevision: false,
+  });
+  if (!queued.compileJobId) {
+    throw new Error("Compile job was not created");
+  }
+  return {
+    compileJobId: queued.compileJobId,
+  };
+}
+
+async function mergeIntoMainHandler(
+  ctx: any,
+  args: {
+    branchStateId: Id<"branchStates">;
+    authorId: string;
+  },
+): Promise<{ type: "fast-forward" | "merge-commit"; commitId: Id<"commits"> }> {
+  const branchState = await getBranchStateOrThrow(ctx, args.branchStateId);
+  if (branchState.isMain) {
+    throw new Error("Cannot merge the main branch state into itself");
+  }
+  const mainBranchState = await getMainBranchStateInternal(ctx, branchState.workspaceId);
+  if (!mainBranchState) {
+    throw new Error("Main branch state not found");
+  }
+  const result: { type: "fast-forward" | "merge-commit"; commitId: Id<"commits"> } = await ctx.runMutation(
+    internal.vcs.mergeBranchInternal,
+    {
+      authorId: args.authorId,
+      sourceBranchId: branchState.backingBranchId,
+      targetBranchId: mainBranchState.backingBranchId,
+    },
+  );
+  await ctx.db.patch(branchState._id, {
+    updatedAt: Date.now(),
+    lastCompiledRevisionId: undefined,
+  });
+  await ctx.db.patch(mainBranchState._id, {
+    updatedAt: Date.now(),
+    lastCompiledRevisionId: undefined,
+  });
+  return result;
+}
+
+async function deleteBranchStateHandler(
+  ctx: MutationCtx,
+  args: {
+    branchStateId: Id<"branchStates">;
+  },
+): Promise<{ deleted: boolean }> {
+  const branchState = await getBranchStateOrThrow(ctx, args.branchStateId);
+  if (branchState.isMain) {
+    throw new Error("Cannot delete the main branch state");
+  }
+
+  await clearWorkingFilesForOwner(ctx, {
+    branchId: branchState.backingBranchId,
+    workingOwnerKey: branchState.workingOwnerKey,
+  });
+
+  await ctx.db.delete(branchState.backingBranchId);
+  await ctx.db.delete(branchState._id);
+
+  return { deleted: true };
+}
+
 export const getInternal = internalQuery({
   args: {
     branchStateId: v.id("branchStates"),
@@ -419,6 +582,77 @@ export const ensureWritableBranchStateInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     return await ensureWritableBranchStateHandler(ctx, args);
+  },
+});
+
+export const saveFileInternal = internalAction({
+  args: {
+    branchStateId: v.id("branchStates"),
+    path: v.string(),
+    content: v.string(),
+    createdByUserId: v.string(),
+  },
+  returns: v.object({
+    branchStateId: v.id("branchStates"),
+    branchStateName: v.string(),
+    redirected: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    return await saveFileHandler(ctx, args);
+  },
+});
+
+export const createCommitInternal = internalAction({
+  args: {
+    branchStateId: v.id("branchStates"),
+    message: v.string(),
+    authorId: v.string(),
+  },
+  returns: v.object({
+    branchStateId: v.id("branchStates"),
+    branchStateName: v.string(),
+    commitId: v.id("commits"),
+  }),
+  handler: async (ctx, args) => {
+    return await createCommitHandler(ctx, args);
+  },
+});
+
+export const compileInternal = internalAction({
+  args: {
+    branchStateId: v.id("branchStates"),
+  },
+  returns: v.object({
+    compileJobId: v.id("compileJobs"),
+  }),
+  handler: async (ctx, args) => {
+    return await compileBranchStateHandler(ctx, args);
+  },
+});
+
+export const mergeIntoMainInternal = internalMutation({
+  args: {
+    branchStateId: v.id("branchStates"),
+    authorId: v.string(),
+  },
+  returns: v.object({
+    type: v.union(v.literal("fast-forward"), v.literal("merge-commit")),
+    commitId: v.id("commits"),
+  }),
+  handler: async (ctx, args) => {
+    return await mergeIntoMainHandler(ctx, args);
+  },
+});
+
+export const deleteBranchStateInternal = internalMutation({
+  args: {
+    branchStateId: v.id("branchStates"),
+  },
+  returns: v.object({
+    deleted: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    return await deleteBranchStateHandler(ctx, args);
   },
 });
 
@@ -545,35 +779,10 @@ export const saveFile = action({
       throw new Error("Branch state not found");
     }
     const { user } = await requireWorkspaceAdmin(ctx, branchState.workspaceId);
-    const effectiveBranchState: BranchStateDoc = await ctx.runMutation(
-      internal.branchStates.ensureWritableBranchStateInternal,
-      {
-        branchStateId: args.branchStateId,
-        createdByUserId: user.subject,
-      },
-    );
-    const stored = await storeFileContent(ctx, {
-      workspaceId: effectiveBranchState.workspaceId,
-      content: args.content,
-      binary: false,
+    return await saveFileHandler(ctx, {
+      ...args,
+      createdByUserId: user.subject,
     });
-    await ctx.runMutation(internal.fs.working.write, {
-      workspaceId: effectiveBranchState.workspaceId,
-      branchId: effectiveBranchState.backingBranchId,
-      userId: effectiveBranchState.workingOwnerKey,
-      path: args.path,
-      content: stored.content,
-      blobId: stored.blobId,
-    });
-    await ctx.runMutation(internal.branchStates.touchBranchStateInternal, {
-      branchStateId: effectiveBranchState._id,
-      clearLastCompiledRevisionId: true,
-    });
-    return {
-      branchStateId: effectiveBranchState._id,
-      branchStateName: effectiveBranchState.name,
-      redirected: effectiveBranchState._id !== args.branchStateId,
-    };
   },
 });
 
@@ -670,22 +879,10 @@ export const createCommit = action({
       throw new Error("Branch state not found");
     }
     const { user } = await requireWorkspaceAdmin(ctx, branchState.workspaceId);
-    const commitId: Id<"commits"> = await ctx.runAction(internal.vcs.createCommitForOwnerInternal, {
-      workspaceId: branchState.workspaceId,
-      branchId: branchState.backingBranchId,
+    return await createCommitHandler(ctx, {
+      ...args,
       authorId: user.subject,
-      workingOwnerId: branchState.workingOwnerKey,
-      message: args.message,
     });
-    await ctx.runMutation(internal.branchStates.touchBranchStateInternal, {
-      branchStateId: branchState._id,
-      clearLastCompiledRevisionId: true,
-    });
-    return {
-      branchStateId: branchState._id,
-      branchStateName: branchState.name,
-      commitId,
-    };
   },
 });
 
@@ -704,23 +901,7 @@ export const compile = action({
       throw new Error("Branch state not found");
     }
     await requireWorkspaceAdmin(ctx, branchState.workspaceId);
-    const queued: { compileJobId?: Id<"compileJobs">; existingRevisionId?: Id<"revisions"> } = await ctx.runAction(
-      internal.compile.enqueueBranchCompile,
-      {
-        workspaceId: branchState.workspaceId,
-        branchId: branchState.backingBranchId,
-        branchStateId: branchState._id,
-        includeWorkingState: true,
-        userId: branchState.workingOwnerKey,
-        checkExistingRevision: false,
-      },
-    );
-    if (!queued.compileJobId) {
-      throw new Error("Compile job was not created");
-    }
-    return {
-      compileJobId: queued.compileJobId,
-    };
+    return await compileBranchStateHandler(ctx, args);
   },
 });
 
@@ -735,30 +916,10 @@ export const mergeIntoMain = mutation({
   handler: async (ctx, args): Promise<{ type: "fast-forward" | "merge-commit"; commitId: Id<"commits"> }> => {
     const branchState = await getBranchStateOrThrow(ctx, args.branchStateId);
     const { user } = await requireWorkspaceAdmin(ctx, branchState.workspaceId);
-    if (branchState.isMain) {
-      throw new Error("Cannot merge the main branch state into itself");
-    }
-    const mainBranchState = await getMainBranchStateInternal(ctx, branchState.workspaceId);
-    if (!mainBranchState) {
-      throw new Error("Main branch state not found");
-    }
-    const result: { type: "fast-forward" | "merge-commit"; commitId: Id<"commits"> } = await ctx.runMutation(
-      internal.vcs.mergeBranchInternal,
-      {
-        authorId: user.subject,
-        sourceBranchId: branchState.backingBranchId,
-        targetBranchId: mainBranchState.backingBranchId,
-      },
-    );
-    await ctx.db.patch(branchState._id, {
-      updatedAt: Date.now(),
-      lastCompiledRevisionId: undefined,
+    return await mergeIntoMainHandler(ctx, {
+      ...args,
+      authorId: user.subject,
     });
-    await ctx.db.patch(mainBranchState._id, {
-      updatedAt: Date.now(),
-      lastCompiledRevisionId: undefined,
-    });
-    return result;
   },
 });
 
@@ -772,19 +933,7 @@ export const deleteBranchState = mutation({
   handler: async (ctx, args) => {
     const branchState = await getBranchStateOrThrow(ctx, args.branchStateId);
     await requireWorkspaceAdmin(ctx, branchState.workspaceId);
-    if (branchState.isMain) {
-      throw new Error("Cannot delete the main branch state");
-    }
-
-    await clearWorkingFilesForOwner(ctx, {
-      branchId: branchState.backingBranchId,
-      workingOwnerKey: branchState.workingOwnerKey,
-    });
-
-    await ctx.db.delete(branchState.backingBranchId);
-    await ctx.db.delete(branchState._id);
-
-    return { deleted: true };
+    return await deleteBranchStateHandler(ctx, args);
   },
 });
 
@@ -806,6 +955,7 @@ export const getCurrentRevision = query({
     const revisionId: Id<"revisions"> | null = await ctx.runQuery(internal.compile.getRevision, {
       workspaceId: branchState.workspaceId,
       branchId: branchState.backingBranchId,
+      branchStateId: branchState._id,
       workingStateHash,
       userId: branchState.workingOwnerKey,
     });

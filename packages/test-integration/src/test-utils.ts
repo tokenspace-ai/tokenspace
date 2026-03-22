@@ -246,6 +246,7 @@ export async function enqueueAndWaitForRevision(
   args: {
     workspaceId: string;
     branchId: string;
+    branchStateId?: string;
     includeWorkingState?: boolean;
     workingStateHash?: string;
     userId?: string;
@@ -256,6 +257,7 @@ export async function enqueueAndWaitForRevision(
   const queued = (await backend.runFunction(getFunctionName(internal.compile.enqueueBranchCompile), {
     workspaceId: args.workspaceId,
     branchId: args.branchId,
+    branchStateId: args.branchStateId,
     includeWorkingState: args.includeWorkingState,
     workingStateHash: args.workingStateHash,
     userId: args.userId,
