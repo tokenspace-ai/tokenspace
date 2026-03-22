@@ -3,7 +3,7 @@
  * Tokenspace CLI - Sync workspace files with local filesystem
  */
 import { createRequire } from "node:module";
-import { program } from "commander";
+import { Command } from "commander";
 import { login, logout, requireAuth, setVerbose } from "./auth.js";
 import { getChat, listChats, sendMessageToChat, startChat } from "./commands/chat.js";
 import { compileWorkspace } from "./commands/compile.js";
@@ -12,11 +12,12 @@ import { initWorkspace } from "./commands/init.js";
 import { linkWorkspace } from "./commands/link.js";
 import { pull } from "./commands/pull.js";
 import { push } from "./commands/push.js";
-import { useWorkspace } from "./commands/use.js";
+import { useWorkspace as setDefaultWorkspace } from "./commands/use.js";
 import { whoami } from "./commands/whoami.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
+export const program = new Command();
 
 program
   .name("tokenspace")
@@ -96,7 +97,7 @@ program
   .action(async (slug: string | undefined) => {
     try {
       await requireAuth();
-      await useWorkspace(slug);
+      await setDefaultWorkspace(slug);
     } catch (error) {
       console.error("Error:", error instanceof Error ? error.message : error);
       process.exit(1);
@@ -190,7 +191,26 @@ program
   });
 
 const credentials = program.command("credentials").description("List and set workspace credentials");
-const chat = program.command("chat").description("Start, inspect, list, and continue chats");
+const chat = program
+  .command("chat")
+  .description("Launch the interactive chat TUI or use chat subcommands")
+  .option("-w, --workspace <slug>", "Tokenspace slug when not using the linked or default workspace")
+  .option("--model <modelId>", "Override the selected model for the interactive chat")
+  .option("--open", "Open the created chat in the browser after the first prompt")
+  .action(async (options) => {
+    try {
+      await requireAuth();
+      const { launchChatTui } = await import("./commands/chat-tui.js");
+      await launchChatTui({
+        workspace: options.workspace,
+        model: options.model,
+        open: options.open,
+      });
+    } catch (error) {
+      console.error("Error:", error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  });
 
 credentials
   .command("list")
@@ -322,4 +342,6 @@ chat
     }
   });
 
-program.parse();
+if (import.meta.main) {
+  await program.parseAsync();
+}
