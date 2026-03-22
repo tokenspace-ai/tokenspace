@@ -72,6 +72,7 @@ async function enqueueRevisionCompileJob(
   compileJobId?: Id<"compileJobs">;
   commitId: Id<"commits">;
   workingStateHash?: string;
+  sourceSnapshotHash?: string;
 }> {
   const branch = await ctx.runQuery(internal.vcs.getBranchInternal, {
     branchId: args.branchId,
@@ -102,6 +103,7 @@ async function enqueueRevisionCompileJob(
     isDeleted: boolean;
   }> = [];
   let workingStateHash: string | undefined;
+  let sourceSnapshotHash: string | undefined;
   let branchStateId: Id<"branchStates"> | undefined;
   let userId: string | undefined;
 
@@ -136,7 +138,7 @@ async function enqueueRevisionCompileJob(
       branchStateId: branchState._id,
     });
     if (workingChanges.length > 0) {
-      workingStateHash = computeWorkingStateHash(workingChanges);
+      sourceSnapshotHash = computeWorkingStateHash(workingChanges);
     }
   }
 
@@ -185,12 +187,14 @@ async function enqueueRevisionCompileJob(
       branchStateId,
       commitId: branch.commitId,
       workingStateHash,
+      sourceSnapshotHash,
     });
     if (existingRevision) {
       return {
         existingRevisionId: existingRevision._id,
         commitId: branch.commitId,
         workingStateHash,
+        sourceSnapshotHash,
       };
     }
   }
@@ -217,6 +221,7 @@ async function enqueueRevisionCompileJob(
     branchStateId,
     commitId: branch.commitId,
     workingStateHash,
+    sourceSnapshotHash,
     userId,
     snapshotStorageId,
   });
@@ -225,6 +230,7 @@ async function enqueueRevisionCompileJob(
     compileJobId,
     commitId: branch.commitId,
     workingStateHash,
+    sourceSnapshotHash,
   };
 }
 
@@ -368,6 +374,7 @@ export const getRevision = internalQuery({
     branchId: v.id("branches"),
     branchStateId: v.optional(v.id("branchStates")),
     workingStateHash: v.optional(v.string()),
+    sourceSnapshotHash: v.optional(v.string()),
   },
   returns: v.union(v.id("revisions"), v.null()),
   handler: async (ctx, args): Promise<Id<"revisions"> | null> => {
@@ -388,6 +395,7 @@ export const getRevision = internalQuery({
       branchStateId: args.branchStateId,
       commitId: branch.commitId,
       workingStateHash: args.workingStateHash,
+      sourceSnapshotHash: args.sourceSnapshotHash,
     });
 
     return existingRevision?._id ?? null;
@@ -570,6 +578,7 @@ export const enqueueBranchCompile = internalAction({
     branchStateId: v.optional(v.id("branchStates")),
     includeWorkingState: v.optional(v.boolean()),
     workingStateHash: v.optional(v.string()),
+    sourceSnapshotHash: v.optional(v.string()),
     userId: v.optional(v.string()),
     checkExistingRevision: v.optional(v.boolean()),
   },

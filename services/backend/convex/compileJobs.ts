@@ -153,6 +153,7 @@ export const createCompileJob = internalMutation({
     branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
     workingStateHash: v.optional(v.string()),
+    sourceSnapshotHash: v.optional(v.string()),
     userId: v.optional(v.string()),
     snapshotStorageId: v.id("_storage"),
   },
@@ -171,6 +172,7 @@ export const createCompileJob = internalMutation({
       branchStateId: args.branchStateId,
       commitId: args.commitId,
       workingStateHash: args.workingStateHash,
+      sourceSnapshotHash: args.sourceSnapshotHash,
       userId: args.userId,
       snapshotStorageId: args.snapshotStorageId,
       targetExecutorId: scheduled.targetExecutorId,
@@ -279,6 +281,7 @@ export const claimCompileJob = mutation({
     branchId: v.id("branches"),
     commitId: v.id("commits"),
     workingStateHash: v.optional(v.string()),
+    sourceSnapshotHash: v.optional(v.string()),
     userId: v.optional(v.string()),
   }),
   handler: async (ctx, args) => {
@@ -302,6 +305,7 @@ export const claimCompileJob = mutation({
         branchId: job.branchId,
         commitId: job.commitId,
         workingStateHash: job.workingStateHash,
+        sourceSnapshotHash: job.sourceSnapshotHash,
         userId: job.userId,
       };
     }
@@ -362,6 +366,7 @@ export const claimCompileJob = mutation({
       branchId: updated.branchId,
       commitId: updated.commitId,
       workingStateHash: updated.workingStateHash,
+      sourceSnapshotHash: updated.sourceSnapshotHash,
       userId: updated.userId,
     };
   },
@@ -407,6 +412,7 @@ export const getCompileJobSnapshot = query({
     branchId: v.id("branches"),
     commitId: v.id("commits"),
     workingStateHash: v.optional(v.string()),
+    sourceSnapshotHash: v.optional(v.string()),
     userId: v.optional(v.string()),
     snapshotUrl: v.string(),
   }),
@@ -428,6 +434,7 @@ export const getCompileJobSnapshot = query({
       branchId: job.branchId,
       commitId: job.commitId,
       workingStateHash: job.workingStateHash,
+      sourceSnapshotHash: job.sourceSnapshotHash,
       userId: job.userId,
       snapshotUrl,
     };
@@ -489,6 +496,7 @@ export const prepareRevisionFromBuildForExecutor = action({
       branchId: job.branchId,
       branchStateId: job.branchStateId,
       workingStateHash: job.workingStateHash,
+      sourceSnapshotHash: job.sourceSnapshotHash,
       manifest: args.manifest as BuildManifestSummary,
     });
   },
@@ -544,6 +552,7 @@ export const commitRevisionFromBuildForExecutor = action({
       branchStateId: job.branchStateId,
       commitId: job.commitId,
       workingStateHash: job.workingStateHash,
+      sourceSnapshotHash: job.sourceSnapshotHash,
       artifactFingerprint: args.artifactFingerprint,
       manifest: args.manifest as BuildManifestSummary,
       artifacts: args.artifacts,

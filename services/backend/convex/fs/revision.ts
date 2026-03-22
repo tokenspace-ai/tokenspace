@@ -10,6 +10,7 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { internalAction, internalMutation, internalQuery, query } from "../_generated/server";
 import { requireWorkspaceMember } from "../authz";
+import { computeWorkingStateHash } from "../workingStateHash";
 import { resolveFileDownloadUrl, resolveInlineContent, storeFileContent } from "./fileBlobs";
 import { parsePath } from "./index";
 
@@ -444,24 +445,35 @@ export const getRevisionByBranchCommit = query({
 export const getCurrentRevisionIdForBranch = query({
   args: {
     branchId: v.id("branches"),
-    workingStateHash: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
+  returns: v.union(v.id("revisions"), v.null()),
+  handler: async (ctx, args): Promise<Id<"revisions"> | null> => {
     const branch = await ctx.db.get(args.branchId);
     if (!branch) {
       throw new Error("Branch not found");
     }
 
-    await requireWorkspaceMember(ctx, branch.workspaceId);
+    const { user } = await requireWorkspaceMember(ctx, branch.workspaceId);
+    const workingChanges: Array<{
+      path: string;
+      content?: string;
+      blobId?: Id<"blobs">;
+      downloadUrl?: string;
+      isDeleted: boolean;
+    }> = await ctx.runQuery(internal.fs.working.getChanges, {
+      branchId: args.branchId,
+      userId: user.subject,
+    });
+    const workingStateHash: string | undefined =
+      workingChanges.length > 0 ? computeWorkingStateHash(workingChanges) : undefined;
 
-    const revision = args.workingStateHash
+    const revision: {
+      _id: Id<"revisions">;
+    } | null = workingStateHash
       ? await ctx.db
           .query("revisions")
           .withIndex("by_branch_working", (q) =>
-            q
-              .eq("branchId", args.branchId)
-              .eq("commitId", branch.commitId)
-              .eq("workingStateHash", args.workingStateHash),
+            q.eq("branchId", args.branchId).eq("commitId", branch.commitId).eq("workingStateHash", workingStateHash),
           )
           .filter((q) => q.eq(q.field("branchStateId"), undefined))
           .first()

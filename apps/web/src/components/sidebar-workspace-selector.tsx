@@ -54,11 +54,8 @@ interface SidebarWorkspaceSelectorProps {
   branches: Branch[];
   currentWorkspaceSlug?: string;
   currentBranchId?: string;
-  includeWorkingState: boolean;
-  workingStateHash?: string;
   revisionState: RevisionState;
-  onBranchChange: (branchId: string, includeWorkingState: boolean) => void;
-  onToggleWorkingState: (include: boolean) => void;
+  onBranchChange: (branchId: string) => void;
   workingChanges?: WorkspaceWorkingChange[];
   onCommitChanges?: (message: string) => Promise<void>;
   collapsed?: boolean;
@@ -93,11 +90,8 @@ export function SidebarWorkspaceSelector({
   branches,
   currentWorkspaceSlug,
   currentBranchId,
-  includeWorkingState: _includeWorkingState,
-  workingStateHash: _workingStateHash,
   revisionState,
   onBranchChange,
-  onToggleWorkingState: _onToggleWorkingState,
   workingChanges = [],
   onCommitChanges,
   collapsed = false,
@@ -199,7 +193,7 @@ export function SidebarWorkspaceSelector({
             {branches.map((branch) => (
               <DropdownMenuItem
                 key={branch.id}
-                onClick={() => onBranchChange(branch.id, false)}
+                onClick={() => onBranchChange(branch.id)}
                 className="flex items-center gap-2"
               >
                 <Check className={cn("size-4 shrink-0", branch.id === currentBranchId ? "opacity-100" : "opacity-0")} />

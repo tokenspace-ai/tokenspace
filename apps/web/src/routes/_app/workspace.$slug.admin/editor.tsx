@@ -1183,8 +1183,6 @@ function WorkspacePage() {
         result={compileResult}
         error={compileError}
         onCompile={handleCompile}
-        includeWorkingState={false}
-        onIncludeWorkingStateChange={() => {}}
         hasWorkingChanges={changes.length > 0}
       />
     </div>

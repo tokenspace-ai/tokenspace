@@ -105,11 +105,8 @@ interface AppSidebarProps {
   branches: Branch[];
   currentWorkspaceSlug?: string;
   currentBranchId?: string;
-  includeWorkingState: boolean;
-  workingStateHash?: string;
   revisionState: RevisionState;
-  onBranchChange: (branchId: string, includeWorkingState: boolean) => void;
-  onToggleWorkingState: (include: boolean) => void;
+  onBranchChange: (branchId: string) => void;
   workingChanges: WorkspaceWorkingChange[];
   onCommitChanges: (message: string) => Promise<void>;
   isWorkspaceAdmin: boolean;
@@ -138,11 +135,8 @@ export function AppSidebar({
   branches,
   currentWorkspaceSlug,
   currentBranchId,
-  includeWorkingState,
-  workingStateHash,
   revisionState,
   onBranchChange,
-  onToggleWorkingState,
   workingChanges,
   onCommitChanges,
   isWorkspaceAdmin,
@@ -187,11 +181,8 @@ export function AppSidebar({
           branches={branches}
           currentWorkspaceSlug={currentWorkspaceSlug}
           currentBranchId={currentBranchId}
-          includeWorkingState={includeWorkingState}
-          workingStateHash={workingStateHash}
           revisionState={revisionState}
           onBranchChange={onBranchChange}
-          onToggleWorkingState={onToggleWorkingState}
           workingChanges={workingChanges}
           onCommitChanges={onCommitChanges}
           collapsed={collapsed}

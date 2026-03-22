@@ -12,7 +12,6 @@
 export type WorkspaceSlugContext = {
   workspaceSlug: string;
   branchName: string;
-  workingStateHash: string | undefined;
   revisionId: string | undefined;
 };
 
@@ -48,7 +47,6 @@ export function parseWorkspaceSlug(slug: string): WorkspaceSlugContext {
   return {
     workspaceSlug: parts[0] ?? "",
     branchName: parts[1] ?? "main",
-    workingStateHash: parts[2] || undefined,
     revisionId: revisionId || undefined,
   };
 }
@@ -58,10 +56,9 @@ export function parseWorkspaceSlug(slug: string): WorkspaceSlugContext {
  *
  * @param workspace - The workspace slug
  * @param branch - The branch state name (omit or pass "main" for default)
- * @param hash - Legacy working state hash (ignored for canonical URLs)
  * @returns The combined slug string
  */
-export function buildWorkspaceSlug(workspace: string, branch?: string, _hash?: string, revisionId?: string): string {
+export function buildWorkspaceSlug(workspace: string, branch?: string, revisionId?: string): string {
   if (revisionId) return `${workspace}@${revisionId}`;
   if (branch && branch !== "main") return `${workspace}:${branch}`;
   return workspace;
@@ -69,14 +66,7 @@ export function buildWorkspaceSlug(workspace: string, branch?: string, _hash?: s
 
 export function normalizeMemberWorkspaceSlug(slug: string): string {
   const { workspaceSlug, revisionId } = parseWorkspaceSlug(slug);
-  return buildWorkspaceSlug(workspaceSlug, undefined, undefined, revisionId);
-}
-
-/**
- * Check if a slug includes a working state hash.
- */
-export function hasWorkingState(slug: string): boolean {
-  return parseWorkspaceSlug(slug).workingStateHash !== undefined;
+  return buildWorkspaceSlug(workspaceSlug, undefined, revisionId);
 }
 
 /**

@@ -333,7 +333,6 @@ export async function prepareRevisionFromBuild(
   workspaceId: Id<"workspaces">,
   branchId: Id<"branches">,
   manifest: BuildManifestSummary,
-  workingStateHash?: string,
 ): Promise<
   | { kind: "existing"; revisionId: Id<"revisions"> }
   | {
@@ -353,7 +352,6 @@ export async function prepareRevisionFromBuild(
   return await c.action(api.revisionBuild.prepareRevisionFromBuild, {
     workspaceId,
     branchId,
-    workingStateHash,
     manifest,
   });
 }
@@ -362,7 +360,6 @@ export async function commitRevisionFromBuild(
   workspaceId: Id<"workspaces">,
   branchId: Id<"branches">,
   commitId: Id<"commits">,
-  workingStateHash: string | undefined,
   artifactFingerprint: string,
   manifest: BuildManifestSummary,
   artifacts: {
@@ -388,7 +385,6 @@ export async function commitRevisionFromBuild(
     workspaceId,
     branchId,
     commitId,
-    workingStateHash,
     artifactFingerprint,
     manifest,
     artifacts,
@@ -403,25 +399,13 @@ export function exitWithError(message: string): never {
   process.exit(1);
 }
 
-export async function getCurrentWorkingStateHash(
-  _workspaceId: Id<"workspaces">,
-  branchId: Id<"branches">,
-): Promise<string | null> {
-  const c = await getClient();
-  return await c.query(api.fs.working.getCurrentStateHash, {
-    branchId,
-  });
-}
-
 export async function getWorkspaceRevision(
   _workspaceId: Id<"workspaces">,
   branchId: Id<"branches">,
-  workingStateHash?: string,
 ): Promise<Id<"revisions"> | null> {
   const c = await getClient();
   return await c.query(api.fs.revision.getCurrentRevisionIdForBranch, {
     branchId,
-    workingStateHash,
   });
 }
 

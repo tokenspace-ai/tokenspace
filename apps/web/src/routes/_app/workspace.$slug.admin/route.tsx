@@ -22,10 +22,8 @@ function AdminLayout() {
     workspaceId,
     workspaceSlug: currentWorkspaceSlug,
     branchStateId,
-    branchStateName,
     isMainBranchState,
     branchId,
-    workingStateHash,
   } = useWorkspaceContext();
 
   const parsedSlug = parseWorkspaceSlug(slug);
@@ -63,8 +61,6 @@ function AdminLayout() {
   }));
 
   const currentBranchId = branchStateId;
-  const includeWorkingState = false;
-
   const revisionState: RevisionState = workspaceContext?.workspace?.activeRevisionId ? "ready" : "pending";
 
   const navigateToSlug = useCallback(
@@ -145,12 +141,6 @@ function AdminLayout() {
   );
 
   useEffect(() => {
-    if (!workingStateHash) return;
-    const nextSlug = buildWorkspaceSlug(currentWorkspaceSlug, isMainBranchState ? undefined : branchStateName);
-    navigateToSlug(nextSlug, { replace: true });
-  }, [workingStateHash, currentWorkspaceSlug, isMainBranchState, branchStateName, navigateToSlug]);
-
-  useEffect(() => {
     if (!workspaceContext?.effectiveSlug || slug === workspaceContext.effectiveSlug) {
       return;
     }
@@ -184,11 +174,8 @@ function AdminLayout() {
         branches={branches}
         currentWorkspaceSlug={parsedSlug.workspaceSlug}
         currentBranchId={currentBranchId}
-        includeWorkingState={includeWorkingState}
-        workingStateHash={undefined}
         revisionState={revisionState}
         onBranchChange={(id) => handleBranchChange(id)}
-        onToggleWorkingState={() => {}}
         workingChanges={workingChanges}
         onCommitChanges={handleCommitChanges}
         user={user}

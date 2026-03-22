@@ -394,6 +394,8 @@ export default defineSchema({
     commitId: v.id("commits"),
     // Hash of working files included, if any (for deduplication)
     workingStateHash: v.optional(v.string()),
+    // Stable hash of the compiled branch-state draft snapshot, if any.
+    sourceSnapshotHash: v.optional(v.string()),
     // Optional fingerprint of compiled artifact set used for this revision.
     artifactFingerprint: v.optional(v.string()),
     // File storage references for compiled artifacts
@@ -421,7 +423,8 @@ export default defineSchema({
     .index("by_branch_commit", ["branchId", "commitId"])
     .index("by_branch_working", ["branchId", "commitId", "workingStateHash"])
     .index("by_branch_state_commit", ["branchStateId", "commitId"])
-    .index("by_branch_state_working", ["branchStateId", "commitId", "workingStateHash"]),
+    .index("by_branch_state_working", ["branchStateId", "commitId", "workingStateHash"])
+    .index("by_branch_state_snapshot", ["branchStateId", "commitId", "sourceSnapshotHash"]),
 
   // ============================================================================
   // Existing Tables
@@ -585,6 +588,7 @@ export default defineSchema({
     branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
     workingStateHash: v.optional(v.string()),
+    sourceSnapshotHash: v.optional(v.string()),
     userId: v.optional(v.string()),
     snapshotStorageId: v.id("_storage"),
     targetExecutorId: v.optional(v.id("executors")),

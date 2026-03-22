@@ -4,7 +4,6 @@ import {
   type CredentialRequirement,
   exitWithError,
   getCredentialRequirementsForRevision,
-  getCurrentWorkingStateHash,
   getDefaultBranch,
   getWorkspaceBySlug,
   getWorkspaceRevision,
@@ -232,8 +231,7 @@ async function loadCredentialCommandContext(): Promise<CredentialCommandContext>
     exitWithError(`No default branch found in tokenspace '${linked.workspaceSlug}'`);
   }
 
-  const workingStateHash = (await getCurrentWorkingStateHash(workspace._id, branch._id)) ?? undefined;
-  const revisionId = await getWorkspaceRevision(workspace._id, branch._id, workingStateHash);
+  const revisionId = await getWorkspaceRevision(workspace._id, branch._id);
   if (!revisionId) {
     exitWithError(`No compiled revision found for '${linked.workspaceSlug}'. Run \`tokenspace push\` first.`);
   }

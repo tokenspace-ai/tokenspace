@@ -35,7 +35,6 @@ export function useWorkspaceContext() {
     isMainBranchState: workspaceContext.branchState?.isMain ?? true,
     branchId: workspaceContext.branch?._id,
     branchName: workspaceContext.branchState?.name ?? workspaceContext.branch?.name ?? "main",
-    workingStateHash: workspaceContext.workingStateHash,
     revisionId: (workspaceContext.revisionId as Id<"revisions"> | undefined) ?? undefined,
     slug: normalizedSlug,
   };
@@ -154,11 +153,8 @@ function WorkspaceAppLayout() {
           branches={[]}
           currentWorkspaceSlug={currentWorkspaceSlug}
           currentBranchId={undefined}
-          includeWorkingState={false}
-          workingStateHash={undefined}
           revisionState={revisionState}
           onBranchChange={() => {}}
-          onToggleWorkingState={() => {}}
           workingChanges={[]}
           onCommitChanges={async () => {}}
           isWorkspaceAdmin={workspaceRole === "workspace_admin"}

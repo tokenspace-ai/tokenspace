@@ -12,7 +12,6 @@ describe("workspace slug utilities", () => {
     expect(parseWorkspaceSlug("workspace:feature")).toEqual({
       workspaceSlug: "workspace",
       branchName: "feature",
-      workingStateHash: undefined,
       revisionId: undefined,
     });
   });

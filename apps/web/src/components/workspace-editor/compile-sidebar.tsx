@@ -25,8 +25,6 @@ interface CompileSidebarProps {
   result: CompileResult | null;
   error: string | null;
   onCompile: () => void;
-  includeWorkingState: boolean;
-  onIncludeWorkingStateChange: (include: boolean) => void;
   hasWorkingChanges: boolean;
 }
 
@@ -37,8 +35,6 @@ export function CompileSidebar({
   result,
   error,
   onCompile,
-  includeWorkingState,
-  onIncludeWorkingStateChange,
   hasWorkingChanges,
 }: CompileSidebarProps) {
   return (
@@ -52,26 +48,10 @@ export function CompileSidebar({
         </SheetHeader>
         <ScrollArea className="flex-1">
           <div className="p-4 space-y-6">
-            {/* Options */}
-            <div className="space-y-3">
-              <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Options</h3>
-              <label className="flex items-start gap-3 p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={includeWorkingState}
-                  onChange={(e) => onIncludeWorkingStateChange(e.target.checked)}
-                  className="mt-0.5 rounded border-border"
-                  disabled={!hasWorkingChanges}
-                />
-                <div className="space-y-1">
-                  <div className="text-sm font-medium">Include working changes</div>
-                  <div className="text-xs text-muted-foreground">
-                    {hasWorkingChanges
-                      ? "Compile uncommitted changes along with the committed state"
-                      : "No working changes to include"}
-                  </div>
-                </div>
-              </label>
+            <div className="rounded-lg border bg-card p-3 text-sm text-muted-foreground">
+              {hasWorkingChanges
+                ? "Compile uses the current branch-state draft snapshot, including uncommitted changes."
+                : "Compile uses the current committed branch-state snapshot."}
             </div>
 
             {/* Compile Button */}

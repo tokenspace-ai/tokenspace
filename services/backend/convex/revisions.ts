@@ -43,24 +43,25 @@ function queryRevisionIdentity(
     branchStateId?: string;
     commitId: string;
     workingStateHash?: string;
+    sourceSnapshotHash?: string;
   },
 ) {
   if (args.branchStateId) {
-    return args.workingStateHash
+    return args.sourceSnapshotHash
       ? ctx.db
           .query("revisions")
-          .withIndex("by_branch_state_working", (q: any) =>
+          .withIndex("by_branch_state_snapshot", (q: any) =>
             q
               .eq("branchStateId", args.branchStateId)
               .eq("commitId", args.commitId)
-              .eq("workingStateHash", args.workingStateHash),
+              .eq("sourceSnapshotHash", args.sourceSnapshotHash),
           )
       : ctx.db
           .query("revisions")
           .withIndex("by_branch_state_commit", (q: any) =>
             q.eq("branchStateId", args.branchStateId).eq("commitId", args.commitId),
           )
-          .filter((q: any) => q.eq(q.field("workingStateHash"), undefined));
+          .filter((q: any) => q.eq(q.field("sourceSnapshotHash"), undefined));
   }
 
   const legacyQuery = args.workingStateHash
@@ -98,16 +99,31 @@ export const findRevision = internalQuery({
     branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
     workingStateHash: v.optional(v.string()),
+    sourceSnapshotHash: v.optional(v.string()),
     artifactFingerprint: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await assertMatchingBranchState(ctx, args);
-    const baseQuery = queryRevisionIdentity(ctx, args);
+    let existing = args.artifactFingerprint
+      ? await queryRevisionIdentity(ctx, args)
+          .filter((q: any) => q.eq(q.field("artifactFingerprint"), args.artifactFingerprint))
+          .first()
+      : await queryRevisionIdentity(ctx, args).first();
 
-    if (args.artifactFingerprint) {
-      return await baseQuery.filter((q: any) => q.eq(q.field("artifactFingerprint"), args.artifactFingerprint)).first();
+    if (!existing && args.branchStateId && args.sourceSnapshotHash) {
+      const fallbackQuery = ctx.db
+        .query("revisions")
+        .withIndex("by_branch_state_working", (q: any) =>
+          q
+            .eq("branchStateId", args.branchStateId)
+            .eq("commitId", args.commitId)
+            .eq("workingStateHash", args.sourceSnapshotHash),
+        );
+      existing = args.artifactFingerprint
+        ? await fallbackQuery.filter((q: any) => q.eq(q.field("artifactFingerprint"), args.artifactFingerprint)).first()
+        : await fallbackQuery.first();
     }
-    return await baseQuery.first();
+    return existing;
   },
 });
 
@@ -121,6 +137,7 @@ export const createRevision = internalMutation({
     branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
     workingStateHash: v.optional(v.string()),
+    sourceSnapshotHash: v.optional(v.string()),
     artifactFingerprint: v.optional(v.string()),
     revisionFsStorageId: v.id("_storage"),
     bundleStorageId: v.id("_storage"),
@@ -140,11 +157,25 @@ export const createRevision = internalMutation({
   handler: async (ctx, args) => {
     await assertMatchingBranchState(ctx, args);
     // Check if revision already exists
-    const baseQuery = queryRevisionIdentity(ctx, args);
+    let existing = args.artifactFingerprint
+      ? await queryRevisionIdentity(ctx, args)
+          .filter((q: any) => q.eq(q.field("artifactFingerprint"), args.artifactFingerprint))
+          .first()
+      : await queryRevisionIdentity(ctx, args).first();
 
-    const existing = args.artifactFingerprint
-      ? await baseQuery.filter((q: any) => q.eq(q.field("artifactFingerprint"), args.artifactFingerprint)).first()
-      : await baseQuery.first();
+    if (!existing && args.branchStateId && args.sourceSnapshotHash) {
+      const fallbackQuery = ctx.db
+        .query("revisions")
+        .withIndex("by_branch_state_working", (q: any) =>
+          q
+            .eq("branchStateId", args.branchStateId)
+            .eq("commitId", args.commitId)
+            .eq("workingStateHash", args.sourceSnapshotHash),
+        );
+      existing = args.artifactFingerprint
+        ? await fallbackQuery.filter((q: any) => q.eq(q.field("artifactFingerprint"), args.artifactFingerprint)).first()
+        : await fallbackQuery.first();
+    }
 
     if (existing) {
       const patch: {
@@ -156,6 +187,7 @@ export const createRevision = internalMutation({
         manifestStorageId?: typeof args.manifestStorageId;
         compilerVersion?: typeof args.compilerVersion;
         sourceFingerprint?: typeof args.sourceFingerprint;
+        sourceSnapshotHash?: typeof args.sourceSnapshotHash;
         compileMode?: typeof args.compileMode;
         capabilities?: typeof args.capabilities;
         skills?: typeof args.skills;
@@ -188,6 +220,9 @@ export const createRevision = internalMutation({
       if (args.sourceFingerprint && !existing.sourceFingerprint) {
         patch.sourceFingerprint = args.sourceFingerprint;
       }
+      if (args.sourceSnapshotHash && !existing.sourceSnapshotHash) {
+        patch.sourceSnapshotHash = args.sourceSnapshotHash;
+      }
       if (args.compileMode && !existing.compileMode) {
         patch.compileMode = args.compileMode;
       }
@@ -219,6 +254,7 @@ export const createRevision = internalMutation({
       branchStateId: args.branchStateId,
       commitId: args.commitId,
       workingStateHash: args.workingStateHash,
+      sourceSnapshotHash: args.sourceSnapshotHash,
       artifactFingerprint: args.artifactFingerprint,
       revisionFsStorageId: args.revisionFsStorageId,
       bundleStorageId: args.bundleStorageId,

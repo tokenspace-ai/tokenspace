@@ -15,7 +15,6 @@ export type WorkspaceContextType = {
   isMainBranchState: boolean;
   branchId: Id<"branches"> | undefined;
   branchName: string;
-  workingStateHash: string | undefined;
   revisionId: Id<"revisions"> | undefined;
   slug: string; // The full slug from URL
 };
@@ -33,7 +32,7 @@ export function useWorkspaceContext(): WorkspaceContextType {
     throw new Error("useWorkspaceContext must be used within a workspace route");
   }
 
-  const { workspaceSlug, branchName, workingStateHash, revisionId } = parseWorkspaceSlug(slug);
+  const { workspaceSlug, branchName, revisionId } = parseWorkspaceSlug(slug);
   const workspaceContext = useQuery(api.workspace.resolveWorkspaceContext, { slug });
 
   if (!workspaceContext) {
@@ -50,7 +49,6 @@ export function useWorkspaceContext(): WorkspaceContextType {
     isMainBranchState: workspaceContext.branchState?.isMain ?? branchName === "main",
     branchId: workspaceContext.branch?._id,
     branchName: workspaceContext.branchState?.name ?? workspaceContext.branch?.name ?? branchName,
-    workingStateHash: workspaceContext.workingStateHash ?? workingStateHash,
     revisionId:
       (workspaceContext.revisionId as Id<"revisions"> | undefined) ?? (revisionId as Id<"revisions"> | undefined),
     slug,

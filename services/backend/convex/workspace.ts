@@ -1123,7 +1123,7 @@ export const resolveWorkspaceContext = query({
     const [contextSlug, revisionId] = args.slug.split("@");
     // Parse the slug: "workspace", "workspace:branch-state", "workspace:branch-state:legacy-hash"
     const parts = (contextSlug ?? "").split(":");
-    const [workspaceSlug, branchName, _workingStateHash] = parts;
+    const [workspaceSlug, branchName] = parts;
 
     if (!workspaceSlug && !revisionId) {
       throw new Error("Workspace slug is required");
@@ -1159,9 +1159,8 @@ export const resolveWorkspaceContext = query({
         },
         branchState,
         branch,
-        workingStateHash: revision.workingStateHash || undefined,
         revisionId: revision._id,
-        effectiveSlug: buildSlug(workspace.slug, branchState?.name ?? branch?.name, undefined, revision._id),
+        effectiveSlug: buildSlug(workspace.slug, branchState?.name ?? branch?.name, revision._id),
       };
     }
 
@@ -1237,7 +1236,6 @@ export const resolveWorkspaceContext = query({
       },
       branchState,
       branch,
-      workingStateHash: undefined,
       revisionId: workspace.activeRevisionId,
       // Computed slug for URL building
       effectiveSlug: buildSlug(resolvedWorkspaceSlug, branchState?.name ?? branch?.name),
@@ -1248,7 +1246,7 @@ export const resolveWorkspaceContext = query({
 /**
  * Build a slug string from components
  */
-function buildSlug(workspaceSlug: string, branchName?: string, _hash?: string, revisionId?: Id<"revisions">): string {
+function buildSlug(workspaceSlug: string, branchName?: string, revisionId?: Id<"revisions">): string {
   if (revisionId) return `${workspaceSlug}@${revisionId}`;
   if (branchName && branchName !== "main") return `${workspaceSlug}:${branchName}`;
   return workspaceSlug;

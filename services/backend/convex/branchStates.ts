@@ -288,7 +288,7 @@ async function getResolvedWorkingFiles(
   return resolved satisfies ResolvedWorkingFile[];
 }
 
-async function computeBranchStateWorkingStateHash(
+async function computeBranchStateSourceSnapshotHash(
   ctx: QueryCtx | MutationCtx | any,
   branchState: BranchStateDoc,
 ): Promise<string | undefined> {
@@ -1001,12 +1001,12 @@ export const getCurrentRevision = query({
       });
     }
 
-    const workingStateHash: string | undefined = await computeBranchStateWorkingStateHash(ctx, branchState);
+    const sourceSnapshotHash: string | undefined = await computeBranchStateSourceSnapshotHash(ctx, branchState);
     const revisionId: Id<"revisions"> | null = await ctx.runQuery(internal.compile.getRevision, {
       workspaceId: branchState.workspaceId,
       branchId: branchState.backingBranchId,
       branchStateId: branchState._id,
-      workingStateHash,
+      sourceSnapshotHash,
     });
     if (!revisionId) {
       return null;

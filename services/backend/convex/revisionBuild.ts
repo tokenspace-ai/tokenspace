@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { action, internalAction } from "./_generated/server";
 import { requireWorkspaceAdmin } from "./authz";
+import { computeWorkingStateHash } from "./workingStateHash";
 import { extractPromptMetadataFromEntries, getDefaultWorkspaceModels } from "./workspaceMetadata";
 
 type ArtifactName = "revisionFs" | "bundle" | "metadata" | "diagnostics" | "deps";
@@ -280,6 +281,7 @@ async function prepareRevisionFromBuildImpl(
     branchId: Id<"branches">;
     branchStateId?: Id<"branchStates">;
     workingStateHash?: string;
+    sourceSnapshotHash?: string;
     manifest: BuildManifestSummary;
   },
 ): Promise<PrepareResult> {
@@ -309,6 +311,7 @@ async function prepareRevisionFromBuildImpl(
     branchStateId: args.branchStateId,
     commitId: branch.commitId,
     workingStateHash: args.workingStateHash,
+    sourceSnapshotHash: args.sourceSnapshotHash,
     artifactFingerprint,
   });
 
@@ -360,6 +363,7 @@ async function commitRevisionFromBuildImpl(
     branchStateId?: Id<"branchStates">;
     commitId: Id<"commits">;
     workingStateHash?: string;
+    sourceSnapshotHash?: string;
     artifactFingerprint: string;
     manifest: BuildManifestSummary;
     artifacts: {
@@ -505,6 +509,7 @@ async function commitRevisionFromBuildImpl(
     branchStateId: args.branchStateId,
     commitId: args.commitId,
     workingStateHash: args.workingStateHash,
+    sourceSnapshotHash: args.sourceSnapshotHash,
     artifactFingerprint: args.artifactFingerprint,
   });
 
@@ -514,6 +519,7 @@ async function commitRevisionFromBuildImpl(
     branchStateId: args.branchStateId,
     commitId: args.commitId,
     workingStateHash: args.workingStateHash,
+    sourceSnapshotHash: args.sourceSnapshotHash,
     artifactFingerprint: args.artifactFingerprint,
     revisionFsStorageId,
     bundleStorageId,
@@ -558,12 +564,26 @@ async function commitRevisionFromBuildImpl(
   };
 }
 
+async function resolveLegacyWorkingStateHash(
+  ctx: any,
+  args: {
+    branchId: Id<"branches">;
+    userId: string;
+  },
+): Promise<string | undefined> {
+  const workingChanges = await ctx.runQuery(internal.fs.working.getChanges, {
+    branchId: args.branchId,
+    userId: args.userId,
+  });
+  return workingChanges.length > 0 ? computeWorkingStateHash(workingChanges) : undefined;
+}
+
 export const prepareRevisionFromBuild = action({
   args: {
     workspaceId: v.id("workspaces"),
     branchId: v.id("branches"),
     branchStateId: v.optional(v.id("branchStates")),
-    workingStateHash: v.optional(v.string()),
+    sourceSnapshotHash: v.optional(v.string()),
     manifest: vBuildManifestSummary,
   },
   returns: v.union(
@@ -582,8 +602,15 @@ export const prepareRevisionFromBuild = action({
     }),
   ),
   handler: async (ctx, args): Promise<PrepareResult> => {
-    await requireWorkspaceAdmin(ctx, args.workspaceId);
-    return await prepareRevisionFromBuildImpl(ctx, args);
+    const { user } = await requireWorkspaceAdmin(ctx, args.workspaceId);
+    const workingStateHash =
+      args.branchStateId === undefined
+        ? await resolveLegacyWorkingStateHash(ctx, { branchId: args.branchId, userId: user.subject })
+        : undefined;
+    return await prepareRevisionFromBuildImpl(ctx, {
+      ...args,
+      workingStateHash,
+    });
   },
 });
 
@@ -593,6 +620,7 @@ export const prepareRevisionFromBuildInternal = internalAction({
     branchId: v.id("branches"),
     branchStateId: v.optional(v.id("branchStates")),
     workingStateHash: v.optional(v.string()),
+    sourceSnapshotHash: v.optional(v.string()),
     manifest: vBuildManifestSummary,
   },
   returns: v.union(
@@ -621,7 +649,7 @@ export const commitRevisionFromBuild = action({
     branchId: v.id("branches"),
     branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
-    workingStateHash: v.optional(v.string()),
+    sourceSnapshotHash: v.optional(v.string()),
     artifactFingerprint: v.string(),
     manifest: vBuildManifestSummary,
     artifacts: v.object({
@@ -637,8 +665,15 @@ export const commitRevisionFromBuild = action({
     created: v.boolean(),
   }),
   handler: async (ctx, args): Promise<CommitResult> => {
-    await requireWorkspaceAdmin(ctx, args.workspaceId);
-    return await commitRevisionFromBuildImpl(ctx, args);
+    const { user } = await requireWorkspaceAdmin(ctx, args.workspaceId);
+    const workingStateHash =
+      args.branchStateId === undefined
+        ? await resolveLegacyWorkingStateHash(ctx, { branchId: args.branchId, userId: user.subject })
+        : undefined;
+    return await commitRevisionFromBuildImpl(ctx, {
+      ...args,
+      workingStateHash,
+    });
   },
 });
 
@@ -649,6 +684,7 @@ export const commitRevisionFromBuildInternal = internalAction({
     branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
     workingStateHash: v.optional(v.string()),
+    sourceSnapshotHash: v.optional(v.string()),
     artifactFingerprint: v.string(),
     manifest: vBuildManifestSummary,
     artifacts: v.object({

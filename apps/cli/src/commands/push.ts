@@ -8,7 +8,6 @@ import {
   exitWithError,
   getAllFilesInTree,
   getCommit,
-  getCurrentWorkingStateHash,
   getDefaultBranch,
   getFileContent,
   getWorkspaceBySlug,
@@ -178,7 +177,6 @@ export async function push(options: PushOptions): Promise<void> {
     console.log(pc.green(`Synced ${changesCount} source change(s) to ${linked.workspaceSlug}/${branch.name}`));
   }
 
-  const workingStateHash = (await getCurrentWorkingStateHash(workspace._id, branch._id)) ?? undefined;
   const buildDir = path.resolve(resolvedDir, DEFAULT_BUILD_DIR);
 
   console.log();
@@ -192,7 +190,6 @@ export async function push(options: PushOptions): Promise<void> {
     workspaceId: workspace._id,
     branchId: branch._id,
     buildDir,
-    workingStateHash,
   });
   const revisionUrl = buildRevisionUrl(linked.workspaceSlug, revision.revisionId);
 

@@ -235,7 +235,7 @@ describe("Branch states", () => {
     const updatedDraft = await getBranchState(draft._id);
     const revision = (await backend.runFunction(getFunctionName(internal.revisions.getRevision), {
       revisionId,
-    })) as { _id: string; branchStateId?: string } | null;
+    })) as { _id: string; branchStateId?: string; sourceSnapshotHash?: string } | null;
     const branch = (await backend.runFunction(getFunctionName(internal.vcs.getBranchInternal), {
       branchId: draft.backingBranchId,
     })) as { commitId: string } | null;
@@ -246,17 +246,17 @@ describe("Branch states", () => {
       content?: string;
       isDeleted: boolean;
     }>;
-    const workingStateHash = computeWorkingStateHash(workingChanges);
+    const sourceSnapshotHash = computeWorkingStateHash(workingChanges);
     const branchStateRevision = (await backend.runFunction(getFunctionName(internal.revisions.findRevision), {
       branchId: draft.backingBranchId,
       branchStateId: draft._id,
       commitId: branch!.commitId,
-      workingStateHash,
+      sourceSnapshotHash,
     })) as { _id: string } | null;
     const legacyRevision = (await backend.runFunction(getFunctionName(internal.revisions.findRevision), {
       branchId: draft.backingBranchId,
       commitId: branch!.commitId,
-      workingStateHash,
+      workingStateHash: sourceSnapshotHash,
     })) as { _id: string } | null;
     const deduped = (await backend.runFunction(getFunctionName(internal.compile.enqueueBranchCompile), {
       workspaceId: workspace.workspaceId,
@@ -270,6 +270,7 @@ describe("Branch states", () => {
 
     expect(updatedDraft?.lastCompiledRevisionId).toBe(revisionId);
     expect(revision?.branchStateId).toBe(draft._id);
+    expect(revision?.sourceSnapshotHash).toBe(sourceSnapshotHash);
     expect(branchStateRevision?._id).toBe(revisionId);
     expect(legacyRevision).toBeNull();
     expect(deduped.existingRevisionId).toBe(revisionId);
