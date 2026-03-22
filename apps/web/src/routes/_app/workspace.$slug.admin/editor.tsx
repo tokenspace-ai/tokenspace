@@ -844,7 +844,6 @@ function WorkspacePage() {
       id: b._id,
       name: b.name,
       isDefault: b.isMain,
-      commitId: b.backingBranchId,
     })) ?? [];
 
   const selectedRevisionId = compileResult?.revisionId ?? currentBranchState?.lastCompiledRevisionId ?? null;

@@ -4,7 +4,7 @@ import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
 import { useQuery } from "convex/react";
 import { Loader2 } from "lucide-react";
 import { createContext, useContext } from "react";
-import { useWorkspaceContext } from "@/routes/_app/workspace.$slug";
+import { useWorkspaceContext } from "@/routes/_app/workspace.$slug._app/route";
 import { buttonVariants } from "./ui/button";
 
 const WorkspaceRevisionContext = createContext<{ revisionId: Id<"revisions"> }>({ revisionId: null as any });

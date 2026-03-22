@@ -404,24 +404,22 @@ export function exitWithError(message: string): never {
 }
 
 export async function getCurrentWorkingStateHash(
-  workspaceId: Id<"workspaces">,
+  _workspaceId: Id<"workspaces">,
   branchId: Id<"branches">,
 ): Promise<string | null> {
   const c = await getClient();
-  return await c.query(api.workspace.getCurrentWorkingStateHash, {
-    workspaceId,
+  return await c.query(api.fs.working.getCurrentStateHash, {
     branchId,
   });
 }
 
 export async function getWorkspaceRevision(
-  workspaceId: Id<"workspaces">,
+  _workspaceId: Id<"workspaces">,
   branchId: Id<"branches">,
   workingStateHash?: string,
 ): Promise<Id<"revisions"> | null> {
   const c = await getClient();
-  return await c.query(api.workspace.getRevision, {
-    workspaceId,
+  return await c.query(api.fs.revision.getCurrentRevisionIdForBranch, {
     branchId,
     workingStateHash,
   });

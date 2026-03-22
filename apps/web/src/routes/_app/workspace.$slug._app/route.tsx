@@ -9,20 +9,43 @@ import { ChatCommandMenuProvider } from "@/components/chat-command-menu/chat-com
 import type { RevisionState, Workspace } from "@/components/sidebar-workspace-selector";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { WorkspaceRevisionProvider } from "@/components/workspace-revision";
-import { replaceWorkspaceSlugInPath } from "@/lib/workspace-slug";
-import { useWorkspaceContext } from "../workspace.$slug";
+import { normalizeMemberWorkspaceSlug, replaceWorkspaceSlugInPath } from "@/lib/workspace-slug";
 
 export const Route = createFileRoute("/_app/workspace/$slug/_app")({
   component: WorkspaceAppLayout,
 });
 
-// Re-export for child routes
-export { useWorkspaceContext } from "../workspace.$slug";
+export function useWorkspaceContext() {
+  const params = useParams({ strict: false }) as { slug?: string };
+  const slug = params.slug ?? "";
+  const normalizedSlug = normalizeMemberWorkspaceSlug(slug);
+  const workspaceContext = useQuery(api.workspace.resolveWorkspaceContext, { slug: normalizedSlug });
+
+  if (!workspaceContext) {
+    throw new Error("Workspace context not loaded yet");
+  }
+
+  return {
+    workspaceId: workspaceContext.workspace._id,
+    workspaceSlug: workspaceContext.workspace.slug,
+    workspaceName: workspaceContext.workspace.name,
+    workspaceRole: workspaceContext.workspace.role,
+    branchStateId: workspaceContext.branchState?._id,
+    branchStateName: workspaceContext.branchState?.name ?? workspaceContext.branch?.name ?? "main",
+    isMainBranchState: workspaceContext.branchState?.isMain ?? true,
+    branchId: workspaceContext.branch?._id,
+    branchName: workspaceContext.branchState?.name ?? workspaceContext.branch?.name ?? "main",
+    workingStateHash: workspaceContext.workingStateHash,
+    revisionId: (workspaceContext.revisionId as Id<"revisions"> | undefined) ?? undefined,
+    slug: normalizedSlug,
+  };
+}
 
 function WorkspaceAppLayout() {
   const navigate = useNavigate();
   const params = useParams({ strict: false }) as { slug?: string; chatId?: string };
   const slug = params.slug ?? "";
+  const normalizedSlug = normalizeMemberWorkspaceSlug(slug);
   const currentChatId = params.chatId as Id<"chats"> | undefined;
   const { user, signOut } = useAuth();
 
@@ -30,7 +53,7 @@ function WorkspaceAppLayout() {
 
   // Fetch workspaces
   const workspacesData = useQuery(api.workspace.list);
-  const workspaceContext = useQuery(api.workspace.resolveWorkspaceContext, { slug });
+  const workspaceContext = useQuery(api.workspace.resolveWorkspaceContext, { slug: normalizedSlug });
 
   const workspaces: Workspace[] = (workspacesData ?? []).map((w) => ({
     id: w._id,
@@ -39,7 +62,7 @@ function WorkspaceAppLayout() {
     iconUrl: w.iconUrl,
   }));
 
-  const revisionState: RevisionState = workspaceContext?.workspace?.activeRevisionId ? "ready" : "pending";
+  const revisionState: RevisionState = revisionId ? "ready" : "pending";
 
   const navigateToSlug = useCallback(
     (nextSlug: string, options?: { replace?: boolean }) => {
@@ -123,7 +146,7 @@ function WorkspaceAppLayout() {
 
   return (
     <SidebarProvider>
-      <ChatCommandMenuProvider threads={sortedThreads} workspaceSlug={slug}>
+      <ChatCommandMenuProvider threads={sortedThreads} workspaceSlug={currentWorkspaceSlug}>
         <AppSidebar
           workspaces={workspaces}
           workspaceId={workspaceId}

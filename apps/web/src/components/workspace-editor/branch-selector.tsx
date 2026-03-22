@@ -13,7 +13,6 @@ export type Branch = {
   id: string;
   name: string;
   isDefault: boolean;
-  commitId: string;
 };
 
 interface BranchSelectorProps {

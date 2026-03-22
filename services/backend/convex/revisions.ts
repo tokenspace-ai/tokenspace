@@ -12,6 +12,30 @@ import {
   vWorkspaceModelDefinition,
 } from "./workspaceMetadata";
 
+async function assertMatchingBranchState(
+  ctx: any,
+  args: {
+    branchId: string;
+    branchStateId?: string;
+    workspaceId?: string;
+  },
+) {
+  if (!args.branchStateId) {
+    return;
+  }
+
+  const branchState = await ctx.db.get(args.branchStateId);
+  if (!branchState) {
+    throw new Error("Branch state not found");
+  }
+  if (branchState.backingBranchId !== args.branchId) {
+    throw new Error("Branch state does not match branch");
+  }
+  if (args.workspaceId && branchState.workspaceId !== args.workspaceId) {
+    throw new Error("Branch state does not match workspace");
+  }
+}
+
 function queryRevisionIdentity(
   ctx: any,
   args: {
@@ -77,6 +101,7 @@ export const findRevision = internalQuery({
     artifactFingerprint: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await assertMatchingBranchState(ctx, args);
     const baseQuery = queryRevisionIdentity(ctx, args);
 
     if (args.artifactFingerprint) {
@@ -113,6 +138,7 @@ export const createRevision = internalMutation({
     models: v.optional(v.array(vWorkspaceModelDefinition)),
   },
   handler: async (ctx, args) => {
+    await assertMatchingBranchState(ctx, args);
     // Check if revision already exists
     const baseQuery = queryRevisionIdentity(ctx, args);
 

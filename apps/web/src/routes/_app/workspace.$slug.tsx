@@ -58,19 +58,5 @@ export function useWorkspaceContext(): WorkspaceContextType {
 }
 
 function WorkspaceLayout() {
-  const { slug } = Route.useParams();
-
-  // Resolve workspace context from backend
-  const workspaceContext = useQuery(api.workspace.resolveWorkspaceContext, { slug });
-
-  // Loading state
-  if (!workspaceContext) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-muted-foreground">Loading tokenspace...</div>
-      </div>
-    );
-  }
-
   return <Outlet />;
 }

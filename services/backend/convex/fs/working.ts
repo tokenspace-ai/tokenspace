@@ -10,6 +10,7 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { action, internalMutation, internalQuery, mutation, query } from "../_generated/server";
 import { requireAuthenticatedUser, requireWorkspaceAdmin, requireWorkspaceMember } from "../authz";
+import { computeWorkingStateHash } from "../workingStateHash";
 import { resolveFileDownloadUrl, resolveInlineContent, storeFileContent } from "./fileBlobs";
 
 async function resolveWorkingFiles(
@@ -530,6 +531,31 @@ export const getAll = query({
       resolved.push({ ...file, content, downloadUrl });
     }
     return resolved;
+  },
+});
+
+export const getCurrentStateHash = query({
+  args: {
+    branchId: v.id("branches"),
+  },
+  handler: async (ctx, args) => {
+    const branch = await ctx.db.get(args.branchId);
+    if (!branch) {
+      throw new Error("Branch not found");
+    }
+    const { user } = await requireWorkspaceMember(ctx, branch.workspaceId);
+
+    const files = await ctx.db
+      .query("workingFiles")
+      .withIndex("by_branch_user", (q) => q.eq("branchId", args.branchId).eq("userId", user.subject))
+      .collect();
+
+    if (files.length === 0) {
+      return null;
+    }
+
+    const changes = await resolveWorkingChanges(ctx, files);
+    return computeWorkingStateHash(changes);
   },
 });
 

@@ -67,6 +67,11 @@ export function buildWorkspaceSlug(workspace: string, branch?: string, _hash?: s
   return workspace;
 }
 
+export function normalizeMemberWorkspaceSlug(slug: string): string {
+  const { workspaceSlug, revisionId } = parseWorkspaceSlug(slug);
+  return buildWorkspaceSlug(workspaceSlug, undefined, undefined, revisionId);
+}
+
 /**
  * Check if a slug includes a working state hash.
  */

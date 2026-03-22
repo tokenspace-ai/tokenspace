@@ -34,6 +34,7 @@ import {
   parseExecutorUnavailablePayload,
 } from "@/lib/executor-unavailable";
 import { cn } from "@/lib/utils";
+import { normalizeMemberWorkspaceSlug } from "@/lib/workspace-slug";
 
 type PlaygroundSearchParams = {
   code?: string;
@@ -85,11 +86,12 @@ const DEFAULT_TIMEOUT_MS = 300000; // 5 minutes
 
 function WorkspacePlaygroundPage() {
   const { slug } = Route.useParams();
+  const normalizedSlug = normalizeMemberWorkspaceSlug(slug);
   const searchParams = Route.useSearch();
   const navigate = useNavigate();
 
   // Resolve workspace context from backend
-  const workspaceContext = useQuery(api.workspace.resolveWorkspaceContext, { slug });
+  const workspaceContext = useQuery(api.workspace.resolveWorkspaceContext, { slug: normalizedSlug });
   const revisionId = ((workspaceContext?.revisionId as Id<"revisions"> | undefined) ?? null) as Id<"revisions"> | null;
 
   // Language selection - prefer URL param, then localStorage
@@ -184,7 +186,9 @@ function WorkspacePlaygroundPage() {
     const previousRevisionId = previousRevisionIdRef.current;
     previousRevisionIdRef.current = revisionId;
 
-    if (previousRevisionId !== undefined && previousRevisionId !== revisionId) {
+    const isInitialRevisionHydration = previousRevisionId === null && revisionId !== null && sessionFromUrlRef.current;
+
+    if (previousRevisionId !== undefined && !isInitialRevisionHydration && previousRevisionId !== revisionId) {
       sessionFromUrlRef.current = false;
       setSessionId(null);
     }
@@ -432,6 +436,19 @@ function WorkspacePlaygroundPage() {
         <div className="flex items-center gap-3 text-muted-foreground">
           <Loader2Icon className="size-5 animate-spin" />
           <span>Loading tokenspace...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!revisionId) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="max-w-sm text-center text-muted-foreground">
+          <p className="text-sm">No published revision is available for this workspace yet.</p>
+          <p className="mt-2 text-xs">
+            An admin needs to compile and publish a revision before playground is available.
+          </p>
         </div>
       </div>
     );

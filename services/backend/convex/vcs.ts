@@ -805,24 +805,10 @@ async function mergeBranchesHandler(
     return { type: "fast-forward" as const, commitId: sourceBranch.commitId };
   }
 
-  // For non-fast-forward merges, create a merge commit
-  // This is a simplified version - real merge would need conflict resolution
-  const mergeTreeId = sourceCommit.treeId; // Use source tree for now
-
-  const mergeCommitId = await ctx.db.insert("commits", {
-    workspaceId: targetBranch.workspaceId,
-    parentId: targetBranch.commitId,
-    treeId: mergeTreeId,
-    message: `Merge branch '${sourceBranch.name}' into '${targetBranch.name}'`,
-    authorId: args.authorId,
-    createdAt: Date.now(),
-  });
-
-  await ctx.db.patch(args.targetBranchId, {
-    commitId: mergeCommitId,
-  });
-
-  return { type: "merge-commit" as const, commitId: mergeCommitId };
+  throw new Error(
+    `Non-fast-forward merge rejected: cannot auto-merge '${sourceBranch.name}' into '${targetBranch.name}' ` +
+      `(sourceCommitId=${sourceBranch.commitId}, targetCommitId=${targetBranch.commitId})`,
+  );
 }
 
 // ============================================================================
