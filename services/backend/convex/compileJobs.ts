@@ -149,6 +149,7 @@ export const createCompileJob = internalMutation({
   args: {
     workspaceId: v.id("workspaces"),
     branchId: v.id("branches"),
+    branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
     workingStateHash: v.optional(v.string()),
     userId: v.optional(v.string()),
@@ -165,6 +166,7 @@ export const createCompileJob = internalMutation({
     return await ctx.db.insert("compileJobs", {
       workspaceId: args.workspaceId,
       branchId: args.branchId,
+      branchStateId: args.branchStateId,
       commitId: args.commitId,
       workingStateHash: args.workingStateHash,
       userId: args.userId,
@@ -591,6 +593,15 @@ export const completeCompileJob = mutation({
       artifactFingerprint: args.artifactFingerprint ?? revision?.artifactFingerprint,
       completedAt: Date.now(),
     });
+    if (job.branchStateId) {
+      const branchState = await ctx.db.get(job.branchStateId);
+      if (branchState) {
+        await ctx.db.patch(job.branchStateId, {
+          lastCompiledRevisionId: args.revisionId,
+          updatedAt: Date.now(),
+        });
+      }
+    }
   },
 });
 

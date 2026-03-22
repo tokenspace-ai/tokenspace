@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { FileTree, type FileTreeNode } from "@/components/workspace-editor";
 import { useTheme } from "@/lib/theme";
-import { parseWorkspaceSlug } from "@/lib/workspace-slug";
+import { useWorkspaceContext } from "../workspace.$slug";
 
 type RevisionBuildDetails = {
   revisionId: Id<"revisions">;
@@ -87,8 +87,7 @@ function getLanguageFromPath(path: string): string {
 }
 
 function SandboxExplorerPage() {
-  const { slug } = Route.useParams();
-  const { workspaceSlug, branchName: urlBranchName } = parseWorkspaceSlug(slug);
+  const { slug, workspaceSlug, branchStateId } = useWorkspaceContext();
   const { resolvedTheme } = useTheme();
 
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -96,22 +95,7 @@ function SandboxExplorerPage() {
 
   // Fetch workspace data
   const workspace = useQuery(api.workspace.getBySlug, { slug: workspaceSlug });
-  const branches = useQuery(api.vcs.listBranches, workspace ? { workspaceId: workspace._id } : "skip");
-  const defaultBranch = useQuery(api.vcs.getDefaultBranch, workspace ? { workspaceId: workspace._id } : "skip");
-
-  // Find the current branch
-  const currentBranch = useMemo(() => {
-    if (!branches) return undefined;
-    const branchByName = branches.find((b) => b.name === urlBranchName);
-    if (branchByName) return branchByName;
-    return defaultBranch ?? branches.find((b) => b.isDefault);
-  }, [branches, urlBranchName, defaultBranch]);
-
-  // Get revision for the current branch
-  const revision = useQuery(
-    api.fs.revision.getRevisionByBranchCommit,
-    currentBranch ? { branchId: currentBranch._id, commitId: currentBranch.commitId } : "skip",
-  );
+  const revision = useQuery(api.branchStates.getCurrentRevision, branchStateId ? { branchStateId } : "skip");
 
   const ensureRevisionFilesMaterialized = useAction(api.fs.operations.ensureMaterialized);
   const getRevisionBuildDetails = useAction(api.compile.getRevisionBuildDetails);
@@ -247,7 +231,7 @@ function SandboxExplorerPage() {
   }
 
   // Show message if no revision exists
-  if (branches && branches.length > 0 && !revision) {
+  if (branchStateId && !revision) {
     return (
       <div className="flex flex-col flex-1 bg-background">
         <div className="flex-1 flex items-center justify-center">
@@ -273,8 +257,8 @@ function SandboxExplorerPage() {
     );
   }
 
-  // Show message if tokenspace has no branches
-  if (branches && branches.length === 0) {
+  // Show message if tokenspace has no branch state yet
+  if (!branchStateId) {
     return (
       <div className="flex flex-col flex-1 bg-background">
         <div className="flex-1 flex items-center justify-center">

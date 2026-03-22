@@ -336,6 +336,23 @@ export default defineSchema({
     .index("by_workspace", ["workspaceId"])
     .index("by_name", ["workspaceId", "name"]),
 
+  branchStates: defineTable({
+    workspaceId: v.id("workspaces"),
+    name: v.string(),
+    isMain: v.boolean(),
+    backingBranchId: v.id("branches"),
+    workingOwnerKey: v.string(),
+    createdByUserId: v.string(),
+    lastCompiledRevisionId: v.optional(v.id("revisions")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    archivedAt: v.optional(v.number()),
+  })
+    .index("by_workspace", ["workspaceId"])
+    .index("by_name", ["workspaceId", "name"])
+    .index("by_workspace_main", ["workspaceId", "isMain"])
+    .index("by_backing_branch", ["backingBranchId"]),
+
   // Trees - directory structure snapshots (content-addressed)
   trees: defineTable({
     workspaceId: v.id("workspaces"),
@@ -558,6 +575,7 @@ export default defineSchema({
   compileJobs: defineTable({
     workspaceId: v.id("workspaces"),
     branchId: v.id("branches"),
+    branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
     workingStateHash: v.optional(v.string()),
     userId: v.optional(v.string()),

@@ -2,7 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { api } from "@tokenspace/backend/convex/_generated/api";
 import { useQuery } from "convex/react";
 import { WorkspaceCredentialsSettings } from "@/components/workspace-settings/workspace-credentials-settings";
-import { parseWorkspaceSlug } from "@/lib/workspace-slug";
 import { useWorkspaceContext } from "../workspace.$slug";
 
 export const Route = createFileRoute("/_app/workspace/$slug/admin/credentials")({
@@ -11,14 +10,9 @@ export const Route = createFileRoute("/_app/workspace/$slug/admin/credentials")(
 });
 
 function CredentialsPage() {
-  const { workspaceId, branchId, workingStateHash, slug } = useWorkspaceContext();
-  const { workspaceSlug } = parseWorkspaceSlug(slug);
+  const { workspaceId, workspaceSlug, branchStateId } = useWorkspaceContext();
   const workspace = useQuery(api.workspace.getBySlug, { slug: workspaceSlug });
-  const revisionId = useQuery(api.workspace.getRevision, {
-    workspaceId,
-    branchId: branchId ?? undefined,
-    workingStateHash,
-  });
+  const revision = useQuery(api.branchStates.getCurrentRevision, branchStateId ? { branchStateId } : "skip");
 
   if (workspace === undefined) {
     return (
@@ -48,7 +42,7 @@ function CredentialsPage() {
 
         <WorkspaceCredentialsSettings
           workspaceId={workspaceId}
-          revisionId={revisionId ?? null}
+          revisionId={revision?._id ?? null}
           isWorkspaceAdmin={workspace.role === "workspace_admin"}
         />
       </div>

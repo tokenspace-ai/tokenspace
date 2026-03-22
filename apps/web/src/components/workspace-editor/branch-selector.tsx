@@ -44,9 +44,9 @@ export function BranchSelector({
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" className={cn("gap-2", className)}>
           <GitBranch className="size-4" />
-          <span className="truncate max-w-[120px]">{currentBranch?.name ?? "Select branch"}</span>
+          <span className="truncate max-w-[120px]">{currentBranch?.name ?? "Select branch state"}</span>
           {currentBranch?.isDefault && (
-            <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded">default</span>
+            <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded">main</span>
           )}
           <ChevronDown className="size-3 opacity-50" />
         </Button>
@@ -74,16 +74,16 @@ export function BranchSelector({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" side="right" className="w-48">
-                  {onMergeBranch && branch.id !== currentBranchId && (
+                  {onMergeBranch && !branch.isDefault && (
                     <DropdownMenuItem onClick={() => onMergeBranch(branch.id)}>
                       <GitMerge className="size-4 mr-2" />
-                      Merge into current
+                      Merge into main
                     </DropdownMenuItem>
                   )}
                   {onSetDefaultBranch && !branch.isDefault && (
                     <DropdownMenuItem onClick={() => onSetDefaultBranch(branch.id)}>
                       <Star className="size-4 mr-2" />
-                      Set as default
+                      Set as main
                     </DropdownMenuItem>
                   )}
                   {(onMergeBranch || onSetDefaultBranch) && onDeleteBranch && !branch.isDefault && (
@@ -96,7 +96,7 @@ export function BranchSelector({
                       disabled={branch.isDefault}
                     >
                       <Trash2 className="size-4 mr-2" />
-                      Delete branch
+                      Delete branch state
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>
@@ -107,7 +107,7 @@ export function BranchSelector({
         {branches.length > 0 && <DropdownMenuSeparator />}
         <DropdownMenuItem onClick={onCreateBranch} className="gap-2">
           <Plus className="size-4" />
-          Create new branch
+          Create draft state
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

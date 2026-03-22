@@ -11,6 +11,7 @@ import {
   stripLeadingMarkdownFrontmatter,
 } from "./capabilityExplorer";
 import { loadFileContent, resolveInlineContent } from "./fs/fileBlobs";
+import type { CapabilitySummary } from "./workspaceMetadata";
 
 /**
  * Run code in the playground without requiring a thread context.
@@ -287,7 +288,7 @@ export const getCapabilityExplorerForRevision = action({
 
     const capabilities = revision.capabilities ?? [];
     const entries = await Promise.all(
-      capabilities.map(async (capability) => {
+      capabilities.map(async (capability: CapabilitySummary) => {
         const namespace = getCapabilityNamespace(capability);
         const [markdownEntry, declarationEntry, svgIconEntry, pngIconEntry] = await Promise.all([
           ctx.runQuery(internal.fs.revision.readFileAtPath, {
@@ -340,7 +341,7 @@ export const getCapabilityExplorerForRevision = action({
       }),
     );
 
-    return entries.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+    return entries.filter((entry: CapabilityExplorerEntry | null): entry is CapabilityExplorerEntry => entry !== null);
   },
 });
 

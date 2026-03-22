@@ -23,6 +23,7 @@ import type * as ai_tools from "../ai/tools.js";
 import type * as approvals from "../approvals.js";
 import type * as auth from "../auth.js";
 import type * as authz from "../authz.js";
+import type * as branchStates from "../branchStates.js";
 import type * as capabilityExplorer from "../capabilityExplorer.js";
 import type * as compile from "../compile.js";
 import type * as compileJobs from "../compileJobs.js";
@@ -77,6 +78,7 @@ declare const fullApi: ApiFromModules<{
   approvals: typeof approvals;
   auth: typeof auth;
   authz: typeof authz;
+  branchStates: typeof branchStates;
   capabilityExplorer: typeof capabilityExplorer;
   compile: typeof compile;
   compileJobs: typeof compileJobs;

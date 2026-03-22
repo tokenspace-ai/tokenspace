@@ -1,7 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { api } from "@tokenspace/backend/convex/_generated/api";
 import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
-import { useAuth } from "@workos/authkit-tanstack-react-start/client";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Eye, FilePlus, FolderPlus, GitBranch, GitCommitHorizontal, Package, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -31,7 +30,8 @@ import {
   MergeDialog,
   WorkspaceEditor,
 } from "@/components/workspace-editor";
-import { buildWorkspaceSlug, getInvalidBranchNameReason, parseWorkspaceSlug } from "@/lib/workspace-slug";
+import { buildWorkspaceSlug } from "@/lib/workspace-slug";
+import { useWorkspaceContext } from "../workspace.$slug";
 
 export const Route = createFileRoute("/_app/workspace/$slug/admin/editor")({
   component: WorkspacePage,
@@ -48,13 +48,8 @@ export const Route = createFileRoute("/_app/workspace/$slug/admin/editor")({
 });
 
 function WorkspacePage() {
-  const { slug } = Route.useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const userId = user?.id;
-
-  // Parse the slug to get workspace/branch info
-  const { workspaceSlug, branchName: urlBranchName } = parseWorkspaceSlug(slug);
+  const { workspaceSlug, branchStateId, branchId, branchStateName, isMainBranchState } = useWorkspaceContext();
 
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>("");
@@ -85,7 +80,6 @@ function WorkspacePage() {
   const [compileResult, setCompileResult] = useState<CompileResult | null>(null);
   const [compileError, setCompileError] = useState<string | null>(null);
   const [compileJobId, setCompileJobId] = useState<Id<"compileJobs"> | null>(null);
-  const [includeWorkingState, setIncludeWorkingState] = useState(false);
 
   // Track if we have unsaved local changes (for debounced save)
   const [hasLocalChanges, setHasLocalChanges] = useState(false);
@@ -94,39 +88,34 @@ function WorkspacePage() {
 
   // Fetch workspace data using the parsed workspace slug
   const workspace = useQuery(api.workspace.getBySlug, { slug: workspaceSlug });
-  const branches = useQuery(api.vcs.listBranches, workspace ? { workspaceId: workspace._id } : "skip");
-  const defaultBranch = useQuery(api.vcs.getDefaultBranch, workspace ? { workspaceId: workspace._id } : "skip");
+  const branchStates = useQuery(api.branchStates.list, workspace ? { workspaceId: workspace._id } : "skip");
+  const currentBranchState = useQuery(api.branchStates.get, branchStateId ? { branchStateId } : "skip");
+  const activeBranchId = (currentBranchState?.backingBranchId ?? branchId) as Id<"branches"> | undefined;
+  const currentBranch = useQuery(api.vcs.getBranch, activeBranchId ? { branchId: activeBranchId } : "skip");
 
-  // Check if workspace needs initialization (no branches exist)
-  const needsInitialization = branches !== undefined && branches.length === 0;
+  // Check if workspace needs initialization (no branch states exist yet because there are no branches)
+  const needsInitialization = branchStates !== undefined && branchStates.length === 0;
 
-  // Find the current branch based on URL parameter or default
-  const currentBranch = useMemo(() => {
-    if (!branches) return undefined;
-    // First try to find by URL branch name
-    const branchByName = branches.find((b) => b.name === urlBranchName);
-    if (branchByName) return branchByName;
-    // Fall back to default branch
-    return defaultBranch ?? branches.find((b) => b.isDefault);
-  }, [branches, urlBranchName, defaultBranch]);
-
-  const activeBranchId = currentBranch?._id as Id<"branches"> | undefined;
+  const navigateToBranchState = useCallback(
+    (name?: string, options?: { replace?: boolean }) => {
+      const nextSlug = buildWorkspaceSlug(workspaceSlug, name);
+      navigate({
+        to: "/workspace/$slug/admin/editor",
+        params: { slug: nextSlug },
+        replace: options?.replace,
+      });
+    },
+    [navigate, workspaceSlug],
+  );
 
   // Handler to change branch - navigates to new URL
   const handleBranchChange = useCallback(
-    (branchId: string | null) => {
-      if (!branchId || !branches) return;
-      const branch = branches.find((b) => b._id === branchId);
-      if (!branch) return;
-
-      // Build new slug with the selected branch
-      const newSlug = buildWorkspaceSlug(workspaceSlug, branch.name);
-      navigate({
-        to: "/workspace/$slug/admin/editor",
-        params: { slug: newSlug },
-      });
+    (nextBranchStateId: string) => {
+      const branchState = branchStates?.find((candidate) => candidate._id === nextBranchStateId);
+      if (!branchState) return;
+      navigateToBranchState(branchState.isMain ? undefined : branchState.name);
     },
-    [branches, workspaceSlug, navigate],
+    [branchStates, navigateToBranchState],
   );
   const currentCommit = useQuery(api.vcs.getCommit, currentBranch ? { commitId: currentBranch.commitId } : "skip");
 
@@ -140,28 +129,37 @@ function WorkspacePage() {
   );
 
   // Get working files from backend
-  const workingFiles = useQuery(api.fs.working.getAll, activeBranchId ? { branchId: activeBranchId } : "skip");
+  const workingFiles = useQuery(api.branchStates.getWorkingFiles, branchStateId ? { branchStateId } : "skip");
 
   // Get commit history
   const commitHistory = useQuery(api.vcs.listCommits, workspace ? { workspaceId: workspace._id, limit: 10 } : "skip");
 
   // Mutations
   const initializeWorkspaceMutation = useMutation(api.vcs.initializeWorkspace);
-  const createBranchMutation = useMutation(api.vcs.createBranch);
-  const mergeBranchMutation = useMutation(api.vcs.mergeBranch);
-  const deleteBranchMutation = useMutation(api.vcs.deleteBranch);
-  const setDefaultBranchMutation = useMutation(api.vcs.setDefaultBranch);
+  const ensureDraftFromMainMutation = useMutation(api.branchStates.ensureDraftFromMain);
+  const mergeBranchMutation = useMutation(api.branchStates.mergeIntoMain);
+  const deleteBranchMutation = useMutation(api.branchStates.deleteBranchState);
   const setActiveRevisionMutation = useMutation(api.workspace.setActiveRevision);
-  const discardWorkingFileMutation = useMutation(api.fs.working.discardChange);
-  const discardAllWorkingFilesMutation = useMutation(api.fs.working.discardAll);
+  const discardWorkingFileMutation = useMutation(api.branchStates.discardFile);
+  const discardAllWorkingFilesMutation = useMutation(api.branchStates.discardAll);
 
   // Actions
-  const saveWorkingFileAction = useAction(api.fs.working.save);
-  const createCommitAction = useAction(api.vcs.createCommit);
-  const compileBranchAction = useAction(api.compile.compileBranch);
+  const saveWorkingFileAction = useAction(api.branchStates.saveFile);
+  const createCommitAction = useAction(api.branchStates.createCommit);
+  const compileBranchAction = useAction(api.branchStates.compile);
   const compileJob = useQuery(
     api.compile.getCompileJob,
     workspace && compileJobId ? { workspaceId: workspace._id, compileJobId } : "skip",
+  );
+
+  const handleBranchStateRedirect = useCallback(
+    (result: { branchStateId: Id<"branchStates">; branchStateName: string; redirected: boolean }) => {
+      if (!result.redirected) {
+        return;
+      }
+      navigateToBranchState(result.branchStateName);
+    },
+    [navigateToBranchState],
   );
 
   // Create a map of working files for quick lookup
@@ -178,25 +176,27 @@ function WorkspacePage() {
   // Save file to backend (debounced)
   const saveToBackend = useCallback(
     async (path: string, content: string) => {
-      if (!workspace || !activeBranchId || !userId) return;
+      if (!branchStateId) return null;
 
       setIsSaving(true);
       try {
-        await saveWorkingFileAction({
-          workspaceId: workspace._id,
-          branchId: activeBranchId,
+        const result = await saveWorkingFileAction({
+          branchStateId,
           path,
           content,
         });
+        handleBranchStateRedirect(result);
         setHasLocalChanges(false);
+        return result;
       } catch (error) {
         console.error("Failed to save file:", error);
         toast.error("Failed to save file");
+        return null;
       } finally {
         setIsSaving(false);
       }
     },
-    [workspace, activeBranchId, userId, saveWorkingFileAction],
+    [branchStateId, handleBranchStateRedirect, saveWorkingFileAction],
   );
 
   const fetchTextFromUrl = useCallback(async (url: string, signal?: AbortSignal) => {
@@ -223,7 +223,7 @@ function WorkspacePage() {
 
   // Initialize workspace handler
   const handleInitialize = async () => {
-    if (!workspace || !userId) {
+    if (!workspace) {
       toast.error("Unable to initialize tokenspace");
       return;
     }
@@ -365,22 +365,29 @@ function WorkspacePage() {
 
   // Commit handler
   const handleCommit = async (message: string) => {
-    if (!workspace || !activeBranchId || !userId) {
+    if (!branchStateId) {
       toast.error("Unable to commit");
       return;
     }
 
+    let effectiveBranchStateId = branchStateId;
+
     // Save any pending changes first
     if (selectedPath && hasLocalChanges) {
-      await saveToBackend(selectedPath, fileContent);
+      const saveResult = await saveToBackend(selectedPath, fileContent);
+      if (saveResult) {
+        effectiveBranchStateId = saveResult.branchStateId;
+      }
     }
 
     try {
-      await createCommitAction({
-        workspaceId: workspace._id,
-        branchId: activeBranchId,
+      const result = await createCommitAction({
+        branchStateId: effectiveBranchStateId,
         message,
       });
+      if (result.branchStateName !== branchStateName || isMainBranchState) {
+        navigateToBranchState(result.branchStateName);
+      }
       toast.success("Changes committed successfully");
       setCompileResult(null);
       setCompileStatus("idle");
@@ -400,14 +407,15 @@ function WorkspacePage() {
 
   // Publish handler
   const handlePublish = async () => {
-    if (!workspace || !compileResult?.revisionId) {
+    const selectedRevisionId = compileResult?.revisionId ?? currentBranchState?.lastCompiledRevisionId;
+    if (!workspace || !selectedRevisionId) {
       toast.error("Compile a revision before publishing");
       return;
     }
     try {
       await setActiveRevisionMutation({
         workspaceId: workspace._id,
-        revisionId: compileResult.revisionId,
+        revisionId: selectedRevisionId,
       });
       toast.success("Revision published");
     } catch (error) {
@@ -419,29 +427,14 @@ function WorkspacePage() {
   // Create branch handler
   const handleCreateBranch = async () => {
     if (!workspace) return;
-    const name = prompt("Enter branch name:");
-    if (!name) return;
-    const invalidBranchReason = getInvalidBranchNameReason(name);
-    if (invalidBranchReason) {
-      toast.error(invalidBranchReason);
-      return;
-    }
-
     try {
-      await createBranchMutation({
+      const result = await ensureDraftFromMainMutation({
         workspaceId: workspace._id,
-        name,
-        fromBranchId: activeBranchId,
       });
-      toast.success(`Branch "${name}" created`);
-      // Navigate to the new branch
-      const newSlug = buildWorkspaceSlug(workspaceSlug, name);
-      navigate({
-        to: "/workspace/$slug/admin/editor",
-        params: { slug: newSlug },
-      });
+      toast.success(`Draft state "${result.branchStateName}" created`);
+      navigateToBranchState(result.branchStateName);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to create branch");
+      toast.error(error instanceof Error ? error.message : "Failed to create draft state");
       console.error(error);
     }
   };
@@ -454,27 +447,26 @@ function WorkspacePage() {
 
   // Merge branch handler
   const handleMergeBranch = async () => {
-    if (!mergeBranchId || !activeBranchId || !userId) {
+    if (!mergeBranchId) {
       toast.error("Unable to merge");
       return;
     }
 
     const result = await mergeBranchMutation({
-      sourceBranchId: mergeBranchId as Id<"branches">,
-      targetBranchId: activeBranchId,
+      branchStateId: mergeBranchId as Id<"branchStates">,
     });
 
-    const sourceBranch = branches?.find((b) => b._id === mergeBranchId);
+    const sourceBranch = branchStates?.find((b) => b._id === mergeBranchId);
     if (result.type === "fast-forward") {
-      toast.success(`Fast-forward merged "${sourceBranch?.name ?? "branch"}"`);
+      toast.success(`Fast-forward merged "${sourceBranch?.name ?? "branch state"}"`);
     } else {
-      toast.success(`Merged "${sourceBranch?.name ?? "branch"}" with a merge commit`);
+      toast.success(`Merged "${sourceBranch?.name ?? "branch state"}" with a merge commit`);
     }
   };
 
   // Open delete branch dialog handler
-  const handleOpenDeleteDialog = (branchId: string) => {
-    setDeleteBranchId(branchId);
+  const handleOpenDeleteDialog = (nextBranchStateId: string) => {
+    setDeleteBranchId(nextBranchStateId);
     setIsDeleteBranchDialogOpen(true);
   };
 
@@ -485,42 +477,25 @@ function WorkspacePage() {
       return;
     }
 
-    const branchToDelete = branches?.find((b) => b._id === deleteBranchId);
+    const branchToDelete = branchStates?.find((b) => b._id === deleteBranchId);
     await deleteBranchMutation({
-      branchId: deleteBranchId as Id<"branches">,
+      branchStateId: deleteBranchId as Id<"branchStates">,
     });
-    toast.success(`Branch "${branchToDelete?.name ?? "branch"}" deleted`);
+    toast.success(`Branch state "${branchToDelete?.name ?? "branch state"}" deleted`);
 
     // If the deleted branch was the current one, navigate to default/main
-    if (deleteBranchId === activeBranchId) {
-      navigate({
-        to: "/workspace/$slug/admin/editor",
-        params: { slug: workspaceSlug }, // Just workspace slug = default branch
-      });
-    }
-  };
-
-  // Set default branch handler
-  const handleSetDefaultBranch = async (branchId: string) => {
-    const branch = branches?.find((b) => b._id === branchId);
-    try {
-      await setDefaultBranchMutation({
-        branchId: branchId as Id<"branches">,
-      });
-      toast.success(`"${branch?.name ?? "Branch"}" is now the default branch`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to set default branch");
-      console.error(error);
+    if (deleteBranchId === branchStateId) {
+      navigateToBranchState(undefined);
     }
   };
 
   // Discard handlers
   const handleDiscardAll = async () => {
-    if (!activeBranchId || !userId) return;
+    if (!branchStateId) return;
 
     try {
       await discardAllWorkingFilesMutation({
-        branchId: activeBranchId,
+        branchStateId,
       });
       // Reset editor to committed content
       if (selectedPath) {
@@ -539,11 +514,11 @@ function WorkspacePage() {
   };
 
   const handleDiscardFile = async (path: string) => {
-    if (!activeBranchId || !userId) return;
+    if (!branchStateId) return;
 
     try {
       await discardWorkingFileMutation({
-        branchId: activeBranchId,
+        branchStateId,
         path,
       });
       // If this was the selected file, reset its content
@@ -567,14 +542,19 @@ function WorkspacePage() {
 
   // Compile handler
   const handleCompile = async () => {
-    if (!workspace || !activeBranchId) {
+    if (!branchStateId) {
       toast.error("Unable to compile");
       return;
     }
 
+    let effectiveBranchStateId = branchStateId;
+
     // Save any pending changes first
     if (selectedPath && hasLocalChanges) {
-      await saveToBackend(selectedPath, fileContent);
+      const saveResult = await saveToBackend(selectedPath, fileContent);
+      if (saveResult) {
+        effectiveBranchStateId = saveResult.branchStateId;
+      }
     }
 
     setCompileStatus("compiling");
@@ -584,9 +564,7 @@ function WorkspacePage() {
 
     try {
       const result = await compileBranchAction({
-        workspaceId: workspace._id,
-        branchId: activeBranchId,
-        includeWorkingState: includeWorkingState && changes.length > 0,
+        branchStateId: effectiveBranchStateId,
       });
       setCompileJobId(result.compileJobId);
       lastHandledCompileJobRef.current = null;
@@ -650,7 +628,7 @@ function WorkspacePage() {
     setCompileStatus("idle");
     setCompileError(null);
     setCompileJobId(null);
-  }, [activeBranchId]);
+  }, [branchStateId]);
 
   // View diff for a specific file
   const handleViewDiff = (path: string) => {
@@ -690,7 +668,7 @@ function WorkspacePage() {
       return;
     }
 
-    if (!workspace || !activeBranchId || !userId) {
+    if (!branchStateId) {
       toast.error("Unable to create file");
       return;
     }
@@ -724,12 +702,12 @@ function WorkspacePage() {
 
     try {
       // Create empty file in working directory
-      await saveWorkingFileAction({
-        workspaceId: workspace._id,
-        branchId: activeBranchId,
+      const result = await saveWorkingFileAction({
+        branchStateId,
         path: normalizedPath,
         content: "",
       });
+      handleBranchStateRedirect(result);
 
       // Select and open the new file
       setSelectedPath(normalizedPath);
@@ -753,7 +731,7 @@ function WorkspacePage() {
       return;
     }
 
-    if (!workspace || !activeBranchId || !userId) {
+    if (!branchStateId) {
       toast.error("Unable to create folder");
       return;
     }
@@ -769,12 +747,12 @@ function WorkspacePage() {
 
     try {
       // Create .gitkeep file in working directory
-      await saveWorkingFileAction({
-        workspaceId: workspace._id,
-        branchId: activeBranchId,
+      const result = await saveWorkingFileAction({
+        branchStateId,
         path: gitkeepPath,
         content: "",
       });
+      handleBranchStateRedirect(result);
 
       // Close dialog and reset
       setIsCreateFolderDialogOpen(false);
@@ -862,14 +840,14 @@ function WorkspacePage() {
 
   // Convert branches to Branch format
   const branchList: Branch[] =
-    branches?.map((b) => ({
+    branchStates?.map((b) => ({
       id: b._id,
       name: b.name,
-      isDefault: b.isDefault,
-      commitId: b.commitId,
+      isDefault: b.isMain,
+      commitId: b.backingBranchId,
     })) ?? [];
 
-  const selectedRevisionId = compileResult?.revisionId ?? null;
+  const selectedRevisionId = compileResult?.revisionId ?? currentBranchState?.lastCompiledRevisionId ?? null;
   const isPublishedRevision = selectedRevisionId !== null && workspace?.activeRevisionId === selectedRevisionId;
 
   if (!workspace) {
@@ -896,7 +874,7 @@ function WorkspacePage() {
                 files.
               </p>
             </div>
-            <Button onClick={handleInitialize} disabled={isInitializing || !userId} className="gap-2">
+            <Button onClick={handleInitialize} disabled={isInitializing} className="gap-2">
               <GitBranch className="size-4" />
               {isInitializing ? "Initializing..." : "Initialize Tokenspace"}
             </Button>
@@ -913,11 +891,10 @@ function WorkspacePage() {
         <div className="flex items-center gap-4">
           <BranchSelector
             branches={branchList}
-            currentBranchId={activeBranchId}
+            currentBranchId={branchStateId}
             onBranchChange={handleBranchChange}
             onCreateBranch={handleCreateBranch}
             onMergeBranch={handleOpenMergeDialog}
-            onSetDefaultBranch={handleSetDefaultBranch}
             onDeleteBranch={handleOpenDeleteDialog}
           />
           {(isSaving || hasLocalChanges) && (
@@ -1177,7 +1154,7 @@ function WorkspacePage() {
           baseCommitId={diffBaseCommitId}
           headCommitId={diffHeadCommitId}
           workspaceId={workspace._id}
-          branchId={activeBranchId}
+          branchStateId={branchStateId}
           initialPath={diffInitialPath}
         />
       )}
@@ -1187,7 +1164,7 @@ function WorkspacePage() {
         open={isMergeDialogOpen}
         onOpenChange={setIsMergeDialogOpen}
         sourceBranch={branchList.find((b) => b.id === mergeBranchId)}
-        targetBranch={branchList.find((b) => b.id === activeBranchId)}
+        targetBranch={branchList.find((b) => b.isDefault)}
         onConfirm={handleMergeBranch}
       />
 
@@ -1207,8 +1184,8 @@ function WorkspacePage() {
         result={compileResult}
         error={compileError}
         onCompile={handleCompile}
-        includeWorkingState={includeWorkingState}
-        onIncludeWorkingStateChange={setIncludeWorkingState}
+        includeWorkingState={false}
+        onIncludeWorkingStateChange={() => {}}
         hasWorkingChanges={changes.length > 0}
       />
     </div>

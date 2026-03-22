@@ -41,14 +41,14 @@ export function MergeDialog({ open, onOpenChange, sourceBranch, targetBranch, on
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <GitMerge className="size-5" />
-            Merge Branch
+            Merge Branch State
           </AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-3">
               <p>
-                You are about to merge{" "}
+                You are about to merge branch state{" "}
                 <code className="bg-muted px-1.5 py-0.5 rounded font-mono text-foreground">{sourceBranch.name}</code>{" "}
-                into{" "}
+                into main branch state{" "}
                 <code className="bg-muted px-1.5 py-0.5 rounded font-mono text-foreground">{targetBranch.name}</code>.
               </p>
               <p className="text-sm">

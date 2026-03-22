@@ -27,7 +27,13 @@ export const createCommit = action({
   handler: async (ctx, args): Promise<Id<"commits">> => {
     const { user } = await requireWorkspaceAdmin(ctx, args.workspaceId);
 
-    return await createCommitHandler(ctx, { ...args, userId: user.subject });
+    return await createCommitHandler(ctx, {
+      workspaceId: args.workspaceId,
+      branchId: args.branchId,
+      authorId: user.subject,
+      workingOwnerId: user.subject,
+      message: args.message,
+    });
   },
 });
 
@@ -39,13 +45,38 @@ export const createCommitInternal = internalAction({
     message: v.string(),
   },
   handler: async (ctx, args): Promise<Id<"commits">> => {
+    return await createCommitHandler(ctx, {
+      workspaceId: args.workspaceId,
+      branchId: args.branchId,
+      authorId: args.userId,
+      workingOwnerId: args.userId,
+      message: args.message,
+    });
+  },
+});
+
+export const createCommitForOwnerInternal = internalAction({
+  args: {
+    workspaceId: v.id("workspaces"),
+    branchId: v.id("branches"),
+    authorId: v.string(),
+    workingOwnerId: v.string(),
+    message: v.string(),
+  },
+  handler: async (ctx, args): Promise<Id<"commits">> => {
     return await createCommitHandler(ctx, args);
   },
 });
 
 async function createCommitHandler(
   ctx: any,
-  args: { workspaceId: Id<"workspaces">; branchId: Id<"branches">; userId: string; message: string },
+  args: {
+    workspaceId: Id<"workspaces">;
+    branchId: Id<"branches">;
+    authorId: string;
+    workingOwnerId: string;
+    message: string;
+  },
 ): Promise<Id<"commits">> {
   const branch = await ctx.runQuery(internal.vcs.getBranchInternal, { branchId: args.branchId });
   if (!branch) {
@@ -68,7 +99,7 @@ async function createCommitHandler(
     isDeleted: boolean;
   }> = await ctx.runQuery(internal.fs.working.getChanges, {
     branchId: args.branchId,
-    userId: args.userId,
+    userId: args.workingOwnerId,
   });
 
   if (changes.length === 0) {
@@ -121,7 +152,7 @@ async function createCommitHandler(
   const commitId: Id<"commits"> = await ctx.runMutation(internal.vcs.createCommitRecord, {
     workspaceId: args.workspaceId,
     branchId: args.branchId,
-    userId: args.userId,
+    userId: args.authorId,
     message: args.message,
     treeId: newTreeId,
     parentId: branch.commitId,
@@ -129,7 +160,7 @@ async function createCommitHandler(
 
   await ctx.runMutation(internal.fs.working.clear, {
     branchId: args.branchId,
-    userId: args.userId,
+    userId: args.workingOwnerId,
   });
 
   return commitId;
@@ -589,69 +620,94 @@ export const mergeBranch = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireAuthenticatedUser(ctx);
-
-    const sourceBranch = await ctx.db.get(args.sourceBranchId);
-    const targetBranch = await ctx.db.get(args.targetBranchId);
-
-    if (!sourceBranch || !targetBranch) {
-      throw new Error("Branch not found");
-    }
-
-    if (sourceBranch.workspaceId !== targetBranch.workspaceId) {
-      throw new Error("Branches must be in the same workspace");
-    }
-    await requireWorkspaceAdmin(ctx, sourceBranch.workspaceId);
-
-    // Check if source is ahead of target (can fast-forward)
-    const sourceCommit = await ctx.db.get(sourceBranch.commitId);
-    const targetCommit = await ctx.db.get(targetBranch.commitId);
-
-    if (!sourceCommit || !targetCommit) {
-      throw new Error("Commit not found");
-    }
-
-    // Check if target commit is an ancestor of source commit
-    let current: Id<"commits"> | undefined = sourceBranch.commitId;
-    let canFastForward = false;
-
-    while (current) {
-      if (current === targetBranch.commitId) {
-        canFastForward = true;
-        break;
-      }
-      const commit: Doc<"commits"> | null = await ctx.db.get(current);
-      if (!commit) break;
-      current = commit.parentId;
-    }
-
-    if (canFastForward) {
-      // Fast-forward merge
-      await ctx.db.patch(args.targetBranchId, {
-        commitId: sourceBranch.commitId,
-      });
-      return { type: "fast-forward" as const, commitId: sourceBranch.commitId };
-    }
-
-    // For non-fast-forward merges, create a merge commit
-    // This is a simplified version - real merge would need conflict resolution
-    const mergeTreeId = sourceCommit.treeId; // Use source tree for now
-
-    const mergeCommitId = await ctx.db.insert("commits", {
-      workspaceId: targetBranch.workspaceId,
-      parentId: targetBranch.commitId,
-      treeId: mergeTreeId,
-      message: `Merge branch '${sourceBranch.name}' into '${targetBranch.name}'`,
+    return await mergeBranchesHandler(ctx, {
+      sourceBranchId: args.sourceBranchId,
+      targetBranchId: args.targetBranchId,
       authorId: user.subject,
-      createdAt: Date.now(),
     });
-
-    await ctx.db.patch(args.targetBranchId, {
-      commitId: mergeCommitId,
-    });
-
-    return { type: "merge-commit" as const, commitId: mergeCommitId };
   },
 });
+
+export const mergeBranchInternal = internalMutation({
+  args: {
+    sourceBranchId: v.id("branches"),
+    targetBranchId: v.id("branches"),
+    authorId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await mergeBranchesHandler(ctx, args);
+  },
+});
+
+async function mergeBranchesHandler(
+  ctx: any,
+  args: {
+    sourceBranchId: Id<"branches">;
+    targetBranchId: Id<"branches">;
+    authorId: string;
+  },
+) {
+  const sourceBranch = await ctx.db.get(args.sourceBranchId);
+  const targetBranch = await ctx.db.get(args.targetBranchId);
+
+  if (!sourceBranch || !targetBranch) {
+    throw new Error("Branch not found");
+  }
+
+  if (sourceBranch.workspaceId !== targetBranch.workspaceId) {
+    throw new Error("Branches must be in the same workspace");
+  }
+  await requireWorkspaceAdmin(ctx, sourceBranch.workspaceId);
+
+  // Check if source is ahead of target (can fast-forward)
+  const sourceCommit = await ctx.db.get(sourceBranch.commitId);
+  const targetCommit = await ctx.db.get(targetBranch.commitId);
+
+  if (!sourceCommit || !targetCommit) {
+    throw new Error("Commit not found");
+  }
+
+  // Check if target commit is an ancestor of source commit
+  let current: Id<"commits"> | undefined = sourceBranch.commitId;
+  let canFastForward = false;
+
+  while (current) {
+    if (current === targetBranch.commitId) {
+      canFastForward = true;
+      break;
+    }
+    const commit: Doc<"commits"> | null = await ctx.db.get(current);
+    if (!commit) break;
+    current = commit.parentId;
+  }
+
+  if (canFastForward) {
+    // Fast-forward merge
+    await ctx.db.patch(args.targetBranchId, {
+      commitId: sourceBranch.commitId,
+    });
+    return { type: "fast-forward" as const, commitId: sourceBranch.commitId };
+  }
+
+  // For non-fast-forward merges, create a merge commit
+  // This is a simplified version - real merge would need conflict resolution
+  const mergeTreeId = sourceCommit.treeId; // Use source tree for now
+
+  const mergeCommitId = await ctx.db.insert("commits", {
+    workspaceId: targetBranch.workspaceId,
+    parentId: targetBranch.commitId,
+    treeId: mergeTreeId,
+    message: `Merge branch '${sourceBranch.name}' into '${targetBranch.name}'`,
+    authorId: args.authorId,
+    createdAt: Date.now(),
+  });
+
+  await ctx.db.patch(args.targetBranchId, {
+    commitId: mergeCommitId,
+  });
+
+  return { type: "merge-commit" as const, commitId: mergeCommitId };
+}
 
 // ============================================================================
 // Diff Operations

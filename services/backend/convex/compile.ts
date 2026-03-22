@@ -63,6 +63,7 @@ async function enqueueRevisionCompileJob(
   args: {
     workspaceId: Id<"workspaces">;
     branchId: Id<"branches">;
+    branchStateId?: Id<"branchStates">;
     includeWorkingState?: boolean;
     workingStateHash?: string;
     userId?: string;
@@ -187,6 +188,7 @@ async function enqueueRevisionCompileJob(
   const compileJobId = await ctx.runMutation(internal.compileJobs.createCompileJob, {
     workspaceId: args.workspaceId,
     branchId: args.branchId,
+    branchStateId: args.branchStateId,
     commitId: branch.commitId,
     workingStateHash,
     userId: args.userId,
@@ -513,6 +515,7 @@ export const enqueueBranchCompile = internalAction({
   args: {
     workspaceId: v.id("workspaces"),
     branchId: v.id("branches"),
+    branchStateId: v.optional(v.id("branchStates")),
     includeWorkingState: v.optional(v.boolean()),
     workingStateHash: v.optional(v.string()),
     userId: v.optional(v.string()),
@@ -526,6 +529,7 @@ export const enqueueBranchCompile = internalAction({
     const result = await enqueueRevisionCompileJob(ctx, {
       workspaceId: args.workspaceId,
       branchId: args.branchId,
+      branchStateId: args.branchStateId,
       includeWorkingState: args.includeWorkingState,
       workingStateHash: args.workingStateHash,
       userId: args.userId,
