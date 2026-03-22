@@ -2,7 +2,7 @@ import { createFileRoute, Outlet, useParams } from "@tanstack/react-router";
 import { api } from "@tokenspace/backend/convex/_generated/api";
 import type { Id } from "@tokenspace/backend/convex/_generated/dataModel";
 import { useQuery } from "convex/react";
-import { parseWorkspaceSlug } from "@/lib/workspace-slug";
+import { normalizeMemberWorkspaceSlug, parseWorkspaceSlug } from "@/lib/workspace-slug";
 
 // Context type for passing workspace data to child routes
 export type WorkspaceContextType = {
@@ -58,5 +58,18 @@ export function useWorkspaceContext(): WorkspaceContextType {
 }
 
 function WorkspaceLayout() {
+  const { slug } = Route.useParams();
+  const pathname = typeof window !== "undefined" ? window.location.pathname : "";
+  const contextSlug = pathname.includes("/admin") ? slug : normalizeMemberWorkspaceSlug(slug);
+  const workspaceContext = useQuery(api.workspace.resolveWorkspaceContext, { slug: contextSlug });
+
+  if (!workspaceContext) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-muted-foreground">Loading tokenspace...</div>
+      </div>
+    );
+  }
+
   return <Outlet />;
 }

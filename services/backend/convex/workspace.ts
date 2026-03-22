@@ -1207,7 +1207,18 @@ export const resolveWorkspaceContext = query({
         .withIndex("by_name", (q) => q.eq("workspaceId", workspace._id).eq("name", branchName))
         .first();
       if (!branch) {
-        throw new Error(`Branch "${branchName}" not found in workspace "${workspaceSlug}"`);
+        branchState = await ctx.db
+          .query("branchStates")
+          .withIndex("by_workspace_main", (q) => q.eq("workspaceId", workspace._id).eq("isMain", true))
+          .filter((q) => q.eq(q.field("archivedAt"), undefined))
+          .first();
+        branch = branchState
+          ? await ctx.db.get(branchState.backingBranchId)
+          : await ctx.db
+              .query("branches")
+              .withIndex("by_workspace", (q) => q.eq("workspaceId", workspace._id))
+              .filter((q) => q.eq(q.field("isDefault"), true))
+              .first();
       }
     } else {
       // Get default branch

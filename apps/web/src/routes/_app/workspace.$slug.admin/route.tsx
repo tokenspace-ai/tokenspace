@@ -150,6 +150,13 @@ function AdminLayout() {
     navigateToSlug(nextSlug, { replace: true });
   }, [workingStateHash, currentWorkspaceSlug, isMainBranchState, branchStateName, navigateToSlug]);
 
+  useEffect(() => {
+    if (!workspaceContext?.effectiveSlug || slug === workspaceContext.effectiveSlug) {
+      return;
+    }
+    navigateToSlug(workspaceContext.effectiveSlug, { replace: true });
+  }, [workspaceContext?.effectiveSlug, slug, navigateToSlug]);
+
   const handleBranchChange = (newBranchId: string) => {
     const branch = branches.find((b) => b.id === newBranchId);
     if (!branch) return;
