@@ -33,13 +33,13 @@ import { readStdinValue } from "../stdin.js";
 const DEFAULT_LIST_LIMIT = 20;
 const FOLLOW_POLL_INTERVAL_MS = 750;
 
-type LinkedWorkspaceContext = {
+export type LinkedWorkspaceContext = {
   resolvedDir?: string;
   resolution: "linked" | "default" | "flag";
   workspace: Workspace;
 };
 
-type LinkedWorkspaceRevisionContext = LinkedWorkspaceContext & {
+export type LinkedWorkspaceRevisionContext = LinkedWorkspaceContext & {
   branch: Branch;
   revisionId: NonNullable<Awaited<ReturnType<typeof getWorkspaceRevision>>>;
 };
@@ -54,6 +54,10 @@ export type TranscriptEntry = {
 export type ConversationStep = {
   kind: "user" | "assistant" | "reasoning" | "tool";
   text: string;
+};
+
+export type ConversationStepItem = ConversationStep & {
+  id: string;
 };
 
 export type ChatSnapshot = {
@@ -171,7 +175,7 @@ function printWorkspaceSource(context: LinkedWorkspaceContext): void {
   console.log(pc.dim(`${prefix}${context.workspace.slug}`));
 }
 
-async function loadLinkedWorkspaceContext(workspaceSlug?: string): Promise<LinkedWorkspaceContext> {
+export async function loadLinkedWorkspaceContext(workspaceSlug?: string): Promise<LinkedWorkspaceContext> {
   const explicitWorkspaceSlug = workspaceSlug?.trim();
   if (explicitWorkspaceSlug) {
     const workspace = await getWorkspaceBySlug(explicitWorkspaceSlug);
@@ -223,7 +227,9 @@ async function loadLinkedWorkspaceContext(workspaceSlug?: string): Promise<Linke
   );
 }
 
-async function loadLinkedWorkspaceRevisionContext(workspaceSlug?: string): Promise<LinkedWorkspaceRevisionContext> {
+export async function loadLinkedWorkspaceRevisionContext(
+  workspaceSlug?: string,
+): Promise<LinkedWorkspaceRevisionContext> {
   const context = await loadLinkedWorkspaceContext(workspaceSlug);
   const branch = await getDefaultBranch(context.workspace._id);
   if (!branch) {
@@ -449,13 +455,14 @@ export function buildTranscript(messages: ChatMessage[]): TranscriptEntry[] {
   return messages.map(getTranscriptEntry).filter((entry): entry is TranscriptEntry => entry !== null);
 }
 
-function buildMessageConversationSteps(message: ChatMessage): ConversationStep[] {
+function buildMessageConversationStepItems(message: ChatMessage): ConversationStepItem[] {
   if (message.role !== "user" && message.role !== "assistant") {
     return [];
   }
 
-  const steps: ConversationStep[] = [];
+  const steps: ConversationStepItem[] = [];
   let index = 0;
+  let stepIndex = 0;
 
   while (index < message.parts.length) {
     const part = message.parts[index]!;
@@ -465,9 +472,11 @@ function buildMessageConversationSteps(message: ChatMessage): ConversationStep[]
       const chunk = collectConsecutiveTextParts(message.parts, index);
       if (chunk.text) {
         steps.push({
+          id: `${message.id}:${stepIndex}`,
           kind: message.role === "user" ? "user" : "assistant",
           text: chunk.text,
         });
+        stepIndex += 1;
       }
       index = chunk.nextIndex;
       continue;
@@ -476,7 +485,8 @@ function buildMessageConversationSteps(message: ChatMessage): ConversationStep[]
     if (type.startsWith("reasoning")) {
       const chunk = collectConsecutiveReasoningParts(message.parts, index);
       if (chunk.text) {
-        steps.push({ kind: "reasoning", text: chunk.text });
+        steps.push({ id: `${message.id}:${stepIndex}`, kind: "reasoning", text: chunk.text });
+        stepIndex += 1;
       }
       index = chunk.nextIndex;
       continue;
@@ -485,9 +495,11 @@ function buildMessageConversationSteps(message: ChatMessage): ConversationStep[]
     const text = describeConversationMetaPart(part);
     if (text) {
       steps.push({
+        id: `${message.id}:${stepIndex}`,
         kind: message.role === "user" ? "user" : "tool",
         text,
       });
+      stepIndex += 1;
     }
     index += 1;
   }
@@ -495,8 +507,12 @@ function buildMessageConversationSteps(message: ChatMessage): ConversationStep[]
   return steps;
 }
 
+export function buildConversationStepItems(messages: ChatMessage[]): ConversationStepItem[] {
+  return messages.flatMap((message) => buildMessageConversationStepItems(message));
+}
+
 export function buildConversationSteps(messages: ChatMessage[]): ConversationStep[] {
-  return messages.flatMap((message) => buildMessageConversationSteps(message));
+  return buildConversationStepItems(messages).map(({ id: _id, ...step }) => step);
 }
 
 function printConversationStep(step: ConversationStep): void {

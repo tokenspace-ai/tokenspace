@@ -80,6 +80,9 @@ interface PackageContext {
 }
 
 let packageContextPromise: Promise<PackageContext> | undefined;
+let activePromptInterface: readline.Interface | null = null;
+let bufferedPromptLinesPromise: Promise<string[]> | null = null;
+let bufferedPromptLines: string[] | null = null;
 
 const CAPABILITY_AUTHORING_SKILL_REPO = "https://github.com/tokenspace-ai/skills";
 const CAPABILITY_AUTHORING_SKILL_NAME = "capability-authoring";
@@ -130,17 +133,57 @@ export interface InitOptions {
 }
 
 async function prompt(question: string): Promise<string> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
+  if (!process.stdin.isTTY) {
+    process.stdout.write(question);
+    const lines = await getBufferedPromptLines();
+    return (lines.shift() ?? "").trim();
+  }
+
+  if (!activePromptInterface) {
+    activePromptInterface = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+  }
 
   return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      rl.close();
+    activePromptInterface!.question(question, (answer) => {
       resolve(answer.trim());
     });
   });
+}
+
+async function getBufferedPromptLines(): Promise<string[]> {
+  if (bufferedPromptLines) {
+    return bufferedPromptLines;
+  }
+
+  if (!bufferedPromptLinesPromise) {
+    bufferedPromptLinesPromise = new Promise((resolve, reject) => {
+      const chunks: string[] = [];
+      process.stdin.setEncoding("utf8");
+      process.stdin.on("data", (chunk: string) => {
+        chunks.push(chunk);
+      });
+      process.stdin.on("end", () => {
+        const joined = chunks.join("");
+        resolve(joined.split(/\r?\n/));
+      });
+      process.stdin.on("error", reject);
+      process.stdin.resume();
+    });
+  }
+
+  bufferedPromptLines = await bufferedPromptLinesPromise;
+  return bufferedPromptLines;
+}
+
+function closePromptInterface(): void {
+  if (!activePromptInterface) {
+    return;
+  }
+  activePromptInterface.close();
+  activePromptInterface = null;
 }
 
 async function confirm(question: string, defaultValue = true): Promise<boolean> {
@@ -562,95 +605,99 @@ function printNextSteps(args: {
 }
 
 export async function initWorkspace(options: InitOptions): Promise<void> {
-  const template = options.template ?? DEFAULT_TEMPLATE;
-  if (template !== DEFAULT_TEMPLATE) {
-    throw new Error(`Unknown template '${template}'. Available templates: ${DEFAULT_TEMPLATE}`);
+  try {
+    const template = options.template ?? DEFAULT_TEMPLATE;
+    if (template !== DEFAULT_TEMPLATE) {
+      throw new Error(`Unknown template '${template}'. Available templates: ${DEFAULT_TEMPLATE}`);
+    }
+
+    let workspaceName = options.name;
+    if (!workspaceName) {
+      workspaceName = await prompt(pc.cyan("Workspace name: "));
+    }
+
+    if (!workspaceName) {
+      throw new Error("Workspace name is required");
+    }
+
+    const slug = slugify(workspaceName) || "workspace";
+    const capabilityName = toCapabilityName(slug);
+    const targetDir = path.resolve(options.directory ?? slug);
+    const displayDir = toDisplayPath(targetDir);
+
+    console.log();
+    console.log(pc.bold("Initializing Tokenspace workspace"));
+    console.log(`  ${pc.dim("Template:")} ${DEFAULT_TEMPLATE}`);
+    console.log(`  ${pc.dim("Directory:")} ${displayDir}`);
+
+    await ensureMissingTargetDirectory(targetDir);
+
+    const versions = await loadDependencyVersions();
+    await writeWorkspaceFiles({
+      targetDir,
+      slug,
+      workspaceName,
+      capabilityName,
+      versions,
+    });
+
+    const installSkillChoice = resolveSetupChoice({
+      enable: options.installSkill,
+      skip: options.skipInstallSkill,
+      yes: options.yes,
+      label: "install-skill",
+    });
+    const gitInitChoice = resolveSetupChoice({
+      enable: options.gitInit,
+      skip: options.skipGitInit,
+      yes: options.yes,
+      label: "git-init",
+    });
+    const bunInstallChoice = resolveSetupChoice({
+      enable: options.bunInstall,
+      skip: options.skipBunInstall,
+      yes: options.yes,
+      label: "bun-install",
+    });
+
+    const installedSkill = await maybeRunSetupStep({
+      choice: installSkillChoice,
+      cwd: targetDir,
+      heading: pc.bold("Install capability-authoring skill"),
+      question: "Run this command?",
+      commands: [CAPABILITY_AUTHORING_SKILL_INSTALL_COMMAND.command],
+      display: CAPABILITY_AUTHORING_SKILL_INSTALL_COMMAND.display,
+      failureMessage: "Failed to install the capability-authoring skill.",
+    });
+
+    const installedDependencies = await maybeRunSetupStep({
+      choice: bunInstallChoice,
+      cwd: targetDir,
+      heading: pc.bold("Install workspace dependencies"),
+      question: "Run this command?",
+      commands: [BUN_INSTALL_COMMAND.command],
+      display: BUN_INSTALL_COMMAND.display,
+      failureMessage: "Failed to install workspace dependencies.",
+    });
+
+    await maybeRunSetupStep({
+      choice: gitInitChoice,
+      cwd: targetDir,
+      heading: pc.bold("Initialize git repository and create the first commit"),
+      question: "Run this command?",
+      commands: GIT_INIT_COMMAND.commands,
+      display: GIT_INIT_COMMAND.display,
+      failureMessage: "Failed to initialize a git repository.",
+    });
+
+    printNextSteps({
+      displayDir,
+      workspaceName,
+      slug,
+      installedDependencies,
+      installedSkill,
+    });
+  } finally {
+    closePromptInterface();
   }
-
-  let workspaceName = options.name;
-  if (!workspaceName) {
-    workspaceName = await prompt(pc.cyan("Workspace name: "));
-  }
-
-  if (!workspaceName) {
-    throw new Error("Workspace name is required");
-  }
-
-  const slug = slugify(workspaceName) || "workspace";
-  const capabilityName = toCapabilityName(slug);
-  const targetDir = path.resolve(options.directory ?? slug);
-  const displayDir = toDisplayPath(targetDir);
-
-  console.log();
-  console.log(pc.bold("Initializing Tokenspace workspace"));
-  console.log(`  ${pc.dim("Template:")} ${DEFAULT_TEMPLATE}`);
-  console.log(`  ${pc.dim("Directory:")} ${displayDir}`);
-
-  await ensureMissingTargetDirectory(targetDir);
-
-  const versions = await loadDependencyVersions();
-  await writeWorkspaceFiles({
-    targetDir,
-    slug,
-    workspaceName,
-    capabilityName,
-    versions,
-  });
-
-  const installSkillChoice = resolveSetupChoice({
-    enable: options.installSkill,
-    skip: options.skipInstallSkill,
-    yes: options.yes,
-    label: "install-skill",
-  });
-  const gitInitChoice = resolveSetupChoice({
-    enable: options.gitInit,
-    skip: options.skipGitInit,
-    yes: options.yes,
-    label: "git-init",
-  });
-  const bunInstallChoice = resolveSetupChoice({
-    enable: options.bunInstall,
-    skip: options.skipBunInstall,
-    yes: options.yes,
-    label: "bun-install",
-  });
-
-  const installedSkill = await maybeRunSetupStep({
-    choice: installSkillChoice,
-    cwd: targetDir,
-    heading: pc.bold("Install capability-authoring skill"),
-    question: "Run this command?",
-    commands: [CAPABILITY_AUTHORING_SKILL_INSTALL_COMMAND.command],
-    display: CAPABILITY_AUTHORING_SKILL_INSTALL_COMMAND.display,
-    failureMessage: "Failed to install the capability-authoring skill.",
-  });
-
-  const installedDependencies = await maybeRunSetupStep({
-    choice: bunInstallChoice,
-    cwd: targetDir,
-    heading: pc.bold("Install workspace dependencies"),
-    question: "Run this command?",
-    commands: [BUN_INSTALL_COMMAND.command],
-    display: BUN_INSTALL_COMMAND.display,
-    failureMessage: "Failed to install workspace dependencies.",
-  });
-
-  await maybeRunSetupStep({
-    choice: gitInitChoice,
-    cwd: targetDir,
-    heading: pc.bold("Initialize git repository and create the first commit"),
-    question: "Run this command?",
-    commands: GIT_INIT_COMMAND.commands,
-    display: GIT_INIT_COMMAND.display,
-    failureMessage: "Failed to initialize a git repository.",
-  });
-
-  printNextSteps({
-    displayDir,
-    workspaceName,
-    slug,
-    installedDependencies,
-    installedSkill,
-  });
 }

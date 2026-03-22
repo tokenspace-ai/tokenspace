@@ -99,6 +99,37 @@ tokenspace compile --out-dir build/tokenspace
 
 ## Chat from the CLI
 
+Launch the interactive terminal chat UI:
+
+```bash
+tokenspace chat
+tokenspace chat --workspace my-workspace
+tokenspace chat --model openai:gpt-5.4 --open
+```
+
+Running `tokenspace chat` opens a persistent terminal chat with a single-line composer. The first submitted prompt lazily creates a chat, streams updates live in the terminal, and keeps the same thread open so you can continue once the assistant turn completes.
+
+The interactive UI follows the same workspace resolution order as the other chat commands: `--workspace`, current linked workspace, then the default set by `tokenspace use`.
+
+Human-readable chat output is compact and follows the same step order as the web UI. The CLI renders:
+
+- user messages in blue
+- assistant messages in your terminal's normal foreground color
+- reasoning in dim gray
+- tool calls in dim gray with a leading `•` and simplified labels like `Read /sandbox/README.md` or `Running code`
+
+Example:
+
+```text
+Inspect the repo
+Looking through the files
+• Read /sandbox/README.md
+• Check the compiled artifact
+Found the relevant section.
+```
+
+For scripting and one-shot terminal usage, the non-interactive subcommands remain available.
+
 Start a new chat:
 
 ```bash
@@ -132,23 +163,6 @@ tokenspace chat send <chat-id> --stdin --follow
 ```
 
 These commands require an existing compiled revision for the selected workspace. If the selected tokenspace has not been pushed yet, run `tokenspace push` first.
-
-Human-readable chat output is transcript-first and follows the same step order as the web UI. The CLI renders:
-
-- user messages in blue
-- assistant messages in your terminal's normal foreground color
-- reasoning in dim gray
-- tool calls in dim gray with a leading `•` and simplified labels like `Read /sandbox/README.md` or `Running code`
-
-Example:
-
-```text
-Inspect the repo
-  Looking through the files
-  • Read /sandbox/README.md
-  • Check the compiled artifact
-Found the relevant section.
-```
 
 ## Manage credentials
 
