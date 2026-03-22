@@ -389,6 +389,7 @@ export default defineSchema({
   // Revisions - compiled workspace snapshots stored in file storage
   revisions: defineTable({
     workspaceId: v.id("workspaces"),
+    sourceKind: v.optional(v.union(v.literal("branch"), v.literal("branchState"), v.literal("gitCommit"))),
     branchId: v.id("branches"),
     branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
@@ -396,6 +397,10 @@ export default defineSchema({
     workingStateHash: v.optional(v.string()),
     // Stable hash of the compiled branch-state draft snapshot, if any.
     sourceSnapshotHash: v.optional(v.string()),
+    gitCommitSha: v.optional(v.string()),
+    gitRepoRef: v.optional(v.string()),
+    gitBranch: v.optional(v.string()),
+    gitSubdir: v.optional(v.string()),
     // Optional fingerprint of compiled artifact set used for this revision.
     artifactFingerprint: v.optional(v.string()),
     // File storage references for compiled artifacts
@@ -424,7 +429,8 @@ export default defineSchema({
     .index("by_branch_working", ["branchId", "commitId", "workingStateHash"])
     .index("by_branch_state_commit", ["branchStateId", "commitId"])
     .index("by_branch_state_working", ["branchStateId", "commitId", "workingStateHash"])
-    .index("by_branch_state_snapshot", ["branchStateId", "commitId", "sourceSnapshotHash"]),
+    .index("by_branch_state_snapshot", ["branchStateId", "commitId", "sourceSnapshotHash"])
+    .index("by_git_commit", ["workspaceId", "gitRepoRef", "gitCommitSha", "gitSubdir"]),
 
   // ============================================================================
   // Existing Tables
@@ -583,7 +589,7 @@ export default defineSchema({
 
   compileJobs: defineTable({
     workspaceId: v.id("workspaces"),
-    sourceKind: v.union(v.literal("branch"), v.literal("branchState")),
+    sourceKind: v.union(v.literal("branch"), v.literal("branchState"), v.literal("gitCommit")),
     branchId: v.id("branches"),
     branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),

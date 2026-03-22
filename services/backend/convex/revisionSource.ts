@@ -14,6 +14,13 @@ export const vRevisionBuildSource = v.union(
     branchStateId: v.id("branchStates"),
     sourceSnapshotHash: v.optional(v.string()),
   }),
+  v.object({
+    kind: v.literal("gitCommit"),
+    commitSha: v.string(),
+    repoRef: v.string(),
+    branch: v.optional(v.string()),
+    subdir: v.optional(v.string()),
+  }),
 );
 
 export type RevisionBuildSource =
@@ -26,15 +33,38 @@ export type RevisionBuildSource =
       kind: "branchState";
       branchStateId: Id<"branchStates">;
       sourceSnapshotHash?: string;
+    }
+  | {
+      kind: "gitCommit";
+      commitSha: string;
+      repoRef: string;
+      branch?: string;
+      subdir?: string;
     };
 
-export type ResolvedRevisionBuildSource = {
-  branchId: Id<"branches">;
-  branchStateId?: Id<"branchStates">;
-  commitId: Id<"commits">;
-  workingStateHash?: string;
-  sourceSnapshotHash?: string;
-};
+export type ResolvedRevisionBuildSource =
+  | {
+      sourceKind: "branch";
+      branchId: Id<"branches">;
+      commitId: Id<"commits">;
+      workingStateHash?: string;
+    }
+  | {
+      sourceKind: "branchState";
+      branchId: Id<"branches">;
+      branchStateId: Id<"branchStates">;
+      commitId: Id<"commits">;
+      sourceSnapshotHash?: string;
+    }
+  | {
+      sourceKind: "gitCommit";
+      branchId: Id<"branches">;
+      commitId: Id<"commits">;
+      gitCommitSha: string;
+      gitRepoRef: string;
+      gitBranch?: string;
+      gitSubdir?: string;
+    };
 
 export async function resolveRevisionBuildSource(
   ctx: any,
@@ -62,9 +92,39 @@ export async function resolveRevisionBuildSource(
     }
 
     return {
+      sourceKind: "branch",
       branchId: branch._id,
       commitId: branch.commitId,
       workingStateHash,
+    };
+  }
+
+  if (args.source.kind === "gitCommit") {
+    const workspace = await ctx.runQuery(internal.workspace.getInternal, {
+      workspaceId: args.workspaceId,
+    });
+    if (!workspace) {
+      throw new Error("Workspace not found");
+    }
+    if (!workspace.gitSyncEnabled) {
+      throw new Error("Workspace is not Git-connected");
+    }
+
+    const defaultBranch = await ctx.runQuery(internal.vcs.getDefaultBranchInternal, {
+      workspaceId: args.workspaceId,
+    });
+    if (!defaultBranch) {
+      throw new Error("Workspace default branch not found");
+    }
+
+    return {
+      sourceKind: "gitCommit",
+      branchId: defaultBranch._id,
+      commitId: defaultBranch.commitId,
+      gitCommitSha: args.source.commitSha,
+      gitRepoRef: args.source.repoRef,
+      gitBranch: args.source.branch,
+      gitSubdir: args.source.subdir,
     };
   }
 
@@ -91,6 +151,7 @@ export async function resolveRevisionBuildSource(
   }
 
   return {
+    sourceKind: "branchState",
     branchId: branch._id,
     branchStateId: branchState._id,
     commitId: branch.commitId,

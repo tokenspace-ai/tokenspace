@@ -122,10 +122,18 @@ export type BuildManifestSummary = {
   };
 };
 
-export type RevisionBuildSource = {
-  kind: "branch";
-  branchId: Id<"branches">;
-};
+export type RevisionBuildSource =
+  | {
+      kind: "branch";
+      branchId: Id<"branches">;
+    }
+  | {
+      kind: "gitCommit";
+      commitSha: string;
+      repoRef: string;
+      branch?: string;
+      subdir?: string;
+    };
 
 export type CredentialRequirement = {
   id: string;

@@ -39,13 +39,34 @@ async function assertMatchingBranchState(
 function queryRevisionIdentity(
   ctx: any,
   args: {
+    workspaceId?: string;
+    sourceKind?: "branch" | "branchState" | "gitCommit";
     branchId: string;
     branchStateId?: string;
     commitId: string;
     workingStateHash?: string;
     sourceSnapshotHash?: string;
+    gitCommitSha?: string;
+    gitRepoRef?: string;
+    gitBranch?: string;
+    gitSubdir?: string;
   },
 ) {
+  if (args.sourceKind === "gitCommit") {
+    if (!args.workspaceId || !args.gitCommitSha || !args.gitRepoRef) {
+      throw new Error("Git commit source requires workspaceId, gitCommitSha, and gitRepoRef");
+    }
+    return ctx.db
+      .query("revisions")
+      .withIndex("by_git_commit", (q: any) =>
+        q
+          .eq("workspaceId", args.workspaceId)
+          .eq("gitRepoRef", args.gitRepoRef)
+          .eq("gitCommitSha", args.gitCommitSha)
+          .eq("gitSubdir", args.gitSubdir),
+      );
+  }
+
   if (args.branchStateId) {
     return args.sourceSnapshotHash
       ? ctx.db
@@ -95,11 +116,17 @@ export const getRevision = internalQuery({
  */
 export const findRevision = internalQuery({
   args: {
+    workspaceId: v.optional(v.id("workspaces")),
+    sourceKind: v.optional(v.union(v.literal("branch"), v.literal("branchState"), v.literal("gitCommit"))),
     branchId: v.id("branches"),
     branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
     workingStateHash: v.optional(v.string()),
     sourceSnapshotHash: v.optional(v.string()),
+    gitCommitSha: v.optional(v.string()),
+    gitRepoRef: v.optional(v.string()),
+    gitBranch: v.optional(v.string()),
+    gitSubdir: v.optional(v.string()),
     artifactFingerprint: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -133,11 +160,16 @@ export const findRevision = internalQuery({
 export const createRevision = internalMutation({
   args: {
     workspaceId: v.id("workspaces"),
+    sourceKind: v.optional(v.union(v.literal("branch"), v.literal("branchState"), v.literal("gitCommit"))),
     branchId: v.id("branches"),
     branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),
     workingStateHash: v.optional(v.string()),
     sourceSnapshotHash: v.optional(v.string()),
+    gitCommitSha: v.optional(v.string()),
+    gitRepoRef: v.optional(v.string()),
+    gitBranch: v.optional(v.string()),
+    gitSubdir: v.optional(v.string()),
     artifactFingerprint: v.optional(v.string()),
     revisionFsStorageId: v.id("_storage"),
     bundleStorageId: v.id("_storage"),
@@ -188,6 +220,11 @@ export const createRevision = internalMutation({
         compilerVersion?: typeof args.compilerVersion;
         sourceFingerprint?: typeof args.sourceFingerprint;
         sourceSnapshotHash?: typeof args.sourceSnapshotHash;
+        sourceKind?: typeof args.sourceKind;
+        gitCommitSha?: typeof args.gitCommitSha;
+        gitRepoRef?: typeof args.gitRepoRef;
+        gitBranch?: typeof args.gitBranch;
+        gitSubdir?: typeof args.gitSubdir;
         compileMode?: typeof args.compileMode;
         capabilities?: typeof args.capabilities;
         skills?: typeof args.skills;
@@ -223,6 +260,21 @@ export const createRevision = internalMutation({
       if (args.sourceSnapshotHash && !existing.sourceSnapshotHash) {
         patch.sourceSnapshotHash = args.sourceSnapshotHash;
       }
+      if (args.sourceKind && !existing.sourceKind) {
+        patch.sourceKind = args.sourceKind;
+      }
+      if (args.gitCommitSha && !existing.gitCommitSha) {
+        patch.gitCommitSha = args.gitCommitSha;
+      }
+      if (args.gitRepoRef && !existing.gitRepoRef) {
+        patch.gitRepoRef = args.gitRepoRef;
+      }
+      if (args.gitBranch && !existing.gitBranch) {
+        patch.gitBranch = args.gitBranch;
+      }
+      if (args.gitSubdir && !existing.gitSubdir) {
+        patch.gitSubdir = args.gitSubdir;
+      }
       if (args.compileMode && !existing.compileMode) {
         patch.compileMode = args.compileMode;
       }
@@ -250,11 +302,16 @@ export const createRevision = internalMutation({
 
     return await ctx.db.insert("revisions", {
       workspaceId: args.workspaceId,
+      sourceKind: args.sourceKind,
       branchId: args.branchId,
       branchStateId: args.branchStateId,
       commitId: args.commitId,
       workingStateHash: args.workingStateHash,
       sourceSnapshotHash: args.sourceSnapshotHash,
+      gitCommitSha: args.gitCommitSha,
+      gitRepoRef: args.gitRepoRef,
+      gitBranch: args.gitBranch,
+      gitSubdir: args.gitSubdir,
       artifactFingerprint: args.artifactFingerprint,
       revisionFsStorageId: args.revisionFsStorageId,
       bundleStorageId: args.bundleStorageId,
