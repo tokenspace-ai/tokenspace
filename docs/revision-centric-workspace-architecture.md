@@ -14,9 +14,34 @@ Workspace source content should stop being the primary persisted backend model f
 
 This is a substantial simplification for the runtime path, but it does not eliminate the need for a mutable authoring state. The editor cannot point at an active revision directly, because revisions are immutable. The right replacement is a branch-state model.
 
-## What Exists Today
+## Implementation Status
 
-Today the system has three different source-of-truth layers:
+The migration is already partially complete.
+
+Completed slices:
+
+- Runtime publish semantics now use `workspace.activeRevisionId`.
+- Member-facing app routes resolve from the published revision or an explicit `workspace@revisionId`.
+- Shared `branchStates` now back admin authoring.
+- Editing from the main branch state auto-forks into a shared `draft-*` branch state.
+- `workingStateHash` has been removed from canonical web and CLI contracts.
+- Legacy `workspace:branch:hash` URLs are only accepted as deprecated inputs and redirect to hashless slugs.
+- Branch-state compile dedupe now uses explicit `sourceSnapshotHash`.
+- Revision-build actions now take an explicit source object instead of relying on ad hoc branch arguments.
+
+Important compatibility layers that still exist:
+
+- Convex `branches`, `commits`, `trees`, `blobs`, and `workingFiles` still back source resolution.
+- The revision source contract still supports legacy `branch` inputs for compatibility.
+- `activeCommitId` still exists in schema as a legacy field and should be treated as transitional only.
+- There is no real backend Git source resolver yet.
+- The admin Git Sync page is still a placeholder, and `gitSyncEnabled` is currently unused.
+
+That means the architecture has reached the point where runtime and authoring are separated correctly, but source history is not Git-first yet.
+
+## Legacy Baseline
+
+Before the completed migration slices, the system had three different source-of-truth layers:
 
 1. Workspace source history in Convex:
 - `commits`
@@ -34,14 +59,14 @@ Today the system has three different source-of-truth layers:
 - `sessions`
 - `sessionOverlayFiles`
 
-The current flow is:
+The original flow was:
 
 1. Admin edits committed tree content through `workingFiles`.
 2. A compile request reads `branch.commitId`, overlays `workingFiles`, computes `workingStateHash`, and stores a compile snapshot.
 3. The executor compiles from that snapshot into a revision.
 4. Chats and code execution run against `revisionId`, not against the workspace tree.
 
-That last point is important: the runtime is already largely revision-centric.
+That last point is important because it explains why the runtime migration was relatively straightforward: execution was already largely revision-centric.
 
 ## Key Observation
 
@@ -77,20 +102,19 @@ These flows already use `revisionId` as the real input and can move to an active
 
 In other words: runtime behavior is already driven by revisions.
 
-### Still coupled to branch head plus working state
+### Still coupled to mutable source state
 
-These flows currently rely on stored workspace source state and cannot simply point to `activeRevisionId`:
+These flows still rely on mutable source state and cannot simply point to `activeRevisionId`:
 
 - Admin editor
 - Working changes sidebar/diff UI
 - Branch creation/merge/delete
 - Commit history UI
 - Model editing in `src/models.yaml`
-- Workspace icon resolution from committed tree files
-- Compile enqueue and compile dedupe
-- URL/context resolution based on `workspace:branch:workingStateHash`
-- CLI `push`, which syncs local Git files into Convex working files before compiling
-- `setActiveCommit`, which publishes a commit rather than a revision
+- Workspace icon/settings resolution from source files
+- Compile enqueue, source materialization, and revision dedupe
+- Remaining Convex VCS compatibility code in `vcs.ts` and related source helpers
+- CLI `push`, which still ultimately depends on legacy backend source resolution even though it no longer uses `workingStateHash`
 
 These are authoring concerns, not runtime concerns.
 
@@ -210,12 +234,18 @@ Important properties:
 
 ### 3. Git becomes canonical when connected
 
-For Git-backed workspaces:
+For Git-backed workspaces, the target end state is:
 
 - Tokenspace no longer stores full source history as `commits`/`trees`/`blobs`.
-- A branch state points at a Git branch and optionally caches the last observed head commit SHA.
-- Compiling a clean Git branch state means compiling a specific Git commit.
+- A branch state points at a Git-backed baseline and optionally caches the last observed head commit SHA.
+- Compiling a clean Git-backed state means compiling a specific Git commit.
 - Publishing means promoting the resulting revision, not promoting a commit record inside Tokenspace.
+
+Current implementation note:
+
+- this is not implemented yet
+- the backend still resolves source content from Convex VCS tables
+- the next milestone is to add a real `gitCommit` revision source kind and a resolver for it
 
 ### 4. Snapshot source remains available for non-Git or ad hoc editing
 
@@ -260,6 +290,12 @@ Revision dedupe should be based on:
 - artifact fingerprint
 
 not on `workingStateHash`.
+
+Current implementation note:
+
+- branch-state revisions already dedupe on `sourceSnapshotHash`
+- revision-build already accepts explicit source objects
+- Git-backed source provenance is the major missing piece
 
 ## Compile Flow In The Proposed Model
 
@@ -393,6 +429,24 @@ Eventually remove for Git-backed workspaces:
 
 During transition, some of these may remain for legacy workspaces or migration support.
 
+## Current Transitional Architecture
+
+The current backend shape is a deliberate compatibility layer:
+
+- `activeRevisionId` is the published runtime pointer
+- `branchStates` are the admin-facing mutable authoring objects
+- revisions and revision files are the immutable runtime artifacts
+- Convex VCS tables still act as the source-resolution backend
+
+Concretely:
+
+- a branch state points at a backing Convex branch
+- shared draft edits are stored through branch-state-owned `workingFiles`
+- compile materializes a normalized snapshot from the backing branch plus branch-state draft files
+- that snapshot is deduped by `sourceSnapshotHash`
+
+This is good enough for the revision-centric runtime model, but it is not yet the final Git-first source model.
+
 ## Impact By Area
 
 ### Backend/runtime
@@ -412,15 +466,13 @@ These are already fundamentally revision-based.
 
 Need rework around branch states:
 
-- `workspace.getRevision`
-- `workspace.ensureRevision`
-- `workspace.getCurrentWorkingStateHash`
 - `vcs.ts`
 - `compile.ts`
 - `revisions.findRevision`
 - `revisionBuild.ts`
-- model-editing helpers in `workspace.ts`
-- icon/settings reads from commit trees
+- `revisionSource.ts`
+- `branchStates.ts`
+- model-editing helpers and source-backed settings/icon reads
 
 ### Web app
 
@@ -446,11 +498,10 @@ Need branch-state refactor:
 
 Needs a major simplification:
 
-Current `tokenspace push` flow:
+Current compatibility `tokenspace push` flow:
 
-- sync local files into Convex working files
-- compute `workingStateHash`
-- compile that state
+- prepare source through the explicit revision-build API
+- still rely on legacy backend source resolution for actual materialization
 
 Target flow:
 
@@ -461,9 +512,17 @@ Target flow:
 
 That removes the server-side "workspace source sync" step entirely for Git-backed workspaces.
 
+Current implementation note:
+
+- the CLI no longer depends on `workingStateHash`
+- the CLI now talks to explicit revision-build source APIs
+- it still ultimately resolves source through the legacy Convex source layer
+
 ## Migration Strategy
 
 ### Phase 1: Make runtime explicitly revision-published
+
+Status: complete
 
 - Add `workspace.activeRevisionId`
 - Update member-facing resolution to prefer active revision
@@ -472,6 +531,8 @@ That removes the server-side "workspace source sync" step entirely for Git-backe
 
 ### Phase 2: Introduce branch states
 
+Status: complete as a compatibility layer
+
 - Add branch-state table
 - Create one main branch state per workspace
 - Resolve admin/editor routes through branch state instead of `workingStateHash`
@@ -479,11 +540,15 @@ That removes the server-side "workspace source sync" step entirely for Git-backe
 
 ### Phase 3: Change compile input resolution
 
+Status: mostly complete for branch-state flows
+
 - Compile from branch-state source snapshots
 - Add revision source provenance
 - Deduplicate revisions using source provenance instead of `workingStateHash`
 
 ### Phase 4: Simplify Git-backed workspaces
+
+Status: next major milestone
 
 - Stop writing Git-backed source content into `commits`/`trees`/`blobs`
 - Remove `workingFiles` from Git-backed flows
@@ -491,9 +556,31 @@ That removes the server-side "workspace source sync" step entirely for Git-backe
 
 ### Phase 5: Remove legacy filesystem/VCS tables where possible
 
+Status: deferred until Git-backed sources are real
+
 - Drop `workingStateHash`
 - Retire old branch/commit/tree/blob usage
 - Keep only what is still needed for non-Git snapshot-backed workspaces, if any
+
+## Immediate Next Milestone
+
+The next milestone should add a real Git-backed revision source layer.
+
+The critical changes are:
+
+1. Add a first-class `gitCommit` revision source kind.
+2. Introduce source resolvers that materialize compile inputs from either:
+   - a Git commit
+   - a branch-state snapshot
+3. Move compile/revision-build to depend on that resolver boundary rather than directly on Convex VCS assumptions.
+4. Treat Git commit identity as the canonical source provenance for Git-connected workspaces.
+5. Keep branch states as the mutable admin draft layer.
+
+This is the point where the architecture starts becoming truly Git-first.
+
+Detailed plan:
+
+- [Git-Backed Revision Source Plan](./git-backed-revision-source-plan.md)
 
 ## Migration Notes For Existing Data
 
@@ -553,8 +640,8 @@ Instead, the right move is:
 
 ## Concrete Next Steps
 
-1. Introduce `workspace.activeRevisionId` and switch publish semantics to revisions.
-2. Add a `branchStates` table and move admin context resolution to it.
-3. Redesign compile dedupe around source provenance instead of `workingStateHash`.
-4. Rewrite CLI `push` to publish revisions from local Git/worktree state without syncing source files into Convex.
-5. Remove `workingStateHash` from URLs and replace it with branch-state addressing.
+1. Add `gitCommit` as a first-class revision source.
+2. Implement a Git-backed source resolver that can materialize files for a specific commit SHA.
+3. Route compile and revision-build through resolver implementations instead of direct Convex branch assumptions.
+4. Store Git source provenance on revisions and dedupe Git-backed builds by source identity plus artifact fingerprint.
+5. Keep branch states as the mutable draft layer, but stop treating Convex VCS as the canonical history model for Git-connected workspaces.
