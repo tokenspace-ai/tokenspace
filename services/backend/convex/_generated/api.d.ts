@@ -47,6 +47,7 @@ import type * as http from "../http.js";
 import type * as playground from "../playground.js";
 import type * as resend from "../resend.js";
 import type * as revisionBuild from "../revisionBuild.js";
+import type * as revisionSource from "../revisionSource.js";
 import type * as revisions from "../revisions.js";
 import type * as seed from "../seed.js";
 import type * as sessions from "../sessions.js";
@@ -103,6 +104,7 @@ declare const fullApi: ApiFromModules<{
   playground: typeof playground;
   resend: typeof resend;
   revisionBuild: typeof revisionBuild;
+  revisionSource: typeof revisionSource;
   revisions: typeof revisions;
   seed: typeof seed;
   sessions: typeof sessions;

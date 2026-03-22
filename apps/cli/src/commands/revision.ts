@@ -100,8 +100,12 @@ export async function pushRevisionArtifacts(args: {
   const buildDir = path.resolve(args.buildDir);
   const manifest = await readBuildManifest(buildDir);
   const manifestSummary = toBuildManifestSummary(manifest);
+  const source = {
+    kind: "branch" as const,
+    branchId: args.branchId,
+  };
 
-  const prepare = await prepareRevisionFromBuild(args.workspaceId, args.branchId, manifestSummary);
+  const prepare = await prepareRevisionFromBuild(args.workspaceId, source, manifestSummary);
   if (prepare.kind === "existing") {
     return { revisionId: prepare.revisionId, created: false };
   }
@@ -158,7 +162,7 @@ export async function pushRevisionArtifacts(args: {
 
   return await commitRevisionFromBuild(
     args.workspaceId,
-    args.branchId,
+    source,
     prepare.commitId,
     prepare.artifactFingerprint,
     manifestSummary,

@@ -493,10 +493,17 @@ export const prepareRevisionFromBuildForExecutor = action({
 
     return await ctx.runAction(internal.revisionBuild.prepareRevisionFromBuildInternal, {
       workspaceId: job.workspaceId,
-      branchId: job.branchId,
-      branchStateId: job.branchStateId,
-      workingStateHash: job.workingStateHash,
-      sourceSnapshotHash: job.sourceSnapshotHash,
+      source: job.branchStateId
+        ? {
+            kind: "branchState" as const,
+            branchStateId: job.branchStateId,
+            sourceSnapshotHash: job.sourceSnapshotHash,
+          }
+        : {
+            kind: "branch" as const,
+            branchId: job.branchId,
+            workingStateHash: job.workingStateHash,
+          },
       manifest: args.manifest as BuildManifestSummary,
     });
   },
@@ -548,11 +555,18 @@ export const commitRevisionFromBuildForExecutor = action({
 
     return await ctx.runAction(internal.revisionBuild.commitRevisionFromBuildInternal, {
       workspaceId: job.workspaceId,
-      branchId: job.branchId,
-      branchStateId: job.branchStateId,
+      source: job.branchStateId
+        ? {
+            kind: "branchState" as const,
+            branchStateId: job.branchStateId,
+            sourceSnapshotHash: job.sourceSnapshotHash,
+          }
+        : {
+            kind: "branch" as const,
+            branchId: job.branchId,
+            workingStateHash: job.workingStateHash,
+          },
       commitId: job.commitId,
-      workingStateHash: job.workingStateHash,
-      sourceSnapshotHash: job.sourceSnapshotHash,
       artifactFingerprint: args.artifactFingerprint,
       manifest: args.manifest as BuildManifestSummary,
       artifacts: args.artifacts,
