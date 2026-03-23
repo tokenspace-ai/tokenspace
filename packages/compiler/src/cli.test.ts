@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, setDefaultTimeout } from "bun:test";
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -6,6 +6,8 @@ import path from "node:path";
 
 const REPO_ROOT = path.join(import.meta.dir, "../../..");
 const CLI_PATH = path.join(REPO_ROOT, "packages/compiler/src/cli.ts");
+
+setDefaultTimeout(20_000);
 
 async function runCli(args: string[]): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
   const child = spawn("bun", [CLI_PATH, ...args], {

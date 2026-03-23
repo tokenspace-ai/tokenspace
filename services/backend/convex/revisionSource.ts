@@ -42,29 +42,18 @@ export type RevisionBuildSource =
       subdir?: string;
     };
 
-export type ResolvedRevisionBuildSource =
-  | {
-      sourceKind: "branch";
-      branchId: Id<"branches">;
-      commitId: Id<"commits">;
-      workingStateHash?: string;
-    }
-  | {
-      sourceKind: "branchState";
-      branchId: Id<"branches">;
-      branchStateId: Id<"branchStates">;
-      commitId: Id<"commits">;
-      sourceSnapshotHash?: string;
-    }
-  | {
-      sourceKind: "gitCommit";
-      branchId: Id<"branches">;
-      commitId: Id<"commits">;
-      gitCommitSha: string;
-      gitRepoRef: string;
-      gitBranch?: string;
-      gitSubdir?: string;
-    };
+export type ResolvedRevisionBuildSource = {
+  sourceKind: "branch" | "branchState" | "gitCommit";
+  branchId: Id<"branches">;
+  commitId: Id<"commits">;
+  branchStateId?: Id<"branchStates">;
+  workingStateHash?: string;
+  sourceSnapshotHash?: string;
+  gitCommitSha?: string;
+  gitRepoRef?: string;
+  gitBranch?: string;
+  gitSubdir?: string;
+};
 
 export async function resolveRevisionBuildSource(
   ctx: any,

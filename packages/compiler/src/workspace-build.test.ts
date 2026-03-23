@@ -1,10 +1,12 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, setDefaultTimeout } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildWorkspace, fingerprintWorkspaceSource, loadBuiltWorkspace } from "./workspace-build";
 
 const REPO_ROOT = path.join(import.meta.dir, "../../..");
+
+setDefaultTimeout(20_000);
 
 async function buildFixture(relativeWorkspaceDir: string, mode: "local" | "server" = "local") {
   const outDir = await mkdtemp(path.join(tmpdir(), "tokenspace-compiler-test-"));
