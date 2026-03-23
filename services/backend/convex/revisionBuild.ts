@@ -297,11 +297,17 @@ async function prepareRevisionFromBuildImpl(
   });
 
   const existingRevision = await ctx.runQuery(internal.revisions.findRevision, {
+    workspaceId: args.workspaceId,
+    sourceKind: args.source.sourceKind,
     branchId: args.source.branchId,
     branchStateId: args.source.branchStateId,
     commitId: args.source.commitId,
     workingStateHash: args.source.workingStateHash,
     sourceSnapshotHash: args.source.sourceSnapshotHash,
+    gitCommitSha: args.source.gitCommitSha,
+    gitRepoRef: args.source.gitRepoRef,
+    gitBranch: args.source.gitBranch,
+    gitSubdir: args.source.gitSubdir,
     artifactFingerprint,
   });
 
@@ -396,7 +402,7 @@ async function commitRevisionFromBuildImpl(
     throw new Error("Artifact mismatch for deps: unexpected artifact reference");
   }
 
-  if (args.source.commitId !== args.commitId) {
+  if (args.source.sourceKind !== "gitCommit" && args.source.commitId !== args.commitId) {
     throw new Error("Commit mismatch: branch head changed before commit");
   }
 
@@ -485,21 +491,32 @@ async function commitRevisionFromBuildImpl(
   );
 
   const previous = await ctx.runQuery(internal.revisions.findRevision, {
+    workspaceId: args.workspaceId,
+    sourceKind: args.source.sourceKind,
     branchId: args.source.branchId,
     branchStateId: args.source.branchStateId,
     commitId: args.commitId,
     workingStateHash: args.source.workingStateHash,
     sourceSnapshotHash: args.source.sourceSnapshotHash,
+    gitCommitSha: args.source.gitCommitSha,
+    gitRepoRef: args.source.gitRepoRef,
+    gitBranch: args.source.gitBranch,
+    gitSubdir: args.source.gitSubdir,
     artifactFingerprint: args.artifactFingerprint,
   });
 
   const revisionId = await ctx.runMutation(internal.revisions.createRevision, {
     workspaceId: args.workspaceId,
+    sourceKind: args.source.sourceKind,
     branchId: args.source.branchId,
     branchStateId: args.source.branchStateId,
     commitId: args.commitId,
     workingStateHash: args.source.workingStateHash,
     sourceSnapshotHash: args.source.sourceSnapshotHash,
+    gitCommitSha: args.source.gitCommitSha,
+    gitRepoRef: args.source.gitRepoRef,
+    gitBranch: args.source.gitBranch,
+    gitSubdir: args.source.gitSubdir,
     artifactFingerprint: args.artifactFingerprint,
     revisionFsStorageId,
     bundleStorageId,

@@ -148,7 +148,7 @@ function assertRunningOwnedJob(
 export const createCompileJob = internalMutation({
   args: {
     workspaceId: v.id("workspaces"),
-    sourceKind: v.union(v.literal("branch"), v.literal("branchState")),
+    sourceKind: v.union(v.literal("branch"), v.literal("branchState"), v.literal("gitCommit")),
     branchId: v.id("branches"),
     branchStateId: v.optional(v.id("branchStates")),
     commitId: v.id("commits"),

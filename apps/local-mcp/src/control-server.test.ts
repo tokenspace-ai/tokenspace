@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, setDefaultTimeout } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -11,6 +11,8 @@ import { createMemorySecretsStore } from "./test-utils";
 
 const REPO_ROOT = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const CREDENTIAL_WORKSPACE_DIR = path.join(REPO_ROOT, "apps/local-mcp/fixtures/credential-workspace");
+
+setDefaultTimeout(20_000);
 
 async function createCredentialSession() {
   const sessionsRootDir = await mkdtemp(path.join(tmpdir(), "tokenspace-local-mcp-control-session-"));

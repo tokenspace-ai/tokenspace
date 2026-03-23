@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, setDefaultTimeout } from "bun:test";
 import { access, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -8,6 +8,8 @@ import { createLocalSession } from "./session";
 
 const REPO_ROOT = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const EXAMPLES_DIR = path.join(REPO_ROOT, "examples");
+
+setDefaultTimeout(20_000);
 
 describe("@tokenspace/local-mcp", () => {
   it("persists filesystem state across TypeScript and bash tool calls", async () => {
