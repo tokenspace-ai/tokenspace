@@ -3,6 +3,7 @@ import { gateway, generateText, Output } from "ai";
 import { createFunctionHandle, paginationOptsValidator, type UserIdentity } from "convex/server";
 import { type Infer, v } from "convex/values";
 import z from "zod";
+import { normalizeApprovalRecord, normalizeApprovalRequestRecord } from "../../approvalPayloads";
 import { components, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import {
@@ -1020,29 +1021,33 @@ export const getChatDebugInfo = query({
         })),
       },
       // Approval requests
-      approvalRequests: approvalRequests.map((ar) => ({
-        _id: ar._id,
-        toolCallId: ar.toolCallId,
-        action: ar.action,
-        description: ar.description,
-        reason: ar.reason,
-        status: ar.status,
-        data: ar.data,
-        info: ar.info,
-        createdAt: ar.createdAt,
-        resolvedAt: ar.resolvedAt,
-        resolvedBy: ar.resolvedBy,
-        resolverComment: ar.resolverComment,
-      })),
+      approvalRequests: approvalRequests.map((approvalRequest) =>
+        normalizeApprovalRequestRecord({
+          _id: approvalRequest._id,
+          toolCallId: approvalRequest.toolCallId,
+          action: approvalRequest.action,
+          description: approvalRequest.description,
+          reason: approvalRequest.reason,
+          status: approvalRequest.status,
+          data: approvalRequest.data,
+          info: approvalRequest.info,
+          createdAt: approvalRequest.createdAt,
+          resolvedAt: approvalRequest.resolvedAt,
+          resolvedBy: approvalRequest.resolvedBy,
+          resolverComment: approvalRequest.resolverComment,
+        }),
+      ),
       // Granted approvals
-      approvals: approvals.map((a) => ({
-        _id: a._id,
-        action: a.action,
-        data: a.data,
-        grantedBy: a.grantedBy,
-        grantedAt: a.grantedAt,
-        expiresAt: a.expiresAt,
-      })),
+      approvals: approvals.map((approval) =>
+        normalizeApprovalRecord({
+          _id: approval._id,
+          action: approval.action,
+          data: approval.data,
+          grantedBy: approval.grantedBy,
+          grantedAt: approval.grantedAt,
+          expiresAt: approval.expiresAt,
+        }),
+      ),
     };
   },
 });

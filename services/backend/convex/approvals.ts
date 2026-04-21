@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { normalizeApprovalPayload, normalizeApprovalRecord, normalizeApprovalRequestRecord } from "../approvalPayloads";
 import { internal } from "./_generated/api";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { requireAuthenticatedUser, requireSessionOwnership } from "./authz";
@@ -25,14 +26,16 @@ export const createApprovalRequest = internalMutation({
     reason: v.string(),
   },
   handler: async (ctx, args) => {
+    const data = normalizeApprovalPayload(args.data);
+    const info = normalizeApprovalPayload(args.info);
     const requestId = await ctx.db.insert("approvalRequests", {
       sessionId: args.sessionId,
       threadId: args.threadId,
       toolCallId: args.toolCallId,
       promptMessageId: args.promptMessageId,
       action: args.action,
-      data: args.data,
-      info: args.info,
+      data,
+      info,
       description: args.description,
       reason: args.reason,
       status: "pending",
@@ -82,7 +85,7 @@ export const grantApproval = mutation({
     const approvalId = await ctx.db.insert("approvals", {
       sessionId: request.sessionId,
       action: request.action,
-      data: request.data,
+      data: normalizeApprovalPayload(request.data),
       grantedBy: user.subject,
       grantedAt: Date.now(),
     });
@@ -174,10 +177,12 @@ export const listApprovals = internalQuery({
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
       .collect();
 
-    return approvals.map((a) => ({
-      action: a.action,
-      data: a.data,
-    }));
+    return approvals.map((approval) =>
+      normalizeApprovalRecord({
+        action: approval.action,
+        data: approval.data,
+      }),
+    );
   },
 });
 
@@ -209,7 +214,7 @@ export const getPendingRequests = query({
       .withIndex("by_status", (q) => q.eq("sessionId", args.sessionId).eq("status", "pending"))
       .collect();
 
-    return requests;
+    return requests.map((request) => normalizeApprovalRequestRecord(request));
   },
 });
 
@@ -226,7 +231,7 @@ export const getApprovalRequest = query({
       return null;
     }
     await requireSessionOwnership(ctx, request.sessionId);
-    return request;
+    return normalizeApprovalRequestRecord(request);
   },
 });
 
@@ -246,7 +251,7 @@ export const getApprovalRequestByToolCall = query({
       .withIndex("by_session_tool_call", (q) => q.eq("sessionId", args.sessionId).eq("toolCallId", args.toolCallId))
       .first();
 
-    return requests;
+    return requests ? normalizeApprovalRequestRecord(requests) : null;
   },
 });
 
